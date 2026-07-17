@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Portal do Cliente — CourtManager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/design-system.css" />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    .client-portal {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      background: var(--bg-body);
+    }
+    .client-header {
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      padding: 0 var(--s-6);
+      height: 70px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .client-main {
+      flex: 1;
+      padding: var(--s-6);
+      max-width: 1000px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    
+    @media (max-width: 768px) {
+      .client-header {
+        padding: 0 var(--s-4);
+      }
+      .client-main {
+        padding: var(--s-4);
+      }
+      .mid-row {
+        grid-template-columns: 1fr !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="client-portal">
+    <header class="client-header">
+      <div class="brand">
+        <div class="brand-icon">CM</div>
+        <span class="brand-name">CourtManager</span>
+      </div>
+      <div class="user-card" style="padding: 0; background: transparent; border: none; flex-direction: row; align-items: center;">
+        <div class="user-avatar" style="width: 32px; height: 32px; font-size: 12px; margin-right: 12px;">CL</div>
+        <div class="user-info" style="display: flex; flex-direction: column;">
+          <span class="user-name" style="font-size: 14px;">Cliente Teste</span>
+          <span class="user-role" style="font-size: 12px;">Minha Conta</span>
+        </div>
+        <a href="login.html" class="btn-ghost btn-sm" style="margin-left: 16px; padding: 6px 12px;">Sair</a>
+      </div>
+    </header>
+
+    <main class="client-main">
+      <div class="page-title-block" style="margin-bottom: var(--s-6); display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 16px;">
+        <div>
+          <h1 class="page-title">Olá, Cliente!</h1>
+          <span class="page-subtitle">Acompanhe suas reservas e histórico de pagamentos.</span>
+        </div>
+        <a href="portal-nova-reserva.html" class="btn-primary" style="text-decoration: none;">+ Nova Reserva</a>
+      </div>
+
+      <div class="kpi-row" style="margin-bottom: var(--s-6);">
+        <div class="kpi-card">
+          <div class="kpi-label">Próxima Reserva</div>
+          <div class="kpi-value" style="font-size: 20px;">Hoje, 19:00</div>
+          <div class="kpi-sub">Quadra 1</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Faturas Pendentes</div>
+          <div class="kpi-value danger">R$ 150</div>
+          <div class="kpi-sub warning">1 fatura em aberto</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Total de Reservas</div>
+          <div class="kpi-value">12</div>
+          <div class="kpi-sub">Este ano</div>
+        </div>
+      </div>
+
+      <div class="mid-row" style="grid-template-columns: 1fr 1fr; gap: var(--s-5);">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Minhas Reservas</h2>
+          </div>
+          <ul id="reservas-lista" class="reservas-list">
+            <!-- Renderizado via JS -->
+            <li class="reserva-item" style="justify-content:center; padding: 20px; color: var(--muted);">Carregando...</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Meus Pagamentos</h2>
+          </div>
+          <ul id="pagamentos-lista" class="inadimplentes-list" style="margin-top: 10px; list-style: none; padding: 0;">
+             <!-- Renderizado via JS -->
+          </ul>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('courtmanager_token');
+    const userJson = localStorage.getItem('courtmanager_user');
+    const user = userJson ? JSON.parse(userJson) : null;
+    
+    if (!token || !user) {
+      alert('Sessão expirada. Faça login novamente.');
+      window.location.href = 'login.html';
+    }
+
+    // Set User info
+    document.querySelector('.user-name').textContent = user.nome;
+    document.querySelector('.user-avatar').textContent = user.nome.substring(0, 2).toUpperCase();
+
+    // Fetch dashboard data
+    const fetchDashboard = async () => {
+      try {
+        const response = await fetch('http://localhost:3000/api/reservas/minhas', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!response.ok) throw new Error('Erro ao buscar dados');
+        const reservas = await response.json();
+
+        renderReservas(reservas);
+        renderPagamentos(reservas);
+        atualizarKPIs(reservas);
+
+      } catch (err) {
+        console.error(err);
+        document.getElementById('reservas-lista').innerHTML = '<li style="padding:20px; text-align:center; color:red;">Erro ao carregar reservas.</li>';
+      }
+    };
+
+    const renderReservas = (reservas) => {
+      const list = document.getElementById('reservas-lista');
+      list.innerHTML = '';
+      
+      if (reservas.length === 0) {
+        list.innerHTML = '<li style="padding:20px; text-align:center; color:var(--muted);">Você ainda não tem reservas.</li>';
+        return;
+      }
+
+      reservas.slice(0, 5).forEach(r => {
+        // Formatar data (ex: 2026-07-15 -> 15/07)
+        const dateParts = r.data_reserva.split('-');
+        const dateStr = `${dateParts[2]}/${dateParts[1]} - ${r.hora_inicio}`;
+        
+        const isPast = new Date(`${r.data_reserva}T${r.hora_inicio}`) < new Date();
+        const badgeClass = isPast ? 'badge--paid' : 'badge--pending';
+        const statusText = isPast ? 'Concluída' : 'Futura';
+
+        const li = document.createElement('li');
+        li.className = 'reserva-item';
+        li.innerHTML = `
+          <div class="reserva-time">${dateStr}</div>
+          <div class="reserva-info">
+            <span class="reserva-client">${r.quadra_nome}</span>
+            <span class="reserva-detail">Ref: #${r.id}</span>
+          </div>
+          <span class="badge ${badgeClass}">${statusText}</span>
+        `;
+        list.appendChild(li);
+      });
+    };
+
+    const renderPagamentos = (reservas) => {
+      const list = document.getElementById('pagamentos-lista');
+      list.innerHTML = '';
+      
+      reservas.slice(0, 5).forEach(r => {
+        const dateParts = r.data_reserva.split('-');
+        const dateStr = `${dateParts[2]}/${dateParts[1]}`;
+        
+        const isPago = r.status_pagamento === 'Pago';
+        
+        const li = document.createElement('li');
+        li.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border);';
+        
+        li.innerHTML = `
+          <div>
+            <div style="font-weight: 500; font-size: 14px;">Reserva de ${dateStr}</div>
+            <div style="font-size: 13px; color: var(--muted);">${r.status_pagamento}</div>
+          </div>
+          <div style="text-align: right;">
+            <span style="font-weight: 600; display: block; color: ${isPago ? 'var(--text)' : 'var(--danger)'}">R$ ${r.valor_total.toFixed(2)}</span>
+            ${!isPago ? '<a href="#" style="font-size: 13px; color: var(--primary); text-decoration: underline;">Pagar agora</a>' : '<span style="font-size: 13px; color: var(--muted);">Ok</span>'}
+          </div>
+        `;
+        list.appendChild(li);
+      });
+    };
+
+    const atualizarKPIs = (reservas) => {
+      document.querySelector('.kpi-row').innerHTML = `
+        <div class="kpi-card">
+          <div class="kpi-label">Total de Reservas</div>
+          <div class="kpi-value">${reservas.length}</div>
+          <div class="kpi-sub">Este ano</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Faturas Pendentes</div>
+          <div class="kpi-value danger">${reservas.filter(r => r.status_pagamento !== 'Pago').length}</div>
+          <div class="kpi-sub warning">Aguardando pagamento</div>
+        </div>
+      `;
+    };
+
+    // Load data
+    fetchDashboard();
+  </script>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

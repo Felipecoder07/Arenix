@@ -1,0 +1,34 @@
+const express = require('express');
+const router = express.Router();
+const { verifyToken, requireRole } = require('../middlewares/auth');
+const { registrarPagamento, aplicarDesconto, registrarEstorno, resumoPagamentos, listarReservasPagamentos } = require('../controllers/pagamentosController');
+const db = require('../config/database');
+
+// KPIs financeiros do dia/mês
+router.get('/resumo',   verifyToken, resumoPagamentos);
+
+// Listagem de reservas com dados de pagamento
+router.get('/reservas', verifyToken, listarReservasPagamentos);
+
+// Listar pagamentos de uma reserva específica
+router.get('/reserva/:reserva_id', verifyToken, async (req, res) => {
+  try {
+    const pags = await db.allAsync(
+      'SELECT * FROM Pagamentos WHERE reserva_id = ? ORDER BY registrado_em ASC',
+      [req.params.reserva_id]
+    );
+    res.json(pags);
+  } catch(e) { res.status(500).json({ error: 'Erro ao listar pagamentos.' }); }
+});
+
+// Registrar novo pagamento
+router.post('/', verifyToken, registrarPagamento);
+
+// Aplicar desconto (RN-007: Apenas Gerente ou Admin)
+router.post('/desconto', verifyToken, requireRole(['Administrador', 'Gerente']), aplicarDesconto);
+
+// Estornar pagamento (RN-008: Apenas Admin)
+router.post('/estorno', verifyToken, requireRole(['Administrador']), registrarEstorno);
+
+module.exports = router;
+

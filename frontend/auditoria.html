@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CourtManager — Auditoria</title>
+  <meta name="description" content="Logs de auditoria e rastreabilidade de eventos do sistema." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/design-system.css" />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    .log-badge {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: var(--r-pill);
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .log-login      { background: var(--partial-bg);  color: var(--partial); }
+    .log-reserva    { background: var(--paid-bg);     color: var(--paid); }
+    .log-pagamento  { background: #eaf0fa;             color: #1a4a9a; }
+    .log-cancelamento { background: var(--danger-bg); color: var(--danger); }
+    .log-preco      { background: var(--pending-bg);  color: var(--pending); }
+    .log-permissao  { background: var(--blocked-bg);  color: var(--blocked); }
+    .log-exclusao   { background: var(--danger-bg);   color: var(--danger); }
+    .log-bloqueio   { background: var(--blocked-bg);  color: var(--blocked); }
+    .log-desconto   { background: var(--pending-bg);  color: var(--pending); }
+    .log-exportacao { background: var(--cream-surface); color: var(--muted); border: 1px solid var(--border-passive); }
+
+    .ip-tag {
+      font-family: monospace;
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--cream-surface);
+      padding: 1px 6px;
+      border-radius: var(--r-sm);
+    }
+
+    .access-restricted {
+      background: var(--danger-bg);
+      border: 1px solid rgba(155,34,38,0.15);
+      border-radius: var(--r-card);
+      padding: var(--s-5);
+      text-align: center;
+      margin: var(--s-6) auto;
+      max-width: 400px;
+    }
+  </style>
+  <script src="js/auth-guard.js"></script>
+</head>
+<body>
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <div class="brand"><div class="brand-icon">CM</div><span class="brand-name">CourtManager</span></div>
+    <button class="sidebar-close" id="sidebarClose" aria-label="Fechar menu">✕</button>
+  </div>
+  <nav class="sidebar-nav" aria-label="Navegação principal">
+    <a href="index.html"         class="nav-item"><span class="nav-icon">⊡</span><span>Dashboard</span></a>
+    <a href="reservas.html"      class="nav-item"><span class="nav-icon">⊞</span><span>Reservas</span></a>
+    <a href="pagamentos.html"    class="nav-item"><span class="nav-icon">◈</span><span>Pagamentos</span></a>
+    <a href="clientes.html"      class="nav-item"><span class="nav-icon">◉</span><span>Clientes</span></a>
+    <a href="relatorios.html"    class="nav-item"><span class="nav-icon">▤</span><span>Relatórios</span></a>
+    <a href="auditoria.html"     class="nav-item active"><span class="nav-icon">◎</span><span>Auditoria</span></a>
+    <a href="configuracoes.html" class="nav-item"><span class="nav-icon">⊙</span><span>Configurações</span></a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="user-card">
+      <div class="user-avatar" id="sidebar-avatar">...</div>
+      <div class="user-info">
+        <span class="user-name" id="sidebar-name">Carregando...</span>
+        <span class="user-role" id="sidebar-role">—</span>
+      </div>
+    </div>
+    <a href="login.html" class="btn-logout" id="btn-logout">Sair</a>
+  </div>
+</aside>
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<main class="main-content">
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="hamburger" id="hamburgerBtn" aria-label="Abrir menu"><span></span><span></span><span></span></button>
+      <div class="page-title-block">
+        <h1 class="page-title">Auditoria</h1>
+        <span class="page-subtitle">Logs imutáveis de eventos do sistema</span>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="topbar-arena"></div>
+    </div>
+  </header>
+
+  <div class="page-body">
+
+    <!-- Aviso de acesso restrito -->
+    <div style="background:var(--partial-bg);border:1px solid rgba(33,85,168,0.2);border-radius:var(--r-md);padding:var(--s-3) var(--s-5);font-size:13px;color:var(--partial);display:flex;align-items:center;gap:var(--s-3);">
+      <span style="font-size:16px;">🔒</span>
+      <span>Esta seção é restrita ao perfil <strong>Administrador</strong>. Todos os registros são imutáveis e retidos por 5 anos (RF-LOG-021 / RN-009).</span>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="page-toolbar">
+      <div class="filter-bar">
+        <input type="text" id="log-busca" class="search-input" placeholder="Buscar por usuário ou evento..." style="width:240px;" aria-label="Buscar nos logs" />
+        <select id="log-evento" style="width:auto;min-width:180px;" aria-label="Tipo de evento">
+          <option value="">Todos os eventos</option>
+          <option>Login</option>
+          <option>Logout</option>
+          <option>Criação de reserva</option>
+          <option>Alteração de reserva</option>
+          <option>Cancelamento de reserva</option>
+          <option>Registro de pagamento</option>
+          <option>Aplicação de desconto</option>
+          <option>Estorno de pagamento</option>
+          <option>Alteração de preço</option>
+          <option>Bloqueio de quadra</option>
+          <option>Alteração de permissões</option>
+          <option>Exclusão de cadastro</option>
+          <option>Exportação de relatório</option>
+        </select>
+        <div>
+          <input type="date" id="log-inicio" style="width:auto;" aria-label="Data inicial" />
+        </div>
+        <div>
+          <input type="date" id="log-fim" style="width:auto;" aria-label="Data final" />
+        </div>
+      </div>
+      <button class="btn-ghost" id="btn-exportar-logs">↓ Exportar CSV</button>
+    </div>
+
+    <!-- Tabela de logs -->
+    <div class="table-card">
+      <div style="padding:var(--s-4) var(--s-5);border-bottom:1px solid var(--border-passive);display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:13px;font-weight:600;">Logs de Auditoria</span>
+      </div>
+      <div class="table-wrap">
+        <table aria-label="Logs de auditoria">
+          <thead>
+            <tr>
+              <th>Data/Hora</th>
+              <th>Evento</th>
+              <th>Usuário</th>
+              <th>Detalhes</th>
+              <th>IP</th>
+            </tr>
+          </thead>
+          <tbody id="auditoria-tbody">
+            <tr>
+              <td colspan="5" style="text-align: center; padding: 20px; color: var(--muted);">Carregando logs de auditoria...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <!-- Paginação -->
+      <div style="padding:var(--s-4) var(--s-5);border-top:1px solid var(--border-passive);display:flex;justify-content:space-between;align-items:center;">
+        <span id="contador-logs" style="font-size:12px;color:var(--muted);">Exibindo resultados...</span>
+        <div style="display:flex;gap:var(--s-2);align-items:center;">
+          <span id="contador-paginas" style="font-size:12px;color:var(--muted);margin-right:8px;">Página 1</span>
+          <button class="btn-ghost btn-sm" id="btn-prev-page" disabled>‹ Anterior</button>
+          <button class="btn-ghost btn-sm" id="btn-next-page" disabled>Próxima ›</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script src="js/app.js"></script>
+<script>
+  const token = localStorage.getItem('courtmanager_token');
+  if (!token) window.location.href = 'login.html';
+
+  const today = new Date().toISOString().split('T')[0];
+  const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+  const inputInicio = document.getElementById('log-inicio');
+  const inputFim = document.getElementById('log-fim');
+  const inputBusca = document.getElementById('log-busca');
+  const inputEvento = document.getElementById('log-evento');
+  
+  inputInicio.value = firstDay;
+  inputFim.value = today;
+
+  const getBadgeClass = (evento) => {
+    const ev = evento.toLowerCase();
+    if (ev.includes('login')) return 'log-login';
+    if (ev.includes('reserva')) return 'log-reserva';
+    if (ev.includes('pagamento')) return 'log-pagamento';
+    if (ev.includes('cancelamento') || ev.includes('exclusão')) return 'log-cancelamento';
+    if (ev.includes('bloqueio')) return 'log-bloqueio';
+    return 'log-permissao';
+  };
+
+  const formatDateTime = (isoString) => {
+    const normalizedString = isoString.includes('T') ? isoString : isoString.replace(' ', 'T') + 'Z';
+    const d = new Date(normalizedString);
+    return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth()+1).toString().padStart(2, '0')} · ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+  };
+
+  let currentPage = 1;
+
+  const carregarLogs = async (resetPage = false) => {
+    if (resetPage) currentPage = 1;
+    
+    const tbody = document.getElementById('auditoria-tbody');
+    try {
+      const url = new URL('http://localhost:3000/api/auditoria');
+      url.searchParams.append('data_inicio', inputInicio.value);
+      url.searchParams.append('data_fim', inputFim.value);
+      url.searchParams.append('pagina', currentPage);
+      if (inputBusca.value) url.searchParams.append('busca', inputBusca.value);
+      if (inputEvento.value) url.searchParams.append('evento', inputEvento.value);
+
+      const res = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Erro ao buscar logs');
+      
+      const payload = await res.json();
+      // Compatibilidade com a versão anterior (caso o backend retorne array direto)
+      const logs = Array.isArray(payload) ? payload : payload.logs;
+      const totalRegistros = payload.totalRegistros || logs.length;
+      const totalPaginas = payload.totalPaginas || 1;
+      
+      document.getElementById('contador-logs').textContent = `Exibindo ${totalRegistros} resultados`;
+      document.getElementById('contador-paginas').textContent = `Página ${currentPage} de ${totalPaginas}`;
+      
+      const btnPrev = document.getElementById('btn-prev-page');
+      const btnNext = document.getElementById('btn-next-page');
+      
+      btnPrev.disabled = (currentPage <= 1);
+      btnNext.disabled = (currentPage >= totalPaginas);
+
+      tbody.innerHTML = '';
+      
+      if (logs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:var(--muted);">Nenhum log encontrado neste período.</td></tr>';
+        return;
+      }
+
+      logs.forEach(log => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td style="white-space:nowrap;font-size:12px;">${formatDateTime(log.criado_em)}</td>
+          <td><span class="log-badge ${getBadgeClass(log.evento)}">${log.evento}</span></td>
+          <td>${log.usuario_nome || 'Sistema'}</td>
+          <td style="font-size:12px;color:var(--muted);">${log.detalhes}</td>
+          <td><span class="ip-tag">${log.ip || '—'}</span></td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+    } catch (error) {
+      console.error(error);
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:var(--danger);">Erro ao carregar logs.</td></tr>';
+    }
+  };
+
+  document.getElementById('btn-prev-page').addEventListener('click', () => {
+    if (currentPage > 1) {
+      currentPage--;
+      carregarLogs();
+    }
+  });
+
+  document.getElementById('btn-next-page').addEventListener('click', () => {
+    currentPage++;
+    carregarLogs();
+  });
+
+  // Filtros automáticos devem resetar a página para 1
+  let timeoutBusca;
+  inputBusca.addEventListener('input', () => {
+    clearTimeout(timeoutBusca);
+    timeoutBusca = setTimeout(() => carregarLogs(true), 400);
+  });
+  inputEvento.addEventListener('change', () => carregarLogs(true));
+  inputInicio.addEventListener('change', () => carregarLogs(true));
+  inputFim.addEventListener('change', () => carregarLogs(true));
+
+  document.getElementById('btn-exportar-logs').addEventListener('click', async () => {
+    try {
+      const btn = document.getElementById('btn-exportar-logs');
+      const textOriginal = btn.textContent;
+      btn.textContent = 'Gerando CSV...';
+      btn.disabled = true;
+
+      const url = new URL('http://localhost:3000/api/auditoria');
+      url.searchParams.append('data_inicio', inputInicio.value);
+      url.searchParams.append('data_fim', inputFim.value);
+      url.searchParams.append('exportar', 'true'); // Flag para ignorar paginação
+      if (inputBusca.value) url.searchParams.append('busca', inputBusca.value);
+      if (inputEvento.value) url.searchParams.append('evento', inputEvento.value);
+
+      const res = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Erro na exportação');
+      
+      const logs = await res.json();
+      
+      if (logs.length === 0) {
+        alert('Não há dados válidos para exportar neste período.');
+        btn.textContent = textOriginal;
+        btn.disabled = false;
+        return;
+      }
+
+      let csvContent = "Data/Hora,Evento,Usuário,Detalhes,IP\n";
+
+      logs.forEach(log => {
+        const data = formatDateTime(log.criado_em);
+        const evento = log.evento;
+        const usuario = log.usuario_nome || 'Sistema';
+        const detalhes = log.detalhes ? log.detalhes.replace(/"/g, '""') : '';
+        const ip = log.ip || '';
+        csvContent += `"${data}","${evento}","${usuario}","${detalhes}","${ip}"\n`;
+      });
+
+      const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.setAttribute('download', `auditoria_voleisystem_${today}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      btn.textContent = textOriginal;
+      btn.disabled = false;
+    } catch (err) {
+      console.error(err);
+      alert('Ocorreu um erro ao gerar o CSV.');
+      document.getElementById('btn-exportar-logs').disabled = false;
+      document.getElementById('btn-exportar-logs').textContent = '↓ Exportar CSV';
+    }
+  });
+
+  carregarLogs();
+</script>
+</body>
+</html>

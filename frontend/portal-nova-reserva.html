@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nova Reserva — CourtManager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/design-system.css" />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    .client-portal {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      background: var(--bg-body);
+    }
+    .client-header {
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      padding: 0 var(--s-6);
+      height: 70px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .client-main {
+      flex: 1;
+      padding: var(--s-6);
+      max-width: 800px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    
+    @media (max-width: 768px) {
+      .client-header {
+        padding: 0 var(--s-4);
+      }
+      .client-main {
+        padding: var(--s-4);
+      }
+    }
+
+    /* Stepper Styles */
+    .step-tab {
+      flex: 1;
+      padding: 12px;
+      background: var(--bg-card);
+      color: var(--muted);
+      border-radius: 4px;
+      font-weight: 500;
+      text-align: center;
+      border: 1px solid var(--border);
+      font-size: 14px;
+    }
+    .step-tab.active {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+      font-weight: 600;
+    }
+    
+    /* Selection Styles */
+    .time-slot {
+      padding: 10px 20px;
+      border: 1px solid var(--border);
+      background: var(--bg-body);
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 500;
+      color: var(--text);
+      transition: all 0.2s;
+    }
+    .time-slot:hover {
+      border-color: var(--primary);
+    }
+    .time-slot.selected {
+      background: rgba(33, 115, 223, 0.1);
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    .quadra-card {
+      border: 2px solid var(--border);
+      padding: 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: var(--bg-card);
+    }
+    .quadra-card:hover {
+      border-color: var(--primary-light);
+    }
+    .quadra-card.selected {
+      border-color: var(--primary);
+      background: rgba(33, 115, 223, 0.05);
+    }
+
+    .btn-payment {
+      flex: 1;
+      min-width: 150px;
+      padding: 16px;
+      border: 2px solid var(--border);
+      background: var(--bg-card);
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+    .btn-payment:hover {
+      border-color: var(--primary-light);
+    }
+    .btn-payment.selected {
+      border-color: var(--primary);
+      background: rgba(33, 115, 223, 0.05);
+    }
+  </style>
+</head>
+<body>
+  <div class="client-portal">
+    <header class="client-header">
+      <div class="brand">
+        <div class="brand-icon">CM</div>
+        <span class="brand-name">CourtManager</span>
+      </div>
+      <div class="user-card" style="padding: 0; background: transparent; border: none; flex-direction: row; align-items: center;">
+        <div class="user-avatar" style="width: 32px; height: 32px; font-size: 12px; margin-right: 12px;">CL</div>
+        <div class="user-info" style="display: flex; flex-direction: column;">
+          <span class="user-name" style="font-size: 14px;">Cliente Teste</span>
+          <span class="user-role" style="font-size: 12px;">Minha Conta</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="client-main">
+      <div class="page-title-block" style="margin-bottom: var(--s-6);">
+        <a href="portal-cliente.html" style="text-decoration:none; color:var(--muted); font-size:13px; margin-bottom:8px; display:inline-block;">← Voltar ao Portal</a>
+        <h1 class="page-title">Nova Reserva</h1>
+        <span class="page-subtitle">Siga os passos abaixo para agendar e pagar sua quadra online.</span>
+      </div>
+
+      <!-- Stepper -->
+      <div style="display:flex; gap: 8px; margin-bottom: 24px;">
+        <div id="tab-step1" class="step-tab active">1. Horário</div>
+        <div id="tab-step2" class="step-tab">2. Quadra</div>
+        <div id="tab-step3" class="step-tab">3. Pagamento</div>
+      </div>
+
+      <div class="card" style="padding: 24px;">
+        
+        <!-- STEP 1: Data e Hora -->
+        <div id="step1-content">
+          <h2 style="font-size:18px; font-weight:600; margin-bottom: 16px;">Selecione a data e o horário</h2>
+          
+          <div class="form-group">
+            <label for="reserva-data">Data</label>
+            <input type="date" id="reserva-data" style="width:100%; max-width:300px; padding: 10px; border-radius: 4px; border: 1px solid var(--border);">
+          </div>
+          
+          <div class="form-group" style="margin-top: 24px;">
+            <label>Horários disponíveis</label>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;" id="timeslot-container">
+              <button type="button" class="time-slot">08:00</button>
+              <button type="button" class="time-slot">09:30</button>
+              <button type="button" class="time-slot">14:00</button>
+              <button type="button" class="time-slot">18:00</button>
+              <button type="button" class="time-slot">19:30</button>
+            </div>
+          </div>
+
+          <div style="text-align:right; margin-top:32px;">
+            <button type="button" class="btn-primary" id="btn-next-1" disabled>Continuar →</button>
+          </div>
+        </div>
+
+        <!-- STEP 2: Quadra -->
+        <div id="step2-content" style="display:none;">
+          <h2 style="font-size:18px; font-weight:600; margin-bottom: 16px;">Quadras Livres <span style="color:var(--muted); font-size:14px; font-weight:400;" id="lbl-horario-sel"></span></h2>
+          
+          <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px;" id="quadra-container">
+            <div class="quadra-card" data-id="1" data-name="Quadra 1" data-price="120">
+              <div style="font-weight:600; font-size:16px;">Quadra 1</div>
+              <div style="color:var(--muted); font-size:13px; margin-top:4px;">Areia Branca · Coberta</div>
+              <div style="font-weight:600; margin-top:12px; color:var(--text); font-size:18px;">R$ 120,00</div>
+            </div>
+            <div class="quadra-card" data-id="2" data-name="Quadra 2" data-price="100">
+              <div style="font-weight:600; font-size:16px;">Quadra 2</div>
+              <div style="color:var(--muted); font-size:13px; margin-top:4px;">Areia Tratada · Descoberta</div>
+              <div style="font-weight:600; margin-top:12px; color:var(--text); font-size:18px;">R$ 100,00</div>
+            </div>
+            <div class="quadra-card" data-id="3" data-name="Quadra Premium" data-price="150">
+              <div style="font-weight:600; font-size:16px;">Quadra Premium</div>
+              <div style="color:var(--muted); font-size:13px; margin-top:4px;">Vip · Coberta</div>
+              <div style="font-weight:600; margin-top:12px; color:var(--text); font-size:18px;">R$ 150,00</div>
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; margin-top:32px;">
+            <button type="button" class="btn-ghost" id="btn-prev-2">← Voltar</button>
+            <button type="button" class="btn-primary" id="btn-next-2" disabled>Continuar →</button>
+          </div>
+        </div>
+
+        <!-- STEP 3: Pagamento -->
+        <div id="step3-content" style="display:none;">
+          <h2 style="font-size:18px; font-weight:600; margin-bottom: 16px;">Pagamento Online</h2>
+          
+          <div style="background:var(--bg-body); padding:16px; border-radius:8px; margin-bottom:24px; border:1px solid var(--border);">
+            <h3 style="font-size:13px; color:var(--muted); margin-bottom:12px; text-transform:uppercase; letter-spacing:0.5px;">Resumo da Reserva</h3>
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:14px;">
+              <span style="color:var(--muted);">Data e Horário</span> <strong id="lbl-resumo-data" style="color:var(--text);"></strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:14px;">
+              <span style="color:var(--muted);">Quadra</span> <strong id="lbl-resumo-quadra" style="color:var(--text);"></strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding-top:12px; margin-top:8px; border-top:1px dashed var(--border); font-size:18px;">
+              <span>Total a pagar</span> <strong id="lbl-resumo-valor" style="color:var(--primary);"></strong>
+            </div>
+          </div>
+
+          <h3 style="font-size:14px; font-weight:500; margin-bottom:12px;">Como deseja pagar?</h3>
+          <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom: 24px;" id="payment-container">
+            <button type="button" class="btn-payment" data-method="pix">
+              <span style="font-size:24px;">💠</span>
+              <span style="font-weight:500;">Pix</span>
+            </button>
+            <button type="button" class="btn-payment" data-method="card">
+              <span style="font-size:24px;">💳</span>
+              <span style="font-weight:500;">Cartão de Crédito</span>
+            </button>
+          </div>
+
+          <!-- Pix Area -->
+          <div id="pix-area" style="display:none; margin-top:16px; text-align:center; padding: 24px; border: 1px solid var(--border); border-radius:8px;">
+            <div style="width:180px; height:180px; background:var(--bg-body); border: 2px dashed var(--muted); margin:0 auto 16px; border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px;">[ QR Code Pix ]</div>
+            <p style="font-size:14px; color:var(--text); margin-bottom:16px;">Abra o app do seu banco e escaneie o código acima.</p>
+            <button type="button" class="btn-primary" id="btn-finish-pix">Já realizei o pagamento</button>
+          </div>
+          
+          <!-- Card Area -->
+          <div id="card-area" style="display:none; margin-top:16px; padding: 24px; border: 1px solid var(--border); border-radius:8px;">
+            <div class="form-group" style="margin-bottom:16px;">
+              <label>Número do Cartão</label>
+              <input type="text" placeholder="0000 0000 0000 0000" style="width:100%; padding:10px; border-radius:4px; border:1px solid var(--border);">
+            </div>
+            <div style="display:flex; gap:16px;">
+              <div class="form-group" style="flex:1">
+                <label>Validade</label>
+                <input type="text" placeholder="MM/AA" style="width:100%; padding:10px; border-radius:4px; border:1px solid var(--border);">
+              </div>
+              <div class="form-group" style="flex:1">
+                <label>CVV</label>
+                <input type="text" placeholder="123" style="width:100%; padding:10px; border-radius:4px; border:1px solid var(--border);">
+              </div>
+            </div>
+            <div style="margin-top:24px; text-align:right;">
+              <button type="button" class="btn-primary" id="btn-finish-card">Pagar e Confirmar Reserva</button>
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; margin-top:32px;">
+            <button type="button" class="btn-ghost" id="btn-prev-3">← Voltar</button>
+          </div>
+        </div>
+
+        <!-- STEP 4: Sucesso -->
+        <div id="step4-content" style="display:none; text-align:center; padding: 40px 20px;">
+          <div style="font-size:56px; margin-bottom:16px;">✅</div>
+          <h2 style="font-size:24px; font-weight:600; margin-bottom:8px; color:var(--text);">Reserva Confirmada!</h2>
+          <p style="color:var(--muted); margin-bottom:32px;">Seu agendamento foi realizado com sucesso. O comprovante foi enviado para o seu e-mail e WhatsApp.</p>
+          
+          <div style="background:var(--bg-body); padding:20px; border-radius:8px; display:inline-block; text-align:left; min-width:280px; margin-bottom:40px; border:1px solid var(--border);">
+            <div style="margin-bottom:8px; font-size:14px;"><span style="color:var(--muted); display:inline-block; width:60px;">Data:</span> <strong id="succ-data" style="color:var(--text);"></strong></div>
+            <div style="margin-bottom:8px; font-size:14px;"><span style="color:var(--muted); display:inline-block; width:60px;">Quadra:</span> <strong id="succ-quadra" style="color:var(--text);"></strong></div>
+            <div style="font-size:14px;"><span style="color:var(--muted); display:inline-block; width:60px;">Código:</span> <strong style="color:var(--text);">#CM8923A</strong></div>
+          </div>
+          
+          <div>
+            <a href="portal-cliente.html" class="btn-primary" style="text-decoration:none;">Ver Minhas Reservas</a>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('courtmanager_token');
+    const userJson = localStorage.getItem('courtmanager_user');
+    const user = userJson ? JSON.parse(userJson) : null;
+    
+    if (!token) {
+      alert('Sessão expirada. Faça login novamente.');
+      window.location.href = 'login.html';
+    }
+
+    if (user && user.nome) {
+      document.getElementById('header-user-name').textContent = user.nome;
+      document.getElementById('header-user-avatar').textContent = user.nome.substring(0, 2).toUpperCase();
+    }
+
+    // State variables
+    let selDate = '';
+    let selTime = '';
+    let selQuadraId = '';
+    let selQuadraName = '';
+    let selPrice = 0;
+    
+    // Elements
+    const s1 = document.getElementById('step1-content');
+    const s2 = document.getElementById('step2-content');
+    const s3 = document.getElementById('step3-content');
+    const s4 = document.getElementById('step4-content');
+    
+    const t1 = document.getElementById('tab-step1');
+    const t2 = document.getElementById('tab-step2');
+    const t3 = document.getElementById('tab-step3');
+
+    // Init Date to today
+    const dateInput = document.getElementById('reserva-data');
+    dateInput.valueAsDate = new Date();
+    selDate = dateInput.value;
+
+    dateInput.addEventListener('change', (e) => {
+      selDate = e.target.value;
+    });
+
+    // Step 1 interactions
+    const timeSlots = document.querySelectorAll('.time-slot');
+    const btnNext1 = document.getElementById('btn-next-1');
+    timeSlots.forEach(slot => {
+      slot.addEventListener('click', () => {
+        timeSlots.forEach(s => s.classList.remove('selected'));
+        slot.classList.add('selected');
+        selTime = slot.textContent;
+        btnNext1.disabled = false;
+      });
+    });
+
+    btnNext1.addEventListener('click', async () => {
+      // Fetch grade from API
+      document.getElementById('lbl-horario-sel').textContent = \`(para \${selDate.split('-').reverse().join('/')} às \${selTime})\`;
+      const btn = btnNext1;
+      const originalText = btn.textContent;
+      btn.textContent = 'Buscando...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch(\`http://localhost:3000/api/reservas/grade?data=\${selDate}\`);
+        const data = await res.json();
+        
+        // Renderizar quadras
+        const container = document.getElementById('quadra-container');
+        container.innerHTML = '';
+
+        if(data.quadras && data.quadras.length > 0) {
+          data.quadras.forEach(q => {
+            // Validar se está ocupada naquele horário
+            const inicioSel = selTime;
+            // Para simplificar no MVP assumimos 1 hora de duração
+            const [h, m] = selTime.split(':').map(Number);
+            const fimSel = \`\${String(h+1).padStart(2, '0')}:\${String(m).padStart(2, '0')}\`;
+            
+            const isOcupada = data.reservas.some(r => r.quadra_id === q.id && ((r.hora_inicio <= inicioSel && r.hora_fim > inicioSel) || (r.hora_inicio < fimSel && r.hora_fim >= fimSel)));
+            
+            if(!isOcupada) {
+              const div = document.createElement('div');
+              div.className = 'quadra-card';
+              div.innerHTML = \`
+                <div style="font-weight:600; font-size:16px;">\${q.nome}</div>
+                <div style="color:var(--muted); font-size:13px; margin-top:4px;">\${q.tipo}</div>
+                <div style="font-weight:600; margin-top:12px; color:var(--text); font-size:18px;">R$ \${q.preco_base.toFixed(2)}</div>
+              \`;
+              div.onclick = () => {
+                document.querySelectorAll('.quadra-card').forEach(x => x.classList.remove('selected'));
+                div.classList.add('selected');
+                selQuadraId = q.id;
+                selQuadraName = q.nome;
+                selPrice = q.preco_base;
+                document.getElementById('btn-next-2').disabled = false;
+              };
+              container.appendChild(div);
+            }
+          });
+        }
+        
+        if (container.children.length === 0) {
+          container.innerHTML = '<div style="grid-column: 1/-1; padding:20px; text-align:center; color:var(--muted);">Nenhuma quadra livre neste horário. Tente outro.</div>';
+          document.getElementById('btn-next-2').disabled = true;
+        }
+
+        s1.style.display = 'none';
+        s2.style.display = 'block';
+        t1.classList.remove('active');
+        t2.classList.add('active');
+
+      } catch (err) {
+        alert('Erro ao buscar disponibilidade.');
+      } finally {
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }
+    });
+
+    // Step 2 interactions
+    const btnNext2 = document.getElementById('btn-next-2');
+    const btnPrev2 = document.getElementById('btn-prev-2');
+
+    btnPrev2.addEventListener('click', () => {
+      s2.style.display = 'none';
+      s1.style.display = 'block';
+      t2.classList.remove('active');
+      t1.classList.add('active');
+    });
+
+    btnNext2.addEventListener('click', () => {
+      // Setup Step 3
+      const formattedDate = selDate.split('-').reverse().join('/');
+      document.getElementById('lbl-resumo-data').textContent = \`\${formattedDate} às \${selTime}\`;
+      document.getElementById('lbl-resumo-quadra').textContent = selQuadraName;
+      document.getElementById('lbl-resumo-valor').textContent = \`R$ \${selPrice.toFixed(2)}\`;
+      
+      s2.style.display = 'none';
+      s3.style.display = 'block';
+      t2.classList.remove('active');
+      t3.classList.add('active');
+    });
+
+    // Step 3 interactions
+    const btnPrev3 = document.getElementById('btn-prev-3');
+    const payMethods = document.querySelectorAll('.btn-payment');
+    const pixArea = document.getElementById('pix-area');
+    const cardArea = document.getElementById('card-area');
+    
+    btnPrev3.addEventListener('click', () => {
+      s3.style.display = 'none';
+      s2.style.display = 'block';
+      t3.classList.remove('active');
+      t2.classList.add('active');
+    });
+
+    payMethods.forEach(m => {
+      m.addEventListener('click', () => {
+        payMethods.forEach(x => x.classList.remove('selected'));
+        m.classList.add('selected');
+        
+        if(m.dataset.method === 'pix') {
+          pixArea.style.display = 'block';
+          cardArea.style.display = 'none';
+        } else {
+          pixArea.style.display = 'none';
+          cardArea.style.display = 'block';
+        }
+      });
+    });
+
+    // Finish actions (Real API Call)
+    const finishReserva = async (metodoPagamento) => {
+      const [h, m] = selTime.split(':').map(Number);
+      const horaFim = \`\${String(h+1).padStart(2, '0')}:\${String(m).padStart(2, '0')}\`;
+
+      try {
+        // 1. Criar Reserva
+        const resReserva = await fetch('http://localhost:3000/api/reservas', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': \`Bearer \${token}\` },
+          body: JSON.stringify({
+            cliente_id: user && user.cliente_id ? user.cliente_id : null,
+            quadra_id: selQuadraId,
+            data_reserva: selDate,
+            hora_inicio: selTime,
+            hora_fim: horaFim
+          })
+        });
+
+        const dataReserva = await resReserva.json();
+        
+        if(!resReserva.ok) {
+          alert(dataReserva.error || 'Erro ao criar reserva.');
+          return;
+        }
+
+        // 2. Criar Pagamento
+        const resPagamento = await fetch('http://localhost:3000/api/pagamentos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': \`Bearer \${token}\` },
+          body: JSON.stringify({
+            reserva_id: dataReserva.reserva_id,
+            valor: dataReserva.valor_total,
+            metodo: metodoPagamento
+          })
+        });
+
+        if(!resPagamento.ok) {
+          alert('Reserva criada, mas falha no registro do pagamento.');
+        }
+
+        const formattedDate = selDate.split('-').reverse().join('/');
+        document.getElementById('succ-data').textContent = \`\${formattedDate} - \${selTime}\`;
+        document.getElementById('succ-quadra').textContent = selQuadraName;
+        
+        s3.style.display = 'none';
+        s4.style.display = 'block';
+        t1.parentElement.style.display = 'none';
+
+      } catch (err) {
+        alert('Erro ao processar reserva e pagamento.');
+      }
+    };
+
+    document.getElementById('btn-finish-pix').addEventListener('click', () => finishReserva('Pix'));
+    document.getElementById('btn-finish-card').addEventListener('click', () => finishReserva('Cartão de Crédito'));
+
+  </script>
+</body>
+</html>

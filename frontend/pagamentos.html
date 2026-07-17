@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CourtManager — Pagamentos</title>
+  <meta name="description" content="Gestão de pagamentos de reservas da arena." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/design-system.css" />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    /* Tab bar */
+    .tab-bar { display:flex; gap:4px; background:var(--cream); border:1px solid var(--border-passive); border-radius:var(--r-lg); padding:4px; width:fit-content; margin-bottom:var(--s-5); }
+    .tab-btn { padding:6px 18px; border:none; background:transparent; border-radius:var(--r-md); font-size:13px; font-weight:500; color:var(--muted); cursor:pointer; transition:all .2s; white-space:nowrap; }
+    .tab-btn.active { background:var(--charcoal); color:var(--off-white); }
+    .tab-btn:hover:not(.active) { background:var(--charcoal-10); color:var(--charcoal); }
+    /* Badges */
+    .badge { display:inline-block; padding:2px 10px; border-radius:var(--r-pill); font-size:11px; font-weight:600; }
+    .badge-green { background:var(--paid-bg); color:var(--paid); }
+    .badge-amber { background:var(--pending-bg); color:var(--pending); }
+    .badge-red   { background:var(--danger-bg); color:var(--danger); }
+    .badge-gray  { background:var(--cream-surface); color:var(--muted); border:1px solid var(--border-passive); }
+    /* Values */
+    .valor-positivo { color:var(--paid); font-weight:600; }
+    .valor-negativo { color:var(--danger); font-weight:600; }
+    /* Table */
+    .empty-table { text-align:center; padding:60px 20px; color:var(--muted); font-size:13px; }
+    /* Action buttons inside table — more visible */
+    .btn-action { display:inline-flex; align-items:center; padding:4px 12px; border-radius:var(--r-md); font-size:12px; font-weight:500; cursor:pointer; border:1px solid transparent; transition:opacity .15s; }
+    .btn-action-pay { background:var(--charcoal); color:var(--off-white); box-shadow:var(--shadow-btn-dark); }
+    .btn-action-pay:hover { opacity:.82; }
+    .btn-action-refund { background:var(--danger-bg); color:var(--danger); border-color:rgba(155,34,38,.25); }
+    .btn-action-refund:hover { opacity:.8; }
+    /* Toast */
+    #toast { position:fixed; bottom:24px; right:24px; background:var(--cream); border:1px solid var(--border-passive); border-radius:var(--r-lg); padding:14px 20px; font-size:13px; font-weight:500; box-shadow:0 8px 32px rgba(0,0,0,.12); z-index:9999; opacity:0; transform:translateY(12px); transition:all .25s; pointer-events:none; }
+    #toast.show { opacity:1; transform:translateY(0); }
+    #toast.success { border-color:var(--paid); color:var(--paid); background:var(--paid-bg); }
+    #toast.error   { border-color:var(--danger); color:var(--danger); background:var(--danger-bg); }
+    /* Payment history items */
+    .hist-item { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border-passive); font-size:13px; }
+    .hist-item:last-child { border-bottom:none; }
+  </style>
+  <script src="js/auth-guard.js"></script>
+</head>
+<body>
+
+<!-- Sidebar -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <div class="brand"><div class="brand-icon">CM</div><span class="brand-name">CourtManager</span></div>
+    <button class="sidebar-close" id="sidebarClose" aria-label="Fechar menu">✕</button>
+  </div>
+  <nav class="sidebar-nav" aria-label="Navegação principal">
+    <a href="index.html"         class="nav-item"><span class="nav-icon">⊡</span><span>Dashboard</span></a>
+    <a href="reservas.html"      class="nav-item"><span class="nav-icon">⊞</span><span>Reservas</span></a>
+    <a href="pagamentos.html"    class="nav-item active"><span class="nav-icon">◈</span><span>Pagamentos</span></a>
+    <a href="clientes.html"      class="nav-item"><span class="nav-icon">◉</span><span>Clientes</span></a>
+    <a href="relatorios.html"    class="nav-item"><span class="nav-icon">▤</span><span>Relatórios</span></a>
+    <a href="auditoria.html"     class="nav-item"><span class="nav-icon">◎</span><span>Auditoria</span></a>
+    <a href="configuracoes.html" class="nav-item"><span class="nav-icon">⊙</span><span>Configurações</span></a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="user-card">
+      <div class="user-avatar" id="sidebar-avatar">...</div>
+      <div class="user-info">
+        <span class="user-name" id="sidebar-name">Carregando...</span>
+        <span class="user-role" id="sidebar-role">—</span>
+      </div>
+    </div>
+    <a href="login.html" class="btn-logout" id="btn-logout">Sair</a>
+  </div>
+</aside>
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<main class="main-content">
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="hamburger" id="hamburgerBtn" aria-label="Abrir menu"><span></span><span></span><span></span></button>
+      <div class="page-title-block">
+        <h1 class="page-title">Pagamentos</h1>
+        <span class="page-subtitle">Controle financeiro de reservas</span>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="topbar-arena"></div>
+    </div>
+  </header>
+
+  <div class="page-body">
+
+    <!-- KPI strip -->
+    <section class="kpi-row" aria-label="Resumo financeiro">
+      <div class="kpi-card">
+        <div class="kpi-label">Recebido Hoje</div>
+        <div class="kpi-value" id="kpi-recebido-hoje">—</div>
+        <div class="kpi-sub" id="kpi-recebido-hoje-sub">carregando...</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Pendente Hoje</div>
+        <div class="kpi-value" id="kpi-pendente-hoje">—</div>
+        <div class="kpi-sub warning" id="kpi-pendente-hoje-sub">carregando...</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Recebido no Mês</div>
+        <div class="kpi-value" id="kpi-recebido-mes">—</div>
+        <div class="kpi-sub positive">mês atual</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Inadimplência</div>
+        <div class="kpi-value" id="kpi-inadimplencia" style="color:var(--danger)">—</div>
+        <div class="kpi-sub warning" id="kpi-inadimplencia-sub">carregando...</div>
+      </div>
+    </section>
+
+    <!-- Toolbar -->
+    <div class="page-toolbar">
+      <div class="filter-bar">
+        <input type="text" id="filtro-busca" class="search-input" placeholder="Buscar por cliente ou ID..." style="width:240px;" aria-label="Buscar pagamentos" />
+        <input type="date" id="filtro-data" aria-label="Filtrar por data" style="width:auto;" />
+        <button class="btn-ghost" id="btn-limpar-filtros" style="font-size:12px;">Limpar</button>
+      </div>
+      <button class="btn-ghost" id="btn-exportar-pag">↓ Exportar CSV</button>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tab-bar" role="tablist">
+      <button class="tab-btn active" data-tab="Pendente" role="tab" id="tab-pendentes">Pendentes</button>
+      <button class="tab-btn" data-tab="Pago" role="tab" id="tab-pagos">Pagos</button>
+      <button class="tab-btn" data-tab="inadimplentes" role="tab" id="tab-inadimplentes">Inadimplência</button>
+      <button class="tab-btn" data-tab="todos" role="tab" id="tab-todos">Todos</button>
+    </div>
+
+    <!-- Tabela -->
+    <div class="table-card">
+      <div class="table-wrap">
+        <table aria-label="Lista de pagamentos">
+          <thead>
+            <tr>
+              <th>Reserva</th>
+              <th>Cliente</th>
+              <th>Quadra</th>
+              <th>Data/Hora</th>
+              <th>Valor Total</th>
+              <th>Pago</th>
+              <th>Saldo</th>
+              <th>Método</th>
+              <th>Status</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tabela-pagamentos-body">
+            <tr><td colspan="10" class="empty-table">Carregando...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Modal: Registrar Pagamento -->
+<div class="modal-overlay" id="modal-registrar-pag" role="dialog" aria-modal="true" aria-labelledby="modal-rp-title">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title" id="modal-rp-title">Registrar Pagamento</h2>
+      <button class="modal-close" aria-label="Fechar" onclick="fecharModalPagamento()">✕</button>
+    </div>
+    <div id="modal-rp-info" style="background:var(--cream-surface);border:1px solid var(--border-passive);border-radius:var(--r-md);padding:var(--s-3) var(--s-4);margin-bottom:var(--s-4);font-size:13px;"></div>
+    <!-- Histórico -->
+    <div id="modal-rp-historico" style="margin-bottom:var(--s-4);display:none;">
+      <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:var(--s-2);text-transform:uppercase;letter-spacing:.05em;">Histórico de Pagamentos</div>
+      <div id="modal-rp-historico-lista"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s-4);">
+      <div class="form-group">
+        <label for="rp-valor">Valor a pagar *</label>
+        <input type="number" id="rp-valor" placeholder="0,00" min="0.01" step="0.01" required />
+      </div>
+      <div class="form-group">
+        <label for="rp-metodo">Método *</label>
+        <select id="rp-metodo" required>
+          <option value="">Selecione</option>
+          <option>Pix</option>
+          <option>Dinheiro</option>
+          <option>Cartão de Crédito</option>
+          <option>Cartão de Débito</option>
+          <option>Voucher Interno</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="fecharModalPagamento()">Cancelar</button>
+      <button class="btn-primary" id="btn-salvar-pagamento">Salvar Pagamento</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Estornar Pagamento -->
+<div class="modal-overlay" id="modal-estornar-pag" role="dialog" aria-modal="true" aria-labelledby="modal-estorno-title">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title" id="modal-estorno-title">Estornar Pagamento</h2>
+      <button class="modal-close" aria-label="Fechar" onclick="fecharModalEstorno()">✕</button>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:var(--s-4);">
+      Confirma o estorno? Esta ação irá abater do caixa e gerar um log de auditoria.
+    </p>
+    <div id="modal-estorno-info" style="background:var(--cream-surface);border:1px solid var(--border-passive);border-radius:var(--r-md);padding:var(--s-3) var(--s-4);margin-bottom:var(--s-4);font-size:13px;"></div>
+    <div id="modal-estorno-pags-lista" style="margin-bottom:var(--s-4);"></div>
+    <div class="form-group">
+      <label for="estp-motivo">Justificativa do Estorno *</label>
+      <textarea id="estp-motivo" rows="2" placeholder="Obrigatório para auditoria" required></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="fecharModalEstorno()">Cancelar</button>
+      <button class="btn-primary" id="btn-confirmar-estorno" style="background:var(--danger);">Confirmar Estorno</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+  const API = 'http://localhost:3000/api';
+  let tabAtiva = 'Pendente';
+  let reservaAtual = null;
+  let pagamentosReserva = [];
+  let todasReservas = [];
+
+  function moeda(v) {
+    return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  }
+  function fmtData(iso) {
+    if (!iso) return '—';
+    const [y, m, d] = iso.split('-');
+    return `${d}/${m}/${y}`;
+  }
+  function token() { return localStorage.getItem('courtmanager_token'); }
+
+  function showToast(msg, type = 'success') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = `show ${type}`;
+    setTimeout(() => t.className = '', 3000);
+  }
+
+  // ── KPIs ──────────────────────────────────────────────────────────────────
+  async function carregarKPIs() {
+    try {
+      const res = await fetch(`${API}/pagamentos/resumo`, { headers: { Authorization: `Bearer ${token()}` } });
+      const d = await res.json();
+      document.getElementById('kpi-recebido-hoje').textContent = moeda(d.recebidoHoje);
+      document.getElementById('kpi-recebido-hoje-sub').textContent = `${d.qtdPagamentosHoje} pagamento(s)`;
+      document.getElementById('kpi-recebido-hoje-sub').className = 'kpi-sub positive';
+      document.getElementById('kpi-pendente-hoje').textContent = moeda(d.pendenteHoje);
+      document.getElementById('kpi-pendente-hoje-sub').textContent = `${d.qtdPendenteHoje} reserva(s)`;
+      document.getElementById('kpi-recebido-mes').textContent = moeda(d.recebidoMes);
+      document.getElementById('kpi-inadimplencia').textContent = moeda(d.totalInadimplencia);
+      document.getElementById('kpi-inadimplencia-sub').textContent = `${d.qtdInadimplentes} reserva(s) vencidas`;
+
+      // Atualiza contadores globais nas tabs
+      document.getElementById('tab-pendentes').textContent = `Pendentes (${d.countsGlobais.pendentes})`;
+      document.getElementById('tab-pagos').textContent = `Pagos (${d.countsGlobais.pagos})`;
+      document.getElementById('tab-inadimplentes').textContent = `Inadimplência (${d.countsGlobais.inadimplentes})`;
+      document.getElementById('tab-todos').textContent = `Todos (${d.countsGlobais.todos})`;
+    } catch(e) { console.warn('Erro KPIs:', e); }
+  }
+
+  // ── Listagem ───────────────────────────────────────────────────────────────
+  async function carregarReservas() {
+    const busca = document.getElementById('filtro-busca').value;
+    const data  = document.getElementById('filtro-data').value;
+    const tbody = document.getElementById('tabela-pagamentos-body');
+    tbody.innerHTML = '<tr><td colspan="10" class="empty-table">Carregando...</td></tr>';
+
+    const params = new URLSearchParams();
+    if (tabAtiva !== 'todos') params.append('status', tabAtiva);
+    if (busca) params.append('busca', busca);
+    if (data)  params.append('data', data);
+
+    try {
+      const res = await fetch(`${API}/pagamentos/reservas?${params}`, { headers: { Authorization: `Bearer ${token()}` } });
+      todasReservas = await res.json();
+      renderTabela(todasReservas);
+    } catch(e) {
+      tbody.innerHTML = '<tr><td colspan="10" class="empty-table">Erro ao carregar dados.</td></tr>';
+    }
+  }
+
+  function renderTabela(lista) {
+    const tbody = document.getElementById('tabela-pagamentos-body');
+    if (lista.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="10" class="empty-table">Nenhuma reserva encontrada.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = lista.map(r => {
+      const statusBadge = r.status_pagamento === 'Pago'
+        ? '<span class="badge badge-green">Pago</span>'
+        : r.status_pagamento === 'Parcial'
+          ? '<span class="badge badge-amber">Parcial</span>'
+          : '<span class="badge badge-red">Pendente</span>';
+
+      const acoes = r.status_pagamento !== 'Pago'
+        ? `<button class="btn-action btn-action-pay" onclick="abrirModalPagamento(${r.id})">Registrar</button>`
+        : `<button class="btn-action btn-action-refund" onclick="abrirModalEstorno(${r.id})">Estornar</button>`;
+
+      return `<tr>
+        <td><span style="font-size:12px;font-weight:600;color:var(--charcoal-82)">#${r.id}</span></td>
+        <td>${r.cliente_nome}</td>
+        <td>${r.quadra_nome}</td>
+        <td>${fmtData(r.data_reserva)} · ${r.hora_inicio}–${r.hora_fim}</td>
+        <td>${moeda(r.valor_total)}</td>
+        <td class="${r.total_pago > 0 ? 'valor-positivo' : ''}">${moeda(r.total_pago)}</td>
+        <td class="${r.saldo_devedor > 0 ? 'valor-negativo' : ''}">${r.saldo_devedor > 0 ? moeda(r.saldo_devedor) : '—'}</td>
+        <td style="font-size:12px;">${r.metodos || '—'}</td>
+        <td>${statusBadge}</td>
+        <td>${acoes}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // ── Modal Pagamento ────────────────────────────────────────────────────────
+  async function abrirModalPagamento(reserva_id) {
+    reservaAtual = todasReservas.find(r => r.id === reserva_id);
+    if (!reservaAtual) return;
+
+    // Preenche info
+    document.getElementById('modal-rp-info').innerHTML = `
+      <strong>${reservaAtual.cliente_nome}</strong> · ${reservaAtual.quadra_nome} · ${fmtData(reservaAtual.data_reserva)} ${reservaAtual.hora_inicio}–${reservaAtual.hora_fim}<br>
+      Valor total: <strong>${moeda(reservaAtual.valor_total)}</strong> · Pago: <strong class="valor-positivo">${moeda(reservaAtual.total_pago)}</strong> · Saldo: <strong class="valor-negativo">${moeda(reservaAtual.saldo_devedor)}</strong>
+    `;
+
+    // Preenche valor sugerido
+    document.getElementById('rp-valor').value = reservaAtual.saldo_devedor.toFixed(2);
+    document.getElementById('rp-metodo').value = '';
+
+    // Histórico de pagamentos anteriores
+    try {
+      const res = await fetch(`${API}/pagamentos/reserva/${reserva_id}`, { headers: { Authorization: `Bearer ${token()}` } });
+      pagamentosReserva = await res.json();
+      const posit = pagamentosReserva.filter(p => p.valor > 0);
+      if (posit.length > 0) {
+        document.getElementById('modal-rp-historico').style.display = 'block';
+        document.getElementById('modal-rp-historico-lista').innerHTML = posit.map(p => `
+          <div class="hist-item">
+            <span>${p.metodo} — ${new Date(p.registrado_em).toLocaleDateString('pt-BR')}</span>
+            <span class="valor-positivo">${moeda(p.valor)}</span>
+          </div>`).join('');
+      } else {
+        document.getElementById('modal-rp-historico').style.display = 'none';
+      }
+    } catch(e) {}
+
+    document.getElementById('modal-registrar-pag').classList.add('open');
+  }
+
+  function fecharModalPagamento() {
+    document.getElementById('modal-registrar-pag').classList.remove('open');
+    reservaAtual = null;
+  }
+
+  document.getElementById('btn-salvar-pagamento').addEventListener('click', async () => {
+    if (!reservaAtual) return;
+    const valor = parseFloat(document.getElementById('rp-valor').value);
+    const metodo = document.getElementById('rp-metodo').value;
+    if (!valor || valor <= 0) { showToast('Informe um valor válido.', 'error'); return; }
+    if (!metodo) { showToast('Selecione um método de pagamento.', 'error'); return; }
+
+    try {
+      const res = await fetch(`${API}/pagamentos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ reserva_id: reservaAtual.id, valor, metodo })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error);
+      showToast('Pagamento registrado com sucesso!', 'success');
+      fecharModalPagamento();
+      carregarKPIs();
+      carregarReservas();
+    } catch(e) { showToast(e.message || 'Erro ao registrar pagamento.', 'error'); }
+  });
+
+  // ── Modal Estorno ──────────────────────────────────────────────────────────
+  let pagamentoEstornoId = null;
+
+  async function abrirModalEstorno(reserva_id) {
+    reservaAtual = todasReservas.find(r => r.id === reserva_id);
+    if (!reservaAtual) return;
+
+    document.getElementById('modal-estorno-info').innerHTML = `
+      <strong>${reservaAtual.cliente_nome}</strong> · ${reservaAtual.quadra_nome} · ${fmtData(reservaAtual.data_reserva)}<br>
+      Total pago: <strong class="valor-positivo">${moeda(reservaAtual.total_pago)}</strong>
+    `;
+
+    // Carrega pagamentos para escolher qual estornar
+    try {
+      const res = await fetch(`${API}/pagamentos/reserva/${reserva_id}`, { headers: { Authorization: `Bearer ${token()}` } });
+      const pags = (await res.json()).filter(p => p.valor > 0);
+      pagamentoEstornoId = pags.length > 0 ? pags[pags.length - 1].id : null;
+      document.getElementById('modal-estorno-pags-lista').innerHTML = pags.length === 0
+        ? '<p style="font-size:13px;color:var(--muted);">Nenhum pagamento para estornar.</p>'
+        : `<div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em;">Pagamentos realizados</div>
+           ${pags.map(p => `
+            <div class="hist-item">
+              <span>${p.metodo} — ${new Date(p.registrado_em).toLocaleDateString('pt-BR')}</span>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="valor-positivo">${moeda(p.valor)}</span>
+                <button class="btn-ghost btn-sm" style="color:var(--danger);font-size:11px;" onclick="selecionarEstorno(${p.id}, this)">Estornar</button>
+              </div>
+            </div>`).join('')}`;
+    } catch(e) {}
+
+    document.getElementById('estp-motivo').value = '';
+    document.getElementById('modal-estornar-pag').classList.add('open');
+  }
+
+  function selecionarEstorno(id, btn) {
+    pagamentoEstornoId = id;
+    document.querySelectorAll('#modal-estorno-pags-lista .btn-sm').forEach(b => b.style.opacity = '0.4');
+    btn.style.opacity = '1';
+    btn.style.fontWeight = '700';
+  }
+
+  function fecharModalEstorno() {
+    document.getElementById('modal-estornar-pag').classList.remove('open');
+    reservaAtual = null;
+    pagamentoEstornoId = null;
+  }
+
+  document.getElementById('btn-confirmar-estorno').addEventListener('click', async () => {
+    if (!pagamentoEstornoId) { showToast('Selecione um pagamento para estornar.', 'error'); return; }
+    const motivo = document.getElementById('estp-motivo').value.trim();
+    if (!motivo) { showToast('A justificativa é obrigatória.', 'error'); return; }
+
+    try {
+      const res = await fetch(`${API}/pagamentos/estorno`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ pagamento_id: pagamentoEstornoId, motivo })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error);
+      showToast('Estorno realizado com sucesso!', 'success');
+      fecharModalEstorno();
+      carregarKPIs();
+      carregarReservas();
+    } catch(e) { showToast(e.message || 'Erro ao realizar estorno.', 'error'); }
+  });
+
+  // ── Tabs ───────────────────────────────────────────────────────────────────
+  document.querySelectorAll('.tab-btn[data-tab]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn[data-tab]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      tabAtiva = btn.dataset.tab;
+      carregarReservas();
+    });
+  });
+
+  // ── Filtros ────────────────────────────────────────────────────────────────
+  let filtroTimer;
+  document.getElementById('filtro-busca').addEventListener('input', () => {
+    clearTimeout(filtroTimer);
+    filtroTimer = setTimeout(carregarReservas, 350);
+  });
+  document.getElementById('filtro-data').addEventListener('change', carregarReservas);
+  document.getElementById('btn-limpar-filtros').addEventListener('click', () => {
+    document.getElementById('filtro-busca').value = '';
+    document.getElementById('filtro-data').value = '';
+    carregarReservas();
+  });
+
+  // ── Exportar CSV ──────────────────────────────────────────────────────────
+  document.getElementById('btn-exportar-pag').addEventListener('click', () => {
+    if (!todasReservas.length) { showToast('Nenhum dado para exportar.', 'error'); return; }
+    const rows = [['ID','Cliente','Quadra','Data','Horário','Valor Total','Pago','Saldo','Método','Status']];
+    todasReservas.forEach(r => rows.push([r.id, r.cliente_nome, r.quadra_nome, r.data_reserva, `${r.hora_inicio}-${r.hora_fim}`, r.valor_total.toFixed(2), r.total_pago.toFixed(2), r.saldo_devedor.toFixed(2), r.metodos || '', r.status_pagamento]));
+    const csv = '\uFEFF' + rows.map(r => r.join(';')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    a.download = `pagamentos_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+  });
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  carregarKPIs();
+  carregarReservas();
+</script>
+</body>
+</html>
