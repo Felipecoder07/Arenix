@@ -4,7 +4,7 @@ const logAuditEvent = require('../utils/auditLogger');
 // Listar grade de quadras e horários ocupados
 const listarGrade = async (req, res) => {
   try {
-    const { data, data_inicio, data_fim } = req.query; 
+    const { data, data_inicio, data_fim } = req.query;
     const inicio = data_inicio || data;
     const fim = data_fim || data;
 
@@ -41,7 +41,7 @@ const criarReserva = async (req, res) => {
   try {
     const { cliente_id, quadra_id, data_reserva, hora_inicio, hora_fim } = req.body;
     const ip = req.headers['x-forwarded-for'] || req.ip;
-    const usuario_id = req.user ? req.user.id : null; 
+    const usuario_id = req.user ? req.user.id : null;
 
     if (!cliente_id || !quadra_id || !data_reserva || !hora_inicio || !hora_fim) {
       return res.status(400).json({ error: 'Todos os campos (cliente_id, quadra_id, data_reserva, hora_inicio, hora_fim) são obrigatórios.' });
@@ -95,7 +95,7 @@ const criarReserva = async (req, res) => {
     const quadra = await db.getAsync('SELECT preco_base FROM Quadras WHERE id = ? AND tenant_id = ?', [quadra_id, tenant_id]);
     if (!quadra) return res.status(404).json({ error: 'Quadra não encontrada ou não pertence a esta arena.' });
 
-    const duracaoHoras = (hF + mF/60) - (hI + mI/60);
+    const duracaoHoras = (hF + mF / 60) - (hI + mI / 60);
     const valor_total = quadra.preco_base * duracaoHoras;
 
     // 5. Salvar a reserva
@@ -106,10 +106,10 @@ const criarReserva = async (req, res) => {
 
     logAuditEvent(usuario_id, 'Criação de reserva', `Reserva ID: ${insert.lastID}, Quadra: ${quadra_id}, Data: ${data_reserva} ${hora_inicio}`, ip);
 
-    res.status(201).json({ 
-      message: 'Reserva criada com sucesso.', 
+    res.status(201).json({
+      message: 'Reserva criada com sucesso.',
       reserva_id: insert.lastID,
-      valor_total 
+      valor_total
     });
 
   } catch (error) {
@@ -146,7 +146,7 @@ const cancelarReserva = async (req, res) => {
     const { id } = req.params;
     const { motivo, observacoes } = req.body; // 'motivo' now actually expects motivo_id from frontend
     const tenant_id = req.user.tenant_id;
-    
+
     const reserva = await db.getAsync('SELECT * FROM Reservas WHERE id = ? AND tenant_id = ?', [id, tenant_id]);
     if (!reserva) return res.status(404).json({ error: 'Reserva não encontrada.' });
 
@@ -188,7 +188,7 @@ const criarBloqueio = async (req, res) => {
   try {
     const { quadra_id, data_bloqueio, hora_inicio, hora_fim, motivo } = req.body;
     const usuario_id = req.user ? req.user.id : null;
-    
+
     if (!quadra_id || !data_bloqueio || !hora_inicio || !hora_fim || !motivo) {
       return res.status(400).json({ error: 'Todos os campos são obrigatórios.' });
     }
@@ -214,7 +214,7 @@ const criarBloqueio = async (req, res) => {
       SELECT id FROM Reservas 
       WHERE quadra_id = ? AND data_reserva = ? AND status != 'Cancelada' AND tenant_id = ?
       AND (hora_inicio < ? AND hora_fim > ?)
-    `, [quadra_id, data_reserva, tenant_id, hora_fim, hora_inicio]);
+    `, [quadra_id, data_bloqueio, tenant_id, hora_fim, hora_inicio]);
 
     if (conflitoReservas) {
       return res.status(409).json({ error: 'Não é possível bloquear: já existe uma reserva confirmada neste horário.' });
@@ -249,7 +249,7 @@ const removerBloqueio = async (req, res) => {
     if (!bloqueio) return res.status(404).json({ error: 'Bloqueio não encontrado.' });
 
     await db.runAsync('DELETE FROM Bloqueios WHERE id = ?', [id]);
-    
+
     logAuditEvent(usuario_id, 'Remoção de bloqueio', `Bloqueio ID: ${id} removido integralmente`, req.ip);
 
     res.json({ message: 'Bloqueio removido com sucesso.' });

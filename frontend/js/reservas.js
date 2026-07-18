@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const gradeTable = document.getElementById('grade-table');
   const token = localStorage.getItem('courtmanager_token');
   const filterQuadra = document.getElementById('filter-quadra');
-  
+
   let currentReservas = []; // Guarda as reservas ativas da tela
 
   if (!gradeTable) return;
@@ -21,12 +21,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // Escutar mudança de datas vinda do app.js
   window.addEventListener('gradeDateChanged', (e) => {
     const wasSemanal = (currentState.scope === 'semanal');
-    
+
     currentState.scope = e.detail.scope;
     currentState.dataInicio = e.detail.dataInicio;
     currentState.dataFim = e.detail.dataFim;
     currentState.baseDate = e.detail.baseDate;
-    
+
     if (wasSemanal && currentState.scope === 'diaria' && filterQuadra) {
       filterQuadra.value = '';
     }
@@ -48,53 +48,53 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
     }
-    
+
     fetchAndRenderGrade();
-  
-  // Função para abrir a modal de pagamento e popular os dados dinâmicos
-  window.abrirModalPagamento = () => {
-    const id = window.currentReservaId;
-    if (!id) return;
-    
-    // Assumindo que currentReservas está disponível no escopo de reservas.js
-    const r = currentReservas.find(x => x.id === id);
-    if (!r) return;
 
-    if (window.closeModal) window.closeModal('modal-detalhe-reserva');
-    
-    // Atualizar o texto dinâmico da modal de pagamento
-    const infoEl = document.getElementById('modal-pag-info');
-    if (infoEl) {
-      // Calcular saldo devedor focado na UI por enquanto
-      const valorFmt = parseFloat(r.valor_total || 0).toFixed(2).replace('.',',');
-      const saldoFmt = r.status_pagamento === 'Pago' ? '0,00' : valorFmt; // Melhorar isso depois com backend real de saldo
-      
-      infoEl.innerHTML = `Reserva #${r.id} &middot; ${r.cliente_nome} &middot; Saldo devedor: <strong style="color:var(--danger)">R$ ${saldoFmt}</strong>`;
-    }
-    
-    // Limpar campos
-    const pagValor = document.getElementById('pag-valor');
-    const pagMetodo = document.getElementById('pag-metodo');
-    const pagData = document.getElementById('pag-data');
-    if (pagValor) pagValor.value = '';
-    if (pagMetodo) pagMetodo.value = '';
-    
-    // Preencher data do pagamento com data atual local
-    if (pagData) {
-      const now = new Date();
-      const tzOffset = now.getTimezoneOffset() * 60000;
-      pagData.value = new Date(Date.now() - tzOffset).toISOString().split('T')[0];
-    }
+    // Função para abrir a modal de pagamento e popular os dados dinâmicos
+    window.abrirModalPagamento = () => {
+      const id = window.currentReservaId;
+      if (!id) return;
 
-    if (window.openModal) window.openModal('modal-registrar-pagamento');
-  };
+      // Assumindo que currentReservas está disponível no escopo de reservas.js
+      const r = currentReservas.find(x => x.id === id);
+      if (!r) return;
 
-  window.abrirModalEstorno = () => {
-    if (window.closeModal) window.closeModal('modal-detalhe-reserva');
-    if (window.openModal) window.openModal('modal-estornar-pagamento');
-  };
+      if (window.closeModal) window.closeModal('modal-detalhe-reserva');
 
-});
+      // Atualizar o texto dinâmico da modal de pagamento
+      const infoEl = document.getElementById('modal-pag-info');
+      if (infoEl) {
+        // Calcular saldo devedor focado na UI por enquanto
+        const valorFmt = parseFloat(r.valor_total || 0).toFixed(2).replace('.', ',');
+        const saldoFmt = r.status_pagamento === 'Pago' ? '0,00' : valorFmt; // Melhorar isso depois com backend real de saldo
+
+        infoEl.innerHTML = `Reserva #${r.id} &middot; ${r.cliente_nome} &middot; Saldo devedor: <strong style="color:var(--danger)">R$ ${saldoFmt}</strong>`;
+      }
+
+      // Limpar campos
+      const pagValor = document.getElementById('pag-valor');
+      const pagMetodo = document.getElementById('pag-metodo');
+      const pagData = document.getElementById('pag-data');
+      if (pagValor) pagValor.value = '';
+      if (pagMetodo) pagMetodo.value = '';
+
+      // Preencher data do pagamento com data atual local
+      if (pagData) {
+        const now = new Date();
+        const tzOffset = now.getTimezoneOffset() * 60000;
+        pagData.value = new Date(Date.now() - tzOffset).toISOString().split('T')[0];
+      }
+
+      if (window.openModal) window.openModal('modal-registrar-pagamento');
+    };
+
+    window.abrirModalEstorno = () => {
+      if (window.closeModal) window.closeModal('modal-detalhe-reserva');
+      if (window.openModal) window.openModal('modal-estornar-pagamento');
+    };
+
+  });
 
   // Escutar mudança no select de quadras
   if (filterQuadra) {
@@ -155,7 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
         cache: 'no-store'
       });
       if (!res.ok) throw new Error('Erro ao buscar grade');
-      
+
       const { quadras, reservas, bloqueios } = await res.json();
       currentReservas = reservas || [];
       renderGrade(quadras, currentReservas, bloqueios);
@@ -168,7 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Renderiza a grade
   function renderGrade(todasQuadras, reservas, bloqueios) {
     const selectedQuadraId = filterQuadra ? filterQuadra.value : '';
-    
+
     // Na visão semanal, obrigatoriamente precisamos de uma quadra selecionada.
     // Se estiver em "Todas", forçamos a primeira quadra.
     let quadrasParaExibir = todasQuadras;
@@ -191,7 +191,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const timeSlots = generateTimeSlots(currentState.intervalo, quadrasParaExibir);
-    
+
     // Precisamos definir as colunas com base no escopo
     let colunas = [];
     if (currentState.scope === 'diaria') {
@@ -211,7 +211,7 @@ document.addEventListener('DOMContentLoaded', () => {
       let d = new Date(currentState.dataInicio + 'T00:00:00'); // Trata como local time meia-noite
       const endD = new Date(currentState.dataFim + 'T00:00:00');
       const format = new Intl.DateTimeFormat('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
-      
+
       while (d <= endD) {
         const diaStr = d.toISOString().split('T')[0];
         colunas.push({
@@ -229,7 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Configura o CSS Grid Dinamicamente
     gradeTable.style.gridTemplateColumns = `80px repeat(${colunas.length}, 1fr)`;
-    
+
     let html = '';
     // Header Row (Row 1)
     html += `<div class="gh-cell" style="grid-column: 1; grid-row: 1"></div>`;
@@ -251,27 +251,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Se for intervalo 30, mostra label do horário, ex "08:00" ou "08:30" (ou deixa menor)
       html += `<div class="gt-time" style="grid-column: 1; grid-row: ${row}">${time}</div>`;
-      
+
       colunas.forEach((col, idx) => {
         // Encontra o que há nesse slot exato
-        const reserva = reservas.find(r => 
-          r.quadra_id === col.quadra_id && 
-          r.data_reserva === col.data && 
-          r.hora_inicio <= time && 
+        const reserva = reservas.find(r =>
+          r.quadra_id === col.quadra_id &&
+          r.data_reserva === col.data &&
+          r.hora_inicio <= time &&
           r.hora_fim > time
         );
 
-        const bloqueio = bloqueios.find(b => 
-          b.quadra_id === col.quadra_id && 
-          b.data_bloqueio === col.data && 
-          b.hora_inicio <= time && 
+        const bloqueio = bloqueios.find(b =>
+          b.quadra_id === col.quadra_id &&
+          b.data_bloqueio === col.data &&
+          b.hora_inicio <= time &&
           b.hora_fim > time
         );
 
         if (bloqueio) {
           // O tempo atual cai dentro do bloqueio?
           if (bloqueio.hora_inicio <= time && bloqueio.hora_fim > time) {
-             html += `
+            html += `
               <div class="gt-slot s-blocked" style="grid-column: ${idx + 2}; grid-row: ${row}; cursor: pointer;"
                    onclick="abrirModalBloqueio(${bloqueio.id}, '${time}')" title="Clique para gerenciar bloqueio">
                 <span class="slot-name">${bloqueio.motivo || 'Bloqueado'}</span>
@@ -286,7 +286,7 @@ document.addEventListener('DOMContentLoaded', () => {
           if (reserva.hora_inicio === time) {
             let cssClass = 's-pending';
             let labelStatus = 'Pendente';
-            
+
             if (reserva.status_pagamento === 'Pago') {
               cssClass = 's-paid'; labelStatus = 'Pago';
             } else if (reserva.status_pagamento === 'Parcial') {
@@ -296,16 +296,16 @@ document.addEventListener('DOMContentLoaded', () => {
             // Calculo de span
             let span = 1;
             if (currentState.intervalo === 30) {
-               const hI = parseInt(reserva.hora_inicio.split(':')[0], 10);
-               const mI = parseInt(reserva.hora_inicio.split(':')[1], 10);
-               const hF = parseInt(reserva.hora_fim.split(':')[0], 10);
-               const mF = parseInt(reserva.hora_fim.split(':')[1], 10);
-               const duracaoMinutos = (hF * 60 + mF) - (hI * 60 + mI);
-               span = Math.ceil(duracaoMinutos / 30);
+              const hI = parseInt(reserva.hora_inicio.split(':')[0], 10);
+              const mI = parseInt(reserva.hora_inicio.split(':')[1], 10);
+              const hF = parseInt(reserva.hora_fim.split(':')[0], 10);
+              const mF = parseInt(reserva.hora_fim.split(':')[1], 10);
+              const duracaoMinutos = (hF * 60 + mF) - (hI * 60 + mI);
+              span = Math.ceil(duracaoMinutos / 30);
             } else {
-               const hI = parseInt(reserva.hora_inicio.split(':')[0], 10);
-               const hF = parseInt(reserva.hora_fim.split(':')[0], 10);
-               span = hF - hI;
+              const hI = parseInt(reserva.hora_inicio.split(':')[0], 10);
+              const hF = parseInt(reserva.hora_fim.split(':')[0], 10);
+              span = hF - hI;
             }
 
             const priceLabel = reserva.valor_total ? `R$ ${parseFloat(reserva.valor_total).toFixed(2)} · ${labelStatus}` : labelStatus;
@@ -372,25 +372,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const hInput = document.getElementById('nr-inicio');
     const hFimInput = document.getElementById('nr-fim');
 
-    if(qSelect) qSelect.value = quadraId;
-    if(dInput) dInput.value = data;
-    
+    if (qSelect) qSelect.value = quadraId;
+    if (dInput) dInput.value = data;
+
     // Usa dataset.pendingValue para passar o valor desejado para atualizarHorariosDisponiveis
-    if(hInput) {
+    if (hInput) {
       hInput.dataset.pendingValue = horaInicio;
     }
 
-    if(hFimInput) {
+    if (hFimInput) {
       const [h, m] = horaInicio.split(':');
       const fimH = (parseInt(h) + 1).toString().padStart(2, '0');
       hFimInput.dataset.pendingValue = `${fimH}:${m}`;
     }
 
-    if(window.atualizarHorariosDisponiveis) {
+    if (window.atualizarHorariosDisponiveis) {
       await window.atualizarHorariosDisponiveis();
     }
 
-    if(window.openModal) window.openModal('modal-nova-reserva');
+    if (window.openModal) window.openModal('modal-nova-reserva');
   };
 
   window.abrirDetalheReserva = (id) => {
@@ -400,7 +400,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Preenche Detalhes
     document.getElementById('modal-detalhe-title').textContent = `Reserva #${r.id}`;
-    
+
     // Status visual
     const statusEl = document.querySelector('#modal-detalhe-reserva .badge');
     if (statusEl) {
@@ -426,7 +426,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (elHorario) {
       const parts = r.data_reserva.split('-'); // ex "2026-07-13"
       if (parts.length === 3) {
-        const d = new Date(parts[0], parts[1]-1, parts[2]);
+        const d = new Date(parts[0], parts[1] - 1, parts[2]);
         const fmtData = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }).format(d);
         elHorario.textContent = `${fmtData} · ${r.hora_inicio} – ${r.hora_fim}`;
       } else {
@@ -434,18 +434,20 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    const valorTotalFmt = `R$ ${parseFloat(r.valor_total || 0).toFixed(2).replace('.',',')}`;
+    const valorTotalFmt = `R$ ${parseFloat(r.valor_total || 0).toFixed(2).replace('.', ',')}`;
     if (elValorTotal) elValorTotal.textContent = valorTotalFmt;
-    
+
     // Fakes de pago/saldo por enquanto (pois o backend não devolve valor_pago e saldo_devedor na grade ainda)
     if (elValorPago) elValorPago.textContent = r.status_pagamento === 'Pago' ? valorTotalFmt : 'R$ 0,00';
     if (elSaldo) elSaldo.textContent = r.status_pagamento === 'Pago' ? 'R$ 0,00' : valorTotalFmt;
-    
-    // Configura texto do cancelar
-    const cancelarTexto = document.querySelector('#modal-cancelar-reserva p strong');
-    if (cancelarTexto) cancelarTexto.textContent = r.cliente_nome;
 
-    if(window.openModal) window.openModal('modal-detalhe-reserva');
+    // Configura texto do cancelar
+    const cancelamentoResumo = document.getElementById('cancelamento-resumo');
+    if (cancelamentoResumo) {
+      cancelamentoResumo.innerHTML = `Você está cancelando a reserva de <strong>${r.cliente_nome}</strong> — ${r.quadra_nome || 'Quadra'}, ${r.hora_inicio}. Esta ação não pode ser desfeita.`;
+    }
+
+    if (window.openModal) window.openModal('modal-detalhe-reserva');
   };
 
   window.abrirModalBloqueio = (id, time) => {
@@ -462,7 +464,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const lbl = document.getElementById('lbl-hora-desbloqueio');
     if (lbl) lbl.textContent = `${time} às ${window.currentBloqueioEndTime}`;
 
-    if(window.openModal) window.openModal('modal-gerenciar-bloqueio');
+    if (window.openModal) window.openModal('modal-gerenciar-bloqueio');
   };
 
   const btnDesbloquearHora = document.getElementById('btn-desbloquear-hora');
@@ -483,12 +485,12 @@ document.addEventListener('DOMContentLoaded', () => {
           })
         });
         if (!res.ok) throw new Error('Erro ao desbloquear horário');
-        if(window.showToast) window.showToast('Horário desbloqueado com sucesso!', 'success');
-        if(window.closeModal) window.closeModal('modal-gerenciar-bloqueio');
+        if (window.showToast) window.showToast('Horário desbloqueado com sucesso!', 'success');
+        if (window.closeModal) window.closeModal('modal-gerenciar-bloqueio');
         fetchAndRenderGrade();
       } catch (e) {
         console.error(e);
-        if(window.showToast) window.showToast('Erro ao desbloquear o horário.', 'error');
+        if (window.showToast) window.showToast('Erro ao desbloquear o horário.', 'error');
       }
     });
   }
@@ -504,12 +506,12 @@ document.addEventListener('DOMContentLoaded', () => {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (!res.ok) throw new Error('Erro ao remover bloqueio');
-        if(window.showToast) window.showToast('Bloqueio removido integralmente!', 'success');
-        if(window.closeModal) window.closeModal('modal-gerenciar-bloqueio');
+        if (window.showToast) window.showToast('Bloqueio removido integralmente!', 'success');
+        if (window.closeModal) window.closeModal('modal-gerenciar-bloqueio');
         fetchAndRenderGrade();
       } catch (e) {
         console.error(e);
-        if(window.showToast) window.showToast('Erro ao remover o bloqueio.', 'error');
+        if (window.showToast) window.showToast('Erro ao remover o bloqueio.', 'error');
       }
     });
   }
@@ -522,7 +524,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const motivoSelect = document.getElementById('motivo-cancelamento');
       const obsInput = document.getElementById('obs-cancelamento');
       if (!motivoSelect.value) {
-        if(window.showToast) window.showToast('Selecione um motivo para o cancelamento.', 'warning');
+        if (window.showToast) window.showToast('Selecione um motivo para o cancelamento.', 'warning');
         return;
       }
       if (!window.currentReservaId) return;
@@ -536,15 +538,15 @@ document.addEventListener('DOMContentLoaded', () => {
           },
           body: JSON.stringify({ motivo: motivoSelect.value, observacoes: obsInput.value })
         });
-        
+
         if (!res.ok) throw new Error('Erro ao cancelar reserva');
-        
-        if(window.showToast) window.showToast('Reserva cancelada com sucesso.', 'success');
-        if(window.closeModal) window.closeModal('modal-cancelar-reserva');
+
+        if (window.showToast) window.showToast('Reserva cancelada com sucesso.', 'success');
+        if (window.closeModal) window.closeModal('modal-cancelar-reserva');
         fetchAndRenderGrade();
       } catch (err) {
         console.error(err);
-        if(window.showToast) window.showToast('Falha ao cancelar reserva.', 'error');
+        if (window.showToast) window.showToast('Falha ao cancelar reserva.', 'error');
       }
     });
   }
@@ -559,9 +561,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const quadras = await res.json();
 
       // Usa filterQuadra do escopo externo (sem redeclarar)
-      filterQuadra.innerHTML = '<option value="">Todas as quadras</option>' + 
+      filterQuadra.innerHTML = '<option value="">Todas as quadras</option>' +
         quadras.map(q => `<option value="${q.id}">${q.nome} — ${q.tipo || 'Geral'}</option>`).join('');
-        
+
       // Aplica a regra de visibilidade se estiver em modo semanal
       const optionTodas = filterQuadra.querySelector('option[value=""]');
       if (optionTodas && currentState.scope === 'semanal') {
@@ -587,7 +589,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!res.ok) return;
       const motivos = await res.json();
 
-      motivoSelect.innerHTML = '<option value="">Selecione o motivo</option>' + 
+      motivoSelect.innerHTML = '<option value="">Selecione o motivo</option>' +
         motivos.map(m => `<option value="${m.id}">${m.motivo}</option>`).join('');
     } catch (e) {
       console.warn('Erro ao carregar motivos de cancelamento:', e);
@@ -607,7 +609,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }, 100);
     }
   });
-  
+
   loadMotivosCancelamento();
 
   // Handler para Registrar Pagamento

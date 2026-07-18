@@ -1,46 +1,57 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CourtManager — Cadastro de Arena</title>
-  <meta name="description" content="Crie a conta da sua arena e comece a usar o CourtManager gratuitamente por 14 dias." />
+  <meta name="description"
+    content="Crie a conta da sua arena e comece a usar o CourtManager gratuitamente por 14 dias." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/landing.css" />
   <style>
     .onboard-page {
-      min-height: 100vh;
+      height: 100vh;
+      overflow: hidden;
       background: var(--cream);
       display: grid;
       grid-template-columns: 1fr 1fr;
     }
+
     .onboard-left {
       background: var(--charcoal);
-      padding: var(--s-9) var(--s-9);
+      padding: 28px 32px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
     }
+
     .onboard-left-logo {
       display: flex;
       align-items: center;
       gap: 10px;
       text-decoration: none;
     }
+
     .onboard-left-logo .nav-brand-icon {
-      background: rgba(252,251,248,0.12);
+      background: rgba(252, 251, 248, 0.12);
       color: var(--off-white);
     }
-    .onboard-left-logo .nav-brand-name { color: var(--off-white); }
+
+    .onboard-left-logo .nav-brand-name {
+      color: var(--off-white);
+    }
+
     .onboard-pitch {
       flex: 1;
       display: flex;
       flex-direction: column;
       justify-content: center;
-      padding: var(--s-9) 0;
+      padding: 16px 0;
     }
+
     .onboard-pitch-title {
       font-size: clamp(28px, 3vw, 42px);
       font-weight: 600;
@@ -49,19 +60,30 @@
       color: var(--off-white);
       margin-bottom: var(--s-5);
     }
-    .onboard-pitch-title span { color: rgba(252,251,248,0.4); }
-    .onboard-checks { display: flex; flex-direction: column; gap: var(--s-4); }
+
+    .onboard-pitch-title span {
+      color: rgba(252, 251, 248, 0.4);
+    }
+
+    .onboard-checks {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
     .onboard-check {
       display: flex;
       align-items: flex-start;
       gap: var(--s-3);
       font-size: 15px;
-      color: rgba(252,251,248,0.7);
+      color: rgba(252, 251, 248, 0.7);
       line-height: 1.5;
     }
+
     .onboard-check-icon {
-      width: 22px; height: 22px;
-      background: rgba(252,251,248,0.1);
+      width: 22px;
+      height: 22px;
+      background: rgba(252, 251, 248, 0.1);
       border-radius: 50%;
       display: grid;
       place-items: center;
@@ -70,46 +92,58 @@
       margin-top: 1px;
       color: var(--off-white);
     }
+
     .onboard-testimonial {
-      border-top: 1px solid rgba(252,251,248,0.12);
-      padding-top: var(--s-5);
+      border-top: 1px solid rgba(252, 251, 248, 0.12);
+      padding-top: 16px;
     }
+
     .onboard-testimonial blockquote {
-      font-size: 14px;
-      color: rgba(252,251,248,0.6);
+      font-size: 13px;
+      color: rgba(252, 251, 248, 0.6);
       font-style: italic;
       line-height: 1.6;
       margin-bottom: var(--s-3);
     }
-    .onboard-testimonial cite { font-size: 13px; color: rgba(252,251,248,0.4); font-style: normal; }
+
+    .onboard-testimonial cite {
+      font-size: 13px;
+      color: rgba(252, 251, 248, 0.4);
+      font-style: normal;
+    }
 
     .onboard-right {
-      padding: var(--s-9) var(--s-9);
+      padding: 32px var(--s-9) var(--s-9) var(--s-9);
       display: flex;
       flex-direction: column;
-      justify-content: center;
+      justify-content: flex-start;
+      overflow-y: auto;
     }
+
     .onboard-form-title {
-      font-size: 28px;
+      font-size: 24px;
       font-weight: 600;
       letter-spacing: -0.7px;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
     }
+
     .onboard-form-sub {
-      font-size: 14px;
+      font-size: 13px;
       color: var(--muted);
-      margin-bottom: var(--s-7);
+      margin-bottom: 20px;
     }
 
     /* Steps indicator */
     .steps {
       display: flex;
       align-items: center;
-      gap: var(--s-2);
-      margin-bottom: var(--s-6);
+      gap: 8px;
+      margin-bottom: 16px;
     }
+
     .step {
-      width: 28px; height: 28px;
+      width: 28px;
+      height: 28px;
       border-radius: 50%;
       display: grid;
       place-items: center;
@@ -118,218 +152,524 @@
       border: 1px solid var(--border-warm);
       color: var(--muted);
     }
+
     .step.active {
       background: var(--charcoal);
       color: var(--off-white);
       border-color: var(--charcoal);
     }
+
     .step.done {
       background: var(--charcoal-04);
       color: var(--charcoal);
       border-color: var(--charcoal);
     }
+
     .step-line {
-      flex: 1; height: 1px;
+      flex: 1;
+      height: 1px;
       background: var(--border-warm);
     }
 
     /* Plan selector */
-    .plan-selector { display: flex; flex-direction: column; gap: var(--s-3); margin-bottom: var(--s-5); }
+    .plan-selector {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
     .plan-option {
       display: flex;
       align-items: center;
-      gap: var(--s-4);
-      padding: var(--s-4);
-      background: var(--cream);
+      gap: 12px;
+      padding: 10px 14px;
+      background: var(--cream-soft);
       border: 1px solid var(--border-warm);
       border-radius: var(--r-md);
       cursor: pointer;
       transition: border-color 0.15s;
     }
-    .plan-option:hover { border-color: var(--border-active); }
-    .plan-option.selected { border-color: var(--charcoal); background: var(--charcoal-04); }
-    .plan-option input[type=radio] { accent-color: var(--charcoal); }
-    .plan-option-info .plan-name { font-size: 14px; font-weight: 600; }
-    .plan-option-info .plan-desc { font-size: 12px; color: var(--muted); }
-    .plan-option-price { margin-left: auto; font-size: 14px; font-weight: 600; }
+
+    .plan-option:hover {
+      border-color: var(--border-active);
+    }
+
+    .plan-option.selected {
+      border-color: var(--charcoal);
+      background: var(--charcoal-04);
+    }
+
+    .plan-option input[type=radio] {
+      accent-color: var(--charcoal);
+    }
+
+    .plan-option-info .plan-name {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .plan-option-info .plan-desc {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .plan-option-price {
+      margin-left: auto;
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    :root {
+      --cream-soft: #FBF8F2;
+    }
+
+    .onboard-right .form-group {
+      margin-bottom: 12px;
+    }
+
+    .onboard-form-wrapper {
+      max-width: 440px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .field-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--charcoal);
+      margin-bottom: 4px;
+    }
+
+    input.field-input,
+    select.field-input {
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid var(--border-warm);
+      background-color: var(--cream-soft);
+      padding: 8px 12px;
+      font-size: 13px;
+      color: var(--charcoal);
+      outline: none;
+      transition: all 150ms ease;
+    }
+
+    input.field-input::placeholder {
+      color: rgba(95, 95, 93, 0.7);
+    }
+
+    input.field-input:focus,
+    select.field-input:focus {
+      border-color: var(--charcoal);
+      box-shadow: 0 0 0 2px rgba(28, 28, 28, 0.1);
+      background-color: var(--cream-soft);
+    }
+
+    input.field-input:hover,
+    select.field-input:hover {
+      border-color: var(--border-active);
+    }
+
+    input.field-input:disabled,
+    select.field-input:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    input.field-input.error,
+    select.field-input.error {
+      border-color: #9B3636;
+      background-color: #FDF3F3;
+    }
+
+    @keyframes shake {
+
+      0%,
+      100% {
+        transform: translateX(0);
+      }
+
+      10%,
+      30%,
+      50%,
+      70%,
+      90% {
+        transform: translateX(-4px);
+      }
+
+      20%,
+      40%,
+      60%,
+      80% {
+        transform: translateX(4px);
+      }
+    }
+
+    .shake-animation {
+      animation: shake 0.4s cubic-bezier(.36, .07, .19, .97) both;
+    }
+
+    select.field-input {
+      appearance: none;
+      cursor: pointer;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%238A847E' stroke-width='1.5'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19.5 8.25l-7.5 7.5-7.5-7.5'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 0.875rem center;
+      background-size: 12px;
+      padding-right: 2.5rem;
+    }
+
+    .password-wrapper {
+      position: relative;
+    }
+
+    .password-wrapper input {
+      padding-right: 2.5rem;
+    }
+
+    .password-icon {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #8A847E;
+      pointer-events: none;
+    }
+
+    .onboard-right .btn-lg {
+      padding-top: 12px;
+      padding-bottom: 12px;
+      font-size: 14px;
+    }
 
     @media (max-width: 768px) {
-      .onboard-page { grid-template-columns: 1fr; }
-      .onboard-left { display: none; }
-      .onboard-right { padding: var(--s-6) var(--s-5); }
+      .onboard-page {
+        grid-template-columns: 1fr;
+      }
+
+      .onboard-left {
+        display: none;
+      }
+
+      .onboard-right {
+        padding: var(--s-6) var(--s-5);
+      }
     }
   </style>
 </head>
+
 <body>
-<div class="onboard-page">
-  <!-- Left panel -->
-  <div class="onboard-left">
-    <a href="landing.html" class="onboard-left-logo">
-      <div class="nav-brand-icon">CM</div>
-      <span class="nav-brand-name">CourtManager</span>
-    </a>
-    <div class="onboard-pitch">
-      <h2 class="onboard-pitch-title">
-        Sua arena,<br/>
-        <span>organizada de verdade.</span>
-      </h2>
-      <div class="onboard-checks">
-        <div class="onboard-check">
-          <div class="onboard-check-icon">✓</div>
-          <span>Grade de reservas visual, sem conflitos de horário</span>
-        </div>
-        <div class="onboard-check">
-          <div class="onboard-check-icon">✓</div>
-          <span>Controle financeiro completo — pago, parcial e pendente</span>
-        </div>
-        <div class="onboard-check">
-          <div class="onboard-check-icon">✓</div>
-          <span>Gestão de mensalistas e recorrência automatizada</span>
-        </div>
-        <div class="onboard-check">
-          <div class="onboard-check-icon">✓</div>
-          <span>Relatórios de faturamento e ocupação por quadra</span>
-        </div>
-        <div class="onboard-check">
-          <div class="onboard-check-icon">✓</div>
-          <span>14 dias gratuitos — sem cartão de crédito</span>
+  <div class="onboard-page">
+    <!-- Left panel -->
+    <div class="onboard-left">
+      <a href="index.html" class="onboard-left-logo">
+        <div class="nav-brand-icon">CM</div>
+        <span class="nav-brand-name">CourtManager</span>
+      </a>
+      <div class="onboard-pitch">
+        <h2 class="onboard-pitch-title">
+          Sua arena,<br />
+          <span>organizada de verdade.</span>
+        </h2>
+        <div class="onboard-checks">
+          <div class="onboard-check">
+            <div class="onboard-check-icon">✓</div>
+            <span>Grade de reservas visual, sem conflitos de horário</span>
+          </div>
+          <div class="onboard-check">
+            <div class="onboard-check-icon">✓</div>
+            <span>Controle financeiro completo — pago, parcial e pendente</span>
+          </div>
+          <div class="onboard-check">
+            <div class="onboard-check-icon">✓</div>
+            <span>Gestão de mensalistas e recorrência automatizada</span>
+          </div>
+          <div class="onboard-check">
+            <div class="onboard-check-icon">✓</div>
+            <span>Relatórios de faturamento e ocupação por quadra</span>
+          </div>
+          <div class="onboard-check">
+            <div class="onboard-check-icon">✓</div>
+            <span>14 dias gratuitos — sem cartão de crédito</span>
+          </div>
         </div>
       </div>
+      <div class="onboard-testimonial">
+        <blockquote>
+          "Antes eu controlava tudo no WhatsApp e numa planilha. Com o CourtManager, em 30 minutos já tinha tudo
+          configurado e as reservas começaram a entrar sozinhas."
+        </blockquote>
+        <cite>— Rodrigo F., Arena Beach Sports, Campinas</cite>
+      </div>
     </div>
-    <div class="onboard-testimonial">
-      <blockquote>
-        "Antes eu controlava tudo no WhatsApp e numa planilha. Com o CourtManager, em 30 minutos já tinha tudo configurado e as reservas começaram a entrar sozinhas."
-      </blockquote>
-      <cite>— Rodrigo F., Arena Beach Sports, Campinas</cite>
+
+    <!-- Right panel: form -->
+    <div class="onboard-right">
+      <div class="onboard-form-wrapper">
+        <div style="text-align: right; margin-bottom: 16px;">
+          <a href="index.html" style="font-size: 13px; color: var(--muted); text-decoration: none; font-weight: 500; transition: color 0.2s;" onmouseover="this.style.color='var(--charcoal)'" onmouseout="this.style.color='var(--muted)'">← Voltar ao início</a>
+        </div>
+        <h1 class="onboard-form-title">Criar conta da Arena</h1>
+        <p class="onboard-form-sub">Preencha os dados da arena e do responsável. Em 2 minutos você acessa o sistema.</p>
+
+        <form id="form-cadastro-arena" novalidate>
+          <!-- Arena data -->
+          <div
+            style="font-size:12px;font-weight:600;color:var(--charcoal);margin-bottom:12px;border-bottom:1px solid var(--border-warm);padding-bottom:8px;display:flex;align-items:center;gap:8px;">
+            Dados da Arena
+          </div>
+          <div class="form-group">
+            <label for="arena-nome" class="field-label">Nome da arena *</label>
+            <input type="text" id="arena-nome" name="arena_nome" class="field-input" placeholder="Ex: Arena Beach Prime"
+              maxlength="100" required />
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+            <div class="form-group">
+              <label for="arena-cidade" class="field-label">Cidade *</label>
+              <input type="text" id="arena-cidade" name="arena_cidade" class="field-input" placeholder="Ex: Campinas"
+                maxlength="100" required />
+            </div>
+            <div class="form-group">
+              <label for="arena-quadras" class="field-label">Nº de quadras *</label>
+              <select id="arena-quadras" name="arena_quadras" class="field-input" required>
+                <option value="">Selecione</option>
+                <option value="1">1 quadra</option>
+                <option value="2">2 quadras</option>
+                <option value="3">3 quadras</option>
+                <option value="4-6">4 a 6 quadras</option>
+                <option value="7-10">7 a 10 quadras</option>
+                <option value="10+">Mais de 10</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Responsible -->
+          <div
+            style="font-size:12px;font-weight:600;color:var(--charcoal);margin:16px 0 12px;border-bottom:1px solid var(--border-warm);padding-bottom:8px;display:flex;align-items:center;gap:8px;">
+            Responsável
+          </div>
+          <div class="form-group">
+            <label for="resp-nome" class="field-label">Nome completo *</label>
+            <input type="text" id="resp-nome" name="resp_nome" class="field-input" placeholder="Seu nome"
+              maxlength="100" required />
+          </div>
+          <div class="form-group">
+            <label for="resp-email" class="field-label">E-mail *</label>
+            <input type="email" id="resp-email" name="resp_email" class="field-input" placeholder="seu@email.com"
+              autocomplete="email" maxlength="255" required />
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+            <div class="form-group">
+              <label for="resp-telefone" class="field-label">Telefone *</label>
+              <input type="tel" id="resp-telefone" name="resp_telefone" class="field-input"
+                placeholder="(11) 99999-9999" maxlength="15" required />
+            </div>
+            <div class="form-group">
+              <label for="resp-senha" class="field-label">Senha *</label>
+              <div class="password-wrapper">
+                <input type="password" id="resp-senha" name="resp_senha" class="field-input"
+                  placeholder="Mínimo 8 caracteres" autocomplete="new-password" required minlength="8"
+                  maxlength="128" />
+                <svg class="password-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <!-- Plan selection -->
+          <div
+            style="font-size:12px;font-weight:600;color:var(--charcoal);margin:16px 0 12px;border-bottom:1px solid var(--border-warm);padding-bottom:8px;display:flex;align-items:center;gap:8px;">
+            Plano
+          </div>
+          <div class="plan-selector">
+            <label class="plan-option">
+              <input type="radio" name="plano" value="starter" />
+              <div class="plan-option-info">
+                <div class="plan-name">Starter</div>
+                <div class="plan-desc">Até 3 quadras — Reservas e Pagamentos</div>
+              </div>
+              <span class="plan-option-price">R$ 49,99/mês</span>
+            </label>
+            <label class="plan-option selected">
+              <input type="radio" name="plano" value="pro" checked />
+              <div class="plan-option-info">
+                <div class="plan-name">Pro</div>
+                <div class="plan-desc">Até 10 quadras — MVP completo + Gestão de Mensalistas</div>
+              </div>
+              <span class="plan-option-price">R$ 79,99/mês</span>
+            </label>
+            <label class="plan-option">
+              <input type="radio" name="plano" value="enterprise" />
+              <div class="plan-option-info">
+                <div class="plan-name">Enterprise</div>
+                <div class="plan-desc">Múltiplas unidades — API e integrações</div>
+              </div>
+              <span class="plan-option-price">Sob consulta</span>
+            </label>
+          </div>
+
+          <p style="font-size:11px;color:var(--muted);margin-bottom:16px;">
+            Ao criar a conta, você concorda com os <a href="#" style="color:var(--charcoal)">Termos de Uso</a> e a <a
+              href="#" style="color:var(--charcoal)">Política de Privacidade</a>. Seus dados são protegidos conforme a
+            LGPD.
+          </p>
+
+          <div id="cadastro-error" role="alert"
+            style="display:none;background:#fef2f2;color:#991b1b;font-size:13px;padding:10px 14px;border-radius:var(--r-md);margin-bottom:var(--s-4);border:1px solid rgba(153,27,27,0.2);">
+            Verifique os campos e tente novamente.
+          </div>
+
+          <button type="submit" class="btn btn-dark btn-full btn-lg" id="btn-criar-conta">
+            Criar conta e começar grátis
+          </button>
+        </form>
+
+        <p class="auth-footer-text" style="font-size:12px; margin-top:16px;">
+          Já tem uma conta? <a href="login.html">Entrar</a>
+        </p>
+      </div>
     </div>
   </div>
 
-  <!-- Right panel: form -->
-  <div class="onboard-right">
-    <div class="steps">
-      <div class="step active">1</div>
-      <div class="step-line"></div>
-      <div class="step">2</div>
-      <div class="step-line"></div>
-      <div class="step">3</div>
-    </div>
-    <h1 class="onboard-form-title">Criar conta da Arena</h1>
-    <p class="onboard-form-sub">Preencha os dados da arena e do responsável. Em 2 minutos você acessa o sistema.</p>
-
-    <form id="form-cadastro-arena" novalidate>
-      <!-- Arena data -->
-      <div style="font-size:13px;font-weight:600;color:var(--charcoal);margin-bottom:var(--s-4);border-bottom:1px solid var(--border-warm);padding-bottom:var(--s-3);">Dados da Arena</div>
-      <div class="form-group">
-        <label for="arena-nome">Nome da arena *</label>
-        <input type="text" id="arena-nome" name="arena_nome" placeholder="Ex: Arena Beach Prime" required />
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s-4);">
-        <div class="form-group">
-          <label for="arena-cidade">Cidade *</label>
-          <input type="text" id="arena-cidade" name="arena_cidade" placeholder="São Paulo" required />
-        </div>
-        <div class="form-group">
-          <label for="arena-quadras">Nº de quadras *</label>
-          <select id="arena-quadras" name="arena_quadras" required>
-            <option value="">Selecione</option>
-            <option value="1">1 quadra</option>
-            <option value="2">2 quadras</option>
-            <option value="3">3 quadras</option>
-            <option value="4-6">4 a 6 quadras</option>
-            <option value="7-10">7 a 10 quadras</option>
-            <option value="10+">Mais de 10</option>
-          </select>
-        </div>
-      </div>
-
-      <!-- Responsible -->
-      <div style="font-size:13px;font-weight:600;color:var(--charcoal);margin:var(--s-5) 0 var(--s-4);border-bottom:1px solid var(--border-warm);padding-bottom:var(--s-3);">Responsável</div>
-      <div class="form-group">
-        <label for="resp-nome">Nome completo *</label>
-        <input type="text" id="resp-nome" name="resp_nome" placeholder="Seu nome" required />
-      </div>
-      <div class="form-group">
-        <label for="resp-email">E-mail *</label>
-        <input type="email" id="resp-email" name="resp_email" placeholder="seu@email.com" autocomplete="email" required />
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s-4);">
-        <div class="form-group">
-          <label for="resp-telefone">Telefone *</label>
-          <input type="tel" id="resp-telefone" name="resp_telefone" placeholder="(11) 99999-9999" required />
-        </div>
-        <div class="form-group">
-          <label for="resp-senha">Senha *</label>
-          <input type="password" id="resp-senha" name="resp_senha" placeholder="Mínimo 8 caracteres" autocomplete="new-password" required minlength="8" />
-        </div>
-      </div>
-
-      <!-- Plan selection -->
-      <div style="font-size:13px;font-weight:600;color:var(--charcoal);margin:var(--s-5) 0 var(--s-4);border-bottom:1px solid var(--border-warm);padding-bottom:var(--s-3);">Plano</div>
-      <div class="plan-selector">
-        <label class="plan-option">
-          <input type="radio" name="plano" value="starter" />
-          <div class="plan-option-info">
-            <div class="plan-name">Starter</div>
-            <div class="plan-desc">Até 3 quadras — Reservas e Pagamentos</div>
-          </div>
-          <span class="plan-option-price">R$ 149/mês</span>
-        </label>
-        <label class="plan-option selected">
-          <input type="radio" name="plano" value="pro" checked />
-          <div class="plan-option-info">
-            <div class="plan-name">Pro ⭐</div>
-            <div class="plan-desc">Até 10 quadras — MVP completo + Gestão de Mensalistas</div>
-          </div>
-          <span class="plan-option-price">R$ 299/mês</span>
-        </label>
-        <label class="plan-option">
-          <input type="radio" name="plano" value="enterprise" />
-          <div class="plan-option-info">
-            <div class="plan-name">Enterprise</div>
-            <div class="plan-desc">Múltiplas unidades — API e integrações</div>
-          </div>
-          <span class="plan-option-price">Sob consulta</span>
-        </label>
-      </div>
-
-      <p style="font-size:12px;color:var(--muted);margin-bottom:var(--s-5);">
-        Ao criar a conta, você concorda com os <a href="#" style="color:var(--charcoal)">Termos de Uso</a> e a <a href="#" style="color:var(--charcoal)">Política de Privacidade</a>. Seus dados são protegidos conforme a LGPD.
-      </p>
-
-      <div id="cadastro-error" role="alert" style="display:none;background:#fef2f2;color:#991b1b;font-size:13px;padding:10px 14px;border-radius:var(--r-md);margin-bottom:var(--s-4);border:1px solid rgba(153,27,27,0.2);">
-        Verifique os campos e tente novamente.
-      </div>
-
-      <button type="submit" class="btn btn-dark btn-full btn-lg" id="btn-criar-conta">
-        Criar conta e começar grátis
-      </button>
-    </form>
-
-    <p class="auth-footer-text" style="margin-top:var(--s-5);">
-      Já tem uma conta? <a href="login.html">Entrar</a>
-    </p>
-  </div>
-</div>
-
-<script>
-  /* Plan option visual toggle */
-  document.querySelectorAll('.plan-option input[type=radio]').forEach(radio => {
-    radio.addEventListener('change', () => {
-      document.querySelectorAll('.plan-option').forEach(opt => opt.classList.remove('selected'));
-      radio.closest('.plan-option').classList.add('selected');
+  <script>
+    /* Clear error styling on input */
+    document.querySelectorAll('.field-input').forEach(input => {
+      input.addEventListener('input', () => {
+        input.classList.remove('error');
+        const err = document.getElementById('cadastro-error');
+        if (err) err.style.display = 'none';
+      });
     });
-  });
 
-  /* Form submit — UI only, autenticação real via backend API */
-  document.getElementById('form-cadastro-arena').addEventListener('submit', e => {
-    e.preventDefault();
-    const btn = document.getElementById('btn-criar-conta');
-    btn.textContent = 'Criando sua conta...';
-    btn.disabled = true;
-    /* NOTA SEGURANÇA: os dados devem ser enviados via POST HTTPS para o endpoint
-       /api/auth/arena/register no backend. Aqui apenas simulamos a navegação. */
-    setTimeout(() => { window.location.href = 'index.html'; }, 1000);
-  });
-</script>
+
+
+    /* Máscara de Telefone: (11) 99999-9999 */
+    const telefoneInput = document.getElementById('resp-telefone');
+    if (telefoneInput) {
+      telefoneInput.addEventListener('input', function (e) {
+        let x = e.target.value.replace(/\D/g, '').match(/(\d{0,2})(\d{0,5})(\d{0,4})/);
+        if (!x) return;
+        e.target.value = !x[2] ? x[1] : '(' + x[1] + ') ' + x[2] + (x[3] ? '-' + x[3] : '');
+      });
+    }
+
+    /* Plan option visual toggle */
+    document.querySelectorAll('.plan-option input[type=radio]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        document.querySelectorAll('.plan-option').forEach(opt => opt.classList.remove('selected'));
+        radio.closest('.plan-option').classList.add('selected');
+      });
+    });
+
+    /* Form submit — Integração com a API de Auth */
+    document.getElementById('form-cadastro-arena').addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn = document.getElementById('btn-criar-conta');
+      const errorDiv = document.getElementById('cadastro-error');
+      errorDiv.style.display = 'none';
+
+      const inputs = [
+        document.getElementById('arena-nome'),
+        document.getElementById('arena-cidade'),
+        document.getElementById('arena-quadras'),
+        document.getElementById('resp-nome'),
+        document.getElementById('resp-email'),
+        document.getElementById('resp-telefone'),
+        document.getElementById('resp-senha')
+      ];
+
+      let hasError = false;
+      inputs.forEach(input => {
+        if (!input.value.trim()) {
+          input.classList.add('error');
+          hasError = true;
+        }
+      });
+
+      if (hasError) {
+        errorDiv.textContent = 'Preencha todos os campos obrigatórios.';
+        errorDiv.style.display = 'block';
+        const formElement = document.getElementById('form-cadastro-arena');
+        formElement.classList.add('shake-animation');
+        setTimeout(() => formElement.classList.remove('shake-animation'), 500);
+        return;
+      }
+
+      // Coleta dos dados do formulário
+      const arena_nome = inputs[0].value;
+      const arena_cidade = inputs[1].value;
+      const arena_quadras = inputs[2].value;
+      const nome = inputs[3].value;
+      const email = inputs[4].value;
+      const telefone = inputs[5].value;
+      const senha = inputs[6].value;
+      const plano = document.querySelector('input[name="plano"]:checked').value;
+
+      btn.textContent = 'Criando sua conta...';
+      btn.disabled = true;
+
+      try {
+        // 1. Cadastra o novo usuário (Administrador) e a Arena
+        const response = await fetch('http://localhost:3000/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nome,
+            email,
+            senha,
+            perfil: 'Administrador',
+            arena_nome,
+            telefone,
+            /* A API atual não salva cidade, quadras e plano no banco ainda, 
+               mas os dados estão prontos para envio. */
+            arena_cidade,
+            arena_quadras,
+            plano
+          })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          // 2. Se o cadastro for ok, já fazemos o Auto-login
+          const loginResponse = await fetch('http://localhost:3000/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, senha })
+          });
+
+          if (loginResponse.ok) {
+            const loginData = await loginResponse.json();
+            localStorage.setItem('token', loginData.token);
+            localStorage.setItem('usuario', JSON.stringify(loginData.usuario));
+            window.location.href = 'dashboard.html';
+          } else {
+            // Se o auto-login falhar por algum motivo, manda pro login manual
+            window.location.href = 'login.html';
+          }
+        } else {
+          errorDiv.textContent = data.error || 'Erro ao criar conta. Verifique os dados.';
+          errorDiv.style.display = 'block';
+          const formElement = document.getElementById('form-cadastro-arena');
+          formElement.classList.add('shake-animation');
+          setTimeout(() => formElement.classList.remove('shake-animation'), 500);
+          btn.textContent = 'Criar conta e começar grátis';
+          btn.disabled = false;
+        }
+      } catch (error) {
+        console.error(error);
+        errorDiv.textContent = 'Erro de conexão com o servidor.';
+        errorDiv.style.display = 'block';
+        btn.textContent = 'Criar conta e começar grátis';
+        btn.disabled = false;
+      }
+    });
+  </script>
 </body>
+
 </html>

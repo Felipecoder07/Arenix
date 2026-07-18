@@ -7,18 +7,21 @@
 
 :root {
   /* Colors */
-  --cream:        #f7f4ed;
-  --charcoal:     #1c1c1c;
-  --off-white:    #fcfbf8;
-  --muted:        #5f5f5d;
-  --border-warm:  #eceae4;
-  --border-active: rgba(28, 28, 28, 0.4);
+  --cream:        #F5F1EA;
+  --charcoal:     #1C1A18;
+  --charcoal-soft: #2A2724;
+  --off-white:    #FCFBF8;
+  --muted:        #8A847E;
+  --border-warm:  #E5DFD5;
+  --border-active: #C9BFB0;
+  --success:      #3F6B52;
+  --error:        #9B3636;
 
   /* Opacity tones */
-  --charcoal-83:  rgba(28,28,28,0.83);
-  --charcoal-82:  rgba(28,28,28,0.82);
-  --charcoal-04:  rgba(28,28,28,0.04);
-  --charcoal-03:  rgba(28,28,28,0.03);
+  --charcoal-83:  rgba(28,26,24,0.83);
+  --charcoal-82:  rgba(28,26,24,0.82);
+  --charcoal-04:  rgba(28,26,24,0.04);
+  --charcoal-03:  rgba(28,26,24,0.03);
 
   /* Shadows */
   --shadow-btn-dark:
@@ -750,6 +753,7 @@ footer {
   color: var(--charcoal);
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
+  resize: none;
 }
 .form-group input:focus,
 .form-group select:focus,

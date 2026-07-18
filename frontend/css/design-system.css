@@ -192,6 +192,7 @@ input, select, textarea {
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
   width: 100%;
+  resize: none;
 }
 input::placeholder, textarea::placeholder { color: var(--muted); }
 input:focus, select:focus, textarea:focus {

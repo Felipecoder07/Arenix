@@ -25,4 +25,11 @@ const requireRole = (roles) => {
   };
 };
 
-module.exports = { verifyToken, requireRole };
+const verifySuperAdmin = (req, res, next) => {
+  if (!req.user || req.user.perfil !== 'SuperAdmin') {
+    return res.status(403).json({ error: 'Acesso negado. Apenas o Super Administrador pode realizar esta ação.' });
+  }
+  next();
+};
+
+module.exports = { verifyToken, requireRole, verifySuperAdmin };

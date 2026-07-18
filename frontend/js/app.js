@@ -30,7 +30,7 @@ sidebarOverlay?.addEventListener('click', closeSidebar);
 
 /* ---------- Highlight active nav item ---------- */
 (function highlightNav() {
-  const path = window.location.pathname.split('/').pop() || 'index.html';
+  const path = window.location.pathname.split('/').pop() || 'dashboard.html';
   document.querySelectorAll('.nav-item').forEach(link => {
     const href = link.getAttribute('href');
     if (href === path) link.classList.add('active');

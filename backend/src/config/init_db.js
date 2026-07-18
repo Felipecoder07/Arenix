@@ -15,6 +15,7 @@ const initDb = () => {
         notif_cancelamento_email INTEGER DEFAULT 1,
         notif_pagamento_email INTEGER DEFAULT 1,
         alerta_pagamento_minutos INTEGER DEFAULT 30,
+        status INTEGER DEFAULT 1,
         criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -28,7 +29,7 @@ const initDb = () => {
         nome TEXT NOT NULL,
         email TEXT UNIQUE NOT NULL,
         senha_hash TEXT NOT NULL,
-        perfil TEXT CHECK(perfil IN ('Administrador', 'Gerente', 'Recepcionista', 'Cliente')) NOT NULL,
+        perfil TEXT CHECK(perfil IN ('Administrador', 'Gerente', 'Recepcionista', 'Cliente', 'SuperAdmin')) NOT NULL,
         ativo INTEGER DEFAULT 1,
         criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (tenant_id) REFERENCES Arenas(id),
@@ -142,6 +143,72 @@ const initDb = () => {
         FOREIGN KEY (tenant_id) REFERENCES Arenas (id)
       )
     `);
+
+    // --- MÓDULO SAAS (BILLING) ---
+
+    // Planos do SaaS
+    db.run(`
+      CREATE TABLE IF NOT EXISTS PlanosSaaS (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        max_quadras INTEGER NOT NULL,
+        max_usuarios INTEGER NOT NULL,
+        valor_mensal REAL NOT NULL,
+        criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // População Inicial de Planos Default
+    db.get('SELECT COUNT(*) as count FROM PlanosSaaS', (err, row) => {
+      if (row && row.count === 0) {
+        db.run("INSERT INTO PlanosSaaS (nome, max_quadras, max_usuarios, valor_mensal) VALUES ('Basic', 2, 3, 99.90)");
+        db.run("INSERT INTO PlanosSaaS (nome, max_quadras, max_usuarios, valor_mensal) VALUES ('Pro', 5, 10, 199.90)");
+        db.run("INSERT INTO PlanosSaaS (nome, max_quadras, max_usuarios, valor_mensal) VALUES ('Enterprise', 999, 999, 499.90)");
+      }
+    });
+
+    // Faturas Mensais do SaaS
+    db.run(`
+      CREATE TABLE IF NOT EXISTS FaturasSaaS (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id INTEGER NOT NULL,
+        plano_id INTEGER NOT NULL,
+        valor REAL NOT NULL,
+        data_vencimento DATE NOT NULL,
+        data_pagamento DATE,
+        status TEXT DEFAULT 'Pendente', -- Pendente, Paga, Atrasada
+        registrado_por INTEGER,
+        criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES Arenas (id),
+        FOREIGN KEY (plano_id) REFERENCES PlanosSaaS (id),
+        FOREIGN KEY (registrado_por) REFERENCES Usuarios (id)
+      )
+    `);
+
+    // Configurações Globais do SaaS
+    db.run(`
+      CREATE TABLE IF NOT EXISTS ConfiguracoesSaaS (
+        chave TEXT PRIMARY KEY,
+        valor TEXT NOT NULL,
+        atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Configuração Default
+    db.get("SELECT COUNT(*) as count FROM ConfiguracoesSaaS WHERE chave = 'dias_tolerancia_bloqueio'", (err, row) => {
+      if (row && row.count === 0) {
+        db.run("INSERT INTO ConfiguracoesSaaS (chave, valor) VALUES ('dias_tolerancia_bloqueio', '5')");
+      }
+    });
+
+    // Migrações em Arenas (Tratando erro caso colunas já existam)
+    db.run("ALTER TABLE Arenas ADD COLUMN plano_id INTEGER REFERENCES PlanosSaaS(id)", (err) => { /* ignora se já existir */ });
+    db.run("ALTER TABLE Arenas ADD COLUMN dia_vencimento INTEGER DEFAULT 10", (err) => {
+      // Se não deu erro ao adicionar a coluna (foi adicionada agora), seta o plano 1 para todos
+      if (!err) {
+        db.run("UPDATE Arenas SET plano_id = 1 WHERE plano_id IS NULL");
+      }
+    });
     
     console.log('Tabelas base criadas com sucesso!');
   });

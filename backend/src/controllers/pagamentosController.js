@@ -5,7 +5,7 @@ const logAuditEvent = require('../utils/auditLogger');
 const atualizarStatusReserva = async (reserva_id, tenant_id) => {
   const reserva = await db.getAsync('SELECT valor_total FROM Reservas WHERE id = ? AND tenant_id = ?', [reserva_id, tenant_id]);
   const resultPagamentos = await db.getAsync('SELECT SUM(valor) as total_pago FROM Pagamentos WHERE reserva_id = ?', [reserva_id]);
-  
+
   const totalPago = resultPagamentos.total_pago || 0;
   const saldoDevedor = reserva.valor_total - totalPago;
 
@@ -25,6 +25,18 @@ const registrarPagamento = async (req, res) => {
 
     if (valor <= 0) return res.status(400).json({ error: 'O valor deve ser maior que zero.' });
 
+    // Validar se o valor excede o saldo devedor
+    const reserva = await db.getAsync('SELECT valor_total FROM Reservas WHERE id = ? AND tenant_id = ?', [reserva_id, req.user.tenant_id]);
+    if (!reserva) return res.status(404).json({ error: 'Reserva não encontrada.' });
+    
+    const resultPagamentos = await db.getAsync('SELECT SUM(valor) as total_pago FROM Pagamentos WHERE reserva_id = ?', [reserva_id]);
+    const totalPago = resultPagamentos.total_pago || 0;
+    const saldoAtual = reserva.valor_total - totalPago;
+
+    if (valor > saldoAtual) {
+      return res.status(400).json({ error: `O valor (R$ ${valor.toFixed(2)}) não pode ser maior que o saldo devedor (R$ ${saldoAtual.toFixed(2)}).` });
+    }
+
     // Salvar pagamento no histórico
     const insert = await db.runAsync(
       'INSERT INTO Pagamentos (reserva_id, valor, metodo, registrado_por) VALUES (?, ?, ?, ?)',
@@ -36,8 +48,8 @@ const registrarPagamento = async (req, res) => {
 
     logAuditEvent(usuario_id, 'Pagamento Registrado', `Reserva: ${reserva_id}, Valor: ${valor}, Método: ${metodo}`, ip);
 
-    res.status(201).json({ 
-      message: 'Pagamento registrado com sucesso.', 
+    res.status(201).json({
+      message: 'Pagamento registrado com sucesso.',
       pagamento_id: insert.lastID,
       saldo_devedor: saldoDevedor,
       status_pagamento: novoStatus
@@ -71,10 +83,10 @@ const aplicarDesconto = async (req, res) => {
 
     logAuditEvent(usuario.id, 'Desconto Aplicado', `Reserva: ${reserva_id}, Desconto: ${desconto_percentual}%`, ip);
 
-    res.json({ 
-      message: 'Desconto aplicado com sucesso.', 
-      novo_valor_total: novoValorTotal, 
-      saldo_devedor: saldoDevedor 
+    res.json({
+      message: 'Desconto aplicado com sucesso.',
+      novo_valor_total: novoValorTotal,
+      saldo_devedor: saldoDevedor
     });
   } catch (error) {
     console.error(error);
@@ -108,10 +120,10 @@ const registrarEstorno = async (req, res) => {
 
     logAuditEvent(usuario.id, 'Estorno Realizado', `Pagamento Original: ${pagamento_id}, Valor: ${Math.abs(valorEstorno)}`, ip);
 
-    res.json({ 
-      message: 'Estorno realizado com sucesso.', 
-      saldo_devedor: saldoDevedor, 
-      status_pagamento: novoStatus 
+    res.json({
+      message: 'Estorno realizado com sucesso.',
+      saldo_devedor: saldoDevedor,
+      status_pagamento: novoStatus
     });
   } catch (error) {
     console.error(error);
@@ -198,7 +210,7 @@ const listarReservasPagamentos = async (req, res) => {
     } else if (status === 'inadimplentes') {
       // reservas cujo horário já passou e ainda não foram pagas
       const hoje = new Date().toISOString().split('T')[0];
-    const tenant_id = req.user.tenant_id;
+      const tenant_id = req.user.tenant_id;
       const hora = new Date().toTimeString().substring(0, 5);
       where += ` AND r.status_pagamento != 'Pago'
                  AND (r.data_reserva < ? OR (r.data_reserva = ? AND r.hora_fim < ?))`;

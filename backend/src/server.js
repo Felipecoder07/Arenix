@@ -6,6 +6,9 @@ const PORT = process.env.PORT || 3000;
 // Inicializa o banco de dados (Criação de tabelas)
 initDb();
 
+const { startSaaSCron } = require('./jobs/cronSaaS');
+startSaaSCron();
+
 const authRoutes = require('./routes/authRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const quadrasRoutes = require('./routes/quadrasRoutes');

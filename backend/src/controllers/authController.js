@@ -16,7 +16,7 @@ const login = (req, res) => {
   }
 
   db.get(
-    `SELECT u.*, a.nome as arena_nome 
+    `SELECT u.*, a.nome as arena_nome, a.status as arena_status
      FROM Usuarios u 
      LEFT JOIN Arenas a ON u.tenant_id = a.id 
      WHERE u.email = ?`, 
@@ -36,6 +36,11 @@ const login = (req, res) => {
     if (!senhaValida) {
       logAuditEvent(user.id, 'Tentativa de login falha', `E-mail tentado: ${email}, Motivo: Senha inválida`, ip);
       return res.status(401).json({ error: 'E-mail ou senha inválidos.' });
+    }
+
+    if (user.perfil !== 'SuperAdmin' && user.arena_status <= 0) {
+      logAuditEvent(user.id, 'Tentativa de login falha', `Motivo: Arena bloqueada ou excluída`, ip);
+      return res.status(403).json({ error: 'Sua arena está bloqueada pelo administrador do sistema. Entre em contato com o suporte.' });
     }
 
     // Login bem-sucedido
@@ -75,7 +80,7 @@ const logout = (req, res) => {
 };
 
 const register = async (req, res) => {
-  const { nome, email, senha, perfil } = req.body;
+  const { nome, email, senha, perfil, arena_nome, telefone, arena_cidade } = req.body;
   const ip = req.headers['x-forwarded-for'] || req.ip;
 
   if (!nome || !email || !senha || !perfil) {
@@ -104,8 +109,8 @@ const register = async (req, res) => {
         });
       });
     } else if (perfil === 'Administrador') {
-      const arenaNome = `Arena de ${nome}`;
-      db.run('INSERT INTO Arenas (nome) VALUES (?)', [arenaNome], function(err) {
+      const arenaNomeFinal = arena_nome || `Arena de ${nome}`;
+      db.run('INSERT INTO Arenas (nome, telefone, endereco) VALUES (?, ?, ?)', [arenaNomeFinal, telefone || null, arena_cidade || null], function(err) {
         if (err) return res.status(500).json({ error: 'Erro ao criar arena.' });
         const tenant_id = this.lastID;
         db.run('INSERT INTO Usuarios (nome, email, senha_hash, perfil, tenant_id) VALUES (?, ?, ?, ?, ?)', 
@@ -114,7 +119,7 @@ const register = async (req, res) => {
               if (err.message.includes('UNIQUE')) return res.status(400).json({ error: 'E-mail já cadastrado.' });
               return res.status(500).json({ error: 'Erro ao criar usuário administrador.' });
             }
-            logAuditEvent(this.lastID, 'Cadastro Administrador', `E-mail: ${email}, Arena: ${arenaNome}`, ip);
+            logAuditEvent(this.lastID, 'Cadastro Administrador', `E-mail: ${email}, Arena: ${arenaNomeFinal}`, ip);
             res.status(201).json({ message: 'Cadastro de arena realizado com sucesso!' });
         });
       });

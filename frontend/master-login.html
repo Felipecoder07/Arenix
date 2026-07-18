@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CourtManager — Master Access</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/design-system.css" />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    /* Dark Theme Override for Master Login */
+    body {
+      background: #0f172a !important;
+    }
+    .login-page {
+      background: #0f172a !important;
+    }
+    .login-card {
+      background: #1e293b !important;
+      border-color: #334155 !important;
+    }
+    .login-title {
+      color: #f1f5f9 !important;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-size: 20px;
+    }
+    .login-sub {
+      color: #94a3b8 !important;
+    }
+    .login-footer-text {
+      color: #475569 !important;
+    }
+    .form-group label {
+      color: #cbd5e1 !important;
+    }
+    input {
+      background: #0f172a !important;
+      color: #f8fafc !important;
+      border-color: #334155 !important;
+    }
+    input::placeholder {
+      color: #475569 !important;
+    }
+    input:focus {
+      border-color: #3b82f6 !important;
+      box-shadow: 0 0 0 2px rgba(59,130,246,0.15) !important;
+    }
+    .login-logo .brand-icon {
+      background: #3b82f6 !important;
+      color: #fff !important;
+    }
+    .login-logo .brand-name {
+      color: #f1f5f9 !important;
+    }
+    #toggle-password {
+      color: #94a3b8 !important;
+    }
+  </style>
+</head>
+<body>
+
+<div class="login-page">
+  <div class="login-box">
+
+    <div class="login-logo">
+      <div class="brand-icon">CM</div>
+      <span class="brand-name">CourtManager</span>
+    </div>
+
+    <div class="login-card" style="box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+      <h1 class="login-title">SaaS Master Login</h1>
+      <p class="login-sub">Área restrita à administração global do sistema.</p>
+
+      <form id="master-form" autocomplete="off" novalidate>
+        <div class="form-group">
+          <label for="email">Admin ID (E-mail)</label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            placeholder="master@courtmanager.com"
+            autocomplete="username"
+            required
+          />
+        </div>
+        <div class="form-group">
+          <label for="password">Security Key (Senha)</label>
+          <div style="position:relative">
+            <input
+              type="password"
+              id="password"
+              name="password"
+              placeholder="••••••••"
+              autocomplete="current-password"
+              required
+            />
+            <button
+              type="button"
+              id="toggle-password"
+              aria-label="Mostrar senha"
+              style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;"
+            >mostrar</button>
+          </div>
+        </div>
+
+        <div id="login-error" role="alert" style="display:none;background:rgba(239, 68, 68, 0.2);color:#fca5a5;font-size:13px;padding:10px 14px;border-radius:var(--r-md);margin-bottom:var(--s-4);border:1px solid #ef4444;"></div>
+
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <button type="submit" class="btn-primary btn-full" id="btn-login">Authenticate</button>
+        </div>
+      </form>
+    </div>
+
+    <p class="login-footer-text" style="color: #64748b;">
+      CourtManager &copy; 2026 — Master Access
+    </p>
+  </div>
+</div>
+
+<script>
+  const form = document.getElementById('master-form');
+  const errorDiv = document.getElementById('login-error');
+  const toggleBtn = document.getElementById('toggle-password');
+  const passwordInput = document.getElementById('password');
+
+  toggleBtn.addEventListener('click', () => {
+    const isHidden = passwordInput.type === 'password';
+    passwordInput.type = isHidden ? 'text' : 'password';
+    toggleBtn.textContent = isHidden ? 'ocultar' : 'mostrar';
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorDiv.style.display = 'none';
+
+    const email = document.getElementById('email').value;
+    const senha = document.getElementById('password').value;
+    const btn = document.getElementById('btn-login');
+
+    btn.textContent = 'Authenticating...';
+    btn.disabled = true;
+
+    try {
+      const res = await fetch('http://localhost:3000/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, senha })
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        errorDiv.textContent = data.error || 'Access Denied';
+        errorDiv.style.display = 'block';
+        
+        // Efeito de erro visual (shake)
+        form.classList.add('shake-animation');
+        setTimeout(() => form.classList.remove('shake-animation'), 500);
+
+        btn.textContent = 'Authenticate';
+        btn.disabled = false;
+        return;
+      }
+
+      if (data.usuario.perfil !== 'SuperAdmin') {
+        errorDiv.textContent = 'Unauthorized Profile';
+        errorDiv.style.display = 'block';
+        
+        form.classList.add('shake-animation');
+        setTimeout(() => form.classList.remove('shake-animation'), 500);
+
+        btn.textContent = 'Authenticate';
+        btn.disabled = false;
+        return;
+      }
+
+      localStorage.setItem('courtmanager_token', data.token);
+      localStorage.setItem('courtmanager_user', JSON.stringify(data.usuario));
+      
+      const userData = btoa(encodeURIComponent(JSON.stringify(data.usuario)));
+      window.location.href = `http://localhost:5173/?token=${data.token}&user=${userData}`;
+    } catch (err) {
+      errorDiv.textContent = 'Connection Error';
+      errorDiv.style.display = 'block';
+      btn.textContent = 'Authenticate';
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

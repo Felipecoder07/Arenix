@@ -53,7 +53,7 @@
     <button class="sidebar-close" id="sidebarClose" aria-label="Fechar menu">✕</button>
   </div>
   <nav class="sidebar-nav" aria-label="Navegação principal">
-    <a href="index.html"         class="nav-item"><span class="nav-icon">⊡</span><span>Dashboard</span></a>
+    <a href="dashboard.html"         class="nav-item"><span class="nav-icon">⊡</span><span>Dashboard</span></a>
     <a href="reservas.html"      class="nav-item"><span class="nav-icon">⊞</span><span>Reservas</span></a>
     <a href="pagamentos.html"    class="nav-item active"><span class="nav-icon">◈</span><span>Pagamentos</span></a>
     <a href="clientes.html"      class="nav-item"><span class="nav-icon">◉</span><span>Clientes</span></a>
@@ -214,7 +214,7 @@
     <div id="modal-estorno-pags-lista" style="margin-bottom:var(--s-4);"></div>
     <div class="form-group">
       <label for="estp-motivo">Justificativa do Estorno *</label>
-      <textarea id="estp-motivo" rows="2" placeholder="Obrigatório para auditoria" required></textarea>
+      <textarea id="estp-motivo" rows="2" placeholder="Obrigatório para auditoria" maxlength="100" required></textarea>
     </div>
     <div class="modal-footer">
       <button class="btn-ghost" onclick="fecharModalEstorno()">Cancelar</button>

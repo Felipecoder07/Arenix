@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,166 +9,667 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/design-system.css" />
-  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/landing.css" />
+  <style>
+    /* ================================================
+       LAYOUT
+    ================================================ */
+
+    :root {
+      --cream-soft: #FBF8F2;
+    }
+
+    .login-page {
+      height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      overflow: hidden;
+    }
+
+    /* ================================================
+       LEFT — Dark Panel
+    ================================================ */
+
+    .login-left {
+      background: var(--charcoal);
+      padding: 36px 44px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Subtle texture overlay */
+    .login-left::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 30% 50%, rgba(255, 255, 255, 0.03) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .login-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      position: relative;
+    }
+
+    .login-brand-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      background: rgba(252, 251, 248, 0.12);
+      border: 1px solid rgba(252, 251, 248, 0.12);
+      color: var(--off-white);
+      display: grid;
+      place-items: center;
+    }
+
+    .login-brand-name {
+      color: var(--off-white);
+      font-weight: 600;
+      font-size: 17px;
+      letter-spacing: -0.4px;
+    }
+
+    /* Center pitch area */
+    .login-pitch {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      position: relative;
+    }
+
+    .login-pitch-title {
+      font-size: clamp(30px, 3.2vw, 44px);
+      font-weight: 600;
+      letter-spacing: -1.4px;
+      line-height: 1.1;
+      color: var(--off-white);
+      margin-bottom: 24px;
+    }
+
+    .login-pitch-title em {
+      font-style: normal;
+      color: rgba(252, 251, 248, 0.35);
+    }
+
+    .login-checks {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .login-check {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 14px;
+      color: rgba(252, 251, 248, 0.65);
+    }
+
+    .login-check-dot {
+      width: 20px;
+      height: 20px;
+      background: rgba(252, 251, 248, 0.08);
+      border: 1px solid rgba(252, 251, 248, 0.15);
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      color: rgba(252, 251, 248, 0.7);
+    }
+
+    /* Testimonial */
+    .login-testimonial {
+      border-top: 1px solid rgba(252, 251, 248, 0.1);
+      padding-top: 20px;
+      position: relative;
+    }
+
+    .login-testimonial-quote {
+      font-size: 13px;
+      color: rgba(252, 251, 248, 0.5);
+      line-height: 1.65;
+      margin-bottom: 10px;
+      font-style: italic;
+    }
+
+    .login-testimonial-author {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .login-testimonial-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(252, 251, 248, 0.12);
+      border: 1px solid rgba(252, 251, 248, 0.15);
+      display: grid;
+      place-items: center;
+      font-size: 11px;
+      color: rgba(252, 251, 248, 0.6);
+      font-weight: 600;
+    }
+
+    .login-testimonial-name {
+      font-size: 12px;
+      color: rgba(252, 251, 248, 0.38);
+    }
+
+    /* ================================================
+       RIGHT — Form Panel
+    ================================================ */
+
+    .login-right {
+      background: var(--cream-soft);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 32px;
+      overflow-y: auto;
+    }
+
+    .login-form-wrapper {
+      width: 100%;
+      max-width: 380px;
+    }
+
+    /* Header */
+    .login-form-header {
+      margin-bottom: 32px;
+    }
+
+    .login-form-title {
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -0.6px;
+      color: var(--charcoal);
+      margin-bottom: 6px;
+    }
+
+    .login-form-sub {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    /* Fields */
+    .login-field {
+      margin-bottom: 16px;
+    }
+
+    .login-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--charcoal);
+      margin-bottom: 6px;
+      letter-spacing: 0.1px;
+    }
+
+    .login-input {
+      width: 100%;
+      font-family: var(--font);
+      font-size: 14px;
+      padding: 11px 14px;
+      background: #fff;
+      border: 1px solid var(--border-warm);
+      border-radius: 8px;
+      color: var(--charcoal);
+      outline: none;
+      transition: border-color 150ms ease, box-shadow 150ms ease;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .login-input::placeholder {
+      color: rgba(138, 132, 126, 0.7);
+    }
+
+    .login-input:hover {
+      border-color: var(--border-active);
+    }
+
+    .login-input:focus {
+      border-color: var(--charcoal);
+      box-shadow: 0 0 0 3px rgba(28, 26, 24, 0.07);
+    }
+
+    .login-input.error {
+      border-color: var(--error);
+      background: #fdf3f3;
+    }
+
+    /* Password row */
+    .login-password-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+
+    .login-forgot {
+      font-size: 12px;
+      color: var(--muted);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+
+    .login-forgot:hover {
+      color: var(--charcoal);
+    }
+
+    .login-password-wrapper {
+      position: relative;
+    }
+
+    .login-password-wrapper .login-input {
+      padding-right: 60px;
+    }
+
+    .login-toggle-btn {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-family: var(--font);
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted);
+      padding: 0;
+      transition: color 0.15s;
+    }
+
+    .login-toggle-btn:hover {
+      color: var(--charcoal);
+    }
+
+    /* Error alert */
+    .login-error-alert {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      background: #FDF3F3;
+      color: var(--error);
+      font-size: 13px;
+      padding: 11px 14px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      border: 1px solid rgba(155, 54, 54, 0.18);
+    }
+
+    /* Submit button */
+    .login-submit-btn {
+      width: 100%;
+      font-family: var(--font);
+      font-size: 14px;
+      font-weight: 500;
+      padding: 12px 16px;
+      background: var(--charcoal);
+      color: var(--off-white);
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: var(--shadow-btn-dark);
+      transition: opacity 0.15s;
+      -webkit-font-smoothing: antialiased;
+      margin-top: 4px;
+    }
+
+    .login-submit-btn:hover {
+      opacity: 0.88;
+    }
+
+    .login-submit-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Divider */
+    .login-divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 20px 0;
+    }
+
+    .login-divider-line {
+      flex: 1;
+      height: 1px;
+      background: var(--border-warm);
+    }
+
+    .login-divider-text {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 500;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    /* Footer link */
+    .login-footer {
+      text-align: center;
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 28px;
+    }
+
+    .login-footer a {
+      color: var(--charcoal);
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .login-footer a:hover {
+      text-decoration: underline;
+    }
+
+    /* ================================================
+       ANIMATIONS
+    ================================================ */
+
+    @keyframes shake {
+
+      0%,
+      100% {
+        transform: translateX(0);
+      }
+
+      15%,
+      45%,
+      75% {
+        transform: translateX(-5px);
+      }
+
+      30%,
+      60%,
+      90% {
+        transform: translateX(5px);
+      }
+    }
+
+    .shake {
+      animation: shake 0.45s cubic-bezier(.36, .07, .19, .97) both;
+    }
+
+    /* ================================================
+       RESPONSIVE
+    ================================================ */
+
+    @media (max-width: 860px) {
+      .login-page {
+        grid-template-columns: 1fr;
+        height: auto;
+        min-height: 100vh;
+        overflow-y: auto;
+      }
+
+      .login-left {
+        display: none;
+      }
+
+      .login-right {
+        padding: 48px 24px;
+        align-items: flex-start;
+        padding-top: 64px;
+      }
+
+      .login-form-wrapper {
+        max-width: 100%;
+      }
+    }
+  </style>
 </head>
+
 <body>
 
-<div class="login-page">
-  <div class="login-box">
+  <div class="login-page">
 
-    <div class="login-logo">
-      <div class="brand-icon">CM</div>
-      <span class="brand-name">CourtManager</span>
-    </div>
+    <!-- ================================================
+       LEFT — Dark Pitch Panel
+  ================================================ -->
+    <div class="login-left">
 
-    <div class="login-card">
-      <h1 class="login-title">Portal do Gestor</h1>
-      <p class="login-sub">Acesso exclusivo para a gestão da arena.</p>
-
-      
-
-      <form id="login-form" autocomplete="off" novalidate>
-        <div class="form-group">
-          <label for="email">E-mail</label>
-          <input
-            type="email"
-            id="email"
-            name="email"
-            placeholder="seu@email.com"
-            autocomplete="username"
-            required
-          />
+      <a href="index.html" class="login-brand">
+        <div class="login-brand-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+            <line x1="12" y1="3" x2="12" y2="21"></line>
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+          </svg>
         </div>
-        <div class="form-group">
-          <label for="password">Senha</label>
-          <div style="position:relative">
-            <input
-              type="password"
-              id="password"
-              name="password"
-              placeholder="••••••••"
-              autocomplete="current-password"
-              required
-            />
-            <button
-              type="button"
-              id="toggle-password"
-              aria-label="Mostrar senha"
-              style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;"
-            >mostrar</button>
+        <span class="login-brand-name">CourtManager</span>
+      </a>
+
+      <div class="login-pitch">
+        <h1 class="login-pitch-title">
+          Bem-vindo<br />de volta <em>ao<br />seu portal</em>
+        </h1>
+
+        <div class="login-checks">
+          <div class="login-check">
+            <div class="login-check-dot">
+              <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </div>
+            Reservas em tempo real
+          </div>
+          <div class="login-check">
+            <div class="login-check-dot">
+              <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </div>
+            Controle de caixa e pagamentos
+          </div>
+          <div class="login-check">
+            <div class="login-check-dot">
+              <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </div>
+            Gestão de clientes e mensalistas
           </div>
         </div>
+      </div>
 
-        <div style="text-align: right; margin-bottom: 24px;">
-          <a href="esqueci-senha.html" style="font-size:13px;color:var(--muted);text-decoration:underline;">Esqueci minha senha</a>
+      <div class="login-testimonial">
+        <p class="login-testimonial-quote">
+          "O sistema mudou a forma como lidamos com os agendamentos. Muito mais paz no dia a dia da arena."
+        </p>
+        <div class="login-testimonial-author">
+          <div class="login-testimonial-avatar">RD</div>
+          <span class="login-testimonial-name">Rafael D. — Arena Sunset</span>
         </div>
+      </div>
 
-        <div id="login-error" role="alert" style="display:none;background:var(--danger-bg);color:var(--danger);font-size:13px;padding:10px 14px;border-radius:var(--r-md);margin-bottom:var(--s-4);border:1px solid rgba(155,34,38,0.2);">
-          E-mail ou senha incorretos.
-        </div>
-
-        <div style="display: flex; flex-direction: column; gap: 12px;">
-          <button type="submit" class="btn-primary btn-full" id="btn-login">Entrar</button>
-          
-          <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin: 8px 0;">
-            <div style="height: 1px; background: var(--border); flex: 1;"></div>
-            <span style="font-size: 12px; color: var(--muted); text-transform: uppercase; font-weight: 600;">Ou</span>
-            <div style="height: 1px; background: var(--border); flex: 1;"></div>
-          </div>
-          
-          <a href="cadastro.html" class="btn-full" style="display: inline-block; text-align: center; text-decoration: none; padding: 10px 16px; background: var(--bg-body); border: 1px solid var(--border); color: var(--charcoal); font-weight: 500; border-radius: var(--r-md); transition: all 0.2s;">
-            Cadastrar Nova Empresa
-          </a>
-        </div>
-      </form>
     </div>
 
-    <p class="login-footer-text">
-      CourtManager &copy; 2026 — Gestão de arenas esportivas
-    </p>
+    <!-- ================================================
+       RIGHT — Login Form
+  ================================================ -->
+    <div class="login-right">
+      <div class="login-form-wrapper">
+        <div style="text-align: right; margin-bottom: 16px;">
+          <a href="index.html" style="font-size: 13px; color: var(--muted); text-decoration: none; font-weight: 500; transition: color 0.2s;" onmouseover="this.style.color='var(--charcoal)'" onmouseout="this.style.color='var(--muted)'">← Voltar ao início</a>
+        </div>
+
+        <div class="login-form-header">
+          <h2 class="login-form-title">Acesse sua conta</h2>
+          <p class="login-form-sub">Portal exclusivo para gestores de arena.</p>
+        </div>
+
+        <form id="login-form" novalidate onsubmit="return false;">
+
+          <div class="login-field">
+            <label for="email" class="login-label">E-mail</label>
+            <input type="email" id="email" name="email" class="login-input" placeholder="seu@email.com"
+              autocomplete="username" maxlength="255" />
+          </div>
+
+          <div class="login-field">
+            <div class="login-password-row">
+              <label for="password" class="login-label" style="margin-bottom:0">Senha</label>
+              <a href="esqueci-senha.html" class="login-forgot">Esqueci minha senha</a>
+            </div>
+            <div class="login-password-wrapper">
+              <input type="password" id="password" name="password" class="login-input" placeholder="••••••••"
+                autocomplete="current-password" />
+              <button type="button" id="toggle-password" class="login-toggle-btn" aria-label="Mostrar senha">
+                mostrar
+              </button>
+            </div>
+          </div>
+
+          <div id="login-error" class="login-error-alert" role="alert">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+              style="flex-shrink:0">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <span id="login-error-text">E-mail ou senha incorretos.</span>
+          </div>
+
+          <button type="button" class="login-submit-btn" id="btn-login">
+            Entrar
+          </button>
+
+        </form>
+
+        <div class="login-divider">
+          <div class="login-divider-line"></div>
+          <span class="login-divider-text">ou</span>
+          <div class="login-divider-line"></div>
+        </div>
+
+        <p class="login-footer">
+          Ainda não tem uma conta?
+          <a href="landing-cadastro.html">Cadastre sua arena</a>
+        </p>
+
+      </div>
+    </div>
+
   </div>
-</div>
 
-<script src="js/app.js"></script>
-<script>
-  /* Login form — UI only, sem lógica de autenticação real */
-  const form = document.getElementById('login-form');
-  const errorDiv = document.getElementById('login-error');
-  const toggleBtn = document.getElementById('toggle-password');
-  const passwordInput = document.getElementById('password');
+  <script src="js/app.js"></script>
+  <script>
 
-  toggleBtn.addEventListener('click', () => {
-    const isHidden = passwordInput.type === 'password';
-    passwordInput.type = isHidden ? 'text' : 'password';
-    toggleBtn.textContent = isHidden ? 'ocultar' : 'mostrar';
-  });
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    errorDiv.style.display = 'none';
-
-    const email = document.getElementById('email').value;
-    const senha = document.getElementById('password').value;
+    const form = document.getElementById('login-form');
+    const errorAlert = document.getElementById('login-error');
+    const errorText = document.getElementById('login-error-text');
     const btn = document.getElementById('btn-login');
 
-    btn.textContent = 'Entrando...';
-    btn.disabled = true;
-
-    try {
-      const response = await fetch('http://localhost:3000/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, senha })
+    /* ---- Limpa erro ao digitar ---- */
+    document.querySelectorAll('.login-input').forEach(input => {
+      input.addEventListener('input', () => {
+        input.classList.remove('error');
+        errorAlert.style.display = 'none';
       });
+    });
 
-      const data = await response.json();
+    /* ---- Toggle visibilidade da senha ---- */
+    const toggleBtn = document.getElementById('toggle-password');
+    const passwordInput = document.getElementById('password');
 
-      if (!response.ok) {
-        if (window.showToast) {
-          window.showToast(data.error || 'Erro ao fazer login.', 'error');
-        } else {
-          errorDiv.textContent = data.error || 'Erro ao fazer login.';
-          errorDiv.style.display = 'block';
-        }
-        
-        // Efeito de erro visual (shake)
-        form.classList.add('shake-animation');
-        setTimeout(() => form.classList.remove('shake-animation'), 500);
+    toggleBtn.addEventListener('click', () => {
+      const isHidden = passwordInput.type === 'password';
+      passwordInput.type = isHidden ? 'text' : 'password';
+      toggleBtn.textContent = isHidden ? 'ocultar' : 'mostrar';
+    });
 
-        btn.textContent = 'Entrar';
-        btn.disabled = false;
-        return;
-      }
-
-      // Login bem-sucedido: Salva token
-      localStorage.setItem('courtmanager_token', data.token);
-      localStorage.setItem('courtmanager_user', JSON.stringify(data.usuario));
-      if (data.usuario.arena_nome) {
-        localStorage.setItem('arena_nome', data.usuario.arena_nome);
-      }
-
-      // Permite apenas perfis de gestão
-      if (data.usuario.perfil === 'Cliente') {
-        errorDiv.textContent = 'Acesso negado. Esta página é exclusiva para a equipe de gestão da arena.';
-        errorDiv.style.display = 'block';
-        btn.textContent = 'Entrar';
-        btn.disabled = false;
-        // Remove os tokens que foram salvos indevidamente
-        localStorage.removeItem('courtmanager_token');
-        localStorage.removeItem('courtmanager_user');
-        return;
-      }
-
-      window.location.href = 'index.html';
-
-    } catch (error) {
-      errorDiv.textContent = 'Erro de conexão com o servidor.';
-      errorDiv.style.display = 'block';
-      btn.textContent = 'Entrar';
-      btn.disabled = false;
+    /* ---- Exibe mensagem de erro com shake ---- */
+    function showError(msg) {
+      errorText.textContent = msg;
+      errorAlert.style.display = 'flex';
+      form.classList.remove('shake');
+      void form.offsetWidth; /* force reflow */
+      form.classList.add('shake');
     }
-  });
-</script>
+
+    /* ---- Submit ---- */
+    btn.addEventListener('click', async () => {
+      errorAlert.style.display = 'none';
+
+      const emailInput = document.getElementById('email');
+      const senhaInput = document.getElementById('password');
+      const email = emailInput.value.trim();
+      const senha = senhaInput.value.trim();
+
+      /* Validação local */
+      let hasError = false;
+      if (!email) { emailInput.classList.add('error'); hasError = true; }
+      if (!senha) { senhaInput.classList.add('error'); hasError = true; }
+      if (hasError) { showError('Preencha todos os campos.'); return; }
+
+      btn.textContent = 'Entrando...';
+      btn.disabled = true;
+
+      try {
+        const response = await fetch('http://localhost:3000/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, senha })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          showError(data.error || 'E-mail ou senha incorretos.');
+          btn.textContent = 'Entrar';
+          btn.disabled = false;
+          return;
+        }
+
+        /* Bloqueia perfis não permitidos neste portal */
+        if (data.usuario.perfil === 'Cliente') {
+          showError('Acesso negado. Página exclusiva para a equipe de gestão.');
+          btn.textContent = 'Entrar';
+          btn.disabled = false;
+          return;
+        }
+
+        if (data.usuario.perfil === 'SuperAdmin') {
+          showError('Acesso Master não permitido por aqui.');
+          btn.textContent = 'Entrar';
+          btn.disabled = false;
+          return;
+        }
+
+        /* Salva sessão e redireciona */
+        localStorage.setItem('courtmanager_token', data.token);
+        localStorage.setItem('courtmanager_user', JSON.stringify(data.usuario));
+        if (data.usuario.arena_nome) {
+          localStorage.setItem('arena_nome', data.usuario.arena_nome);
+        }
+
+        window.location.href = 'dashboard.html';
+
+      } catch {
+        showError('Erro de conexão com o servidor.');
+        btn.textContent = 'Entrar';
+        btn.disabled = false;
+      }
+    });
+
+  </script>
 </body>
+
 </html>

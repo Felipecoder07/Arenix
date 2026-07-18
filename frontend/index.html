@@ -1,472 +1,559 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CourtManager — Dashboard</title>
-  <meta name="description" content="CourtManager: gerencie reservas, pagamentos e quadras da sua arena esportiva em tempo real." />
+  <title>CourtManager — Gestão de arenas esportivas</title>
+  <meta name="description"
+    content="Centralize reservas, pagamentos e gestão de quadras em uma única plataforma. Do agendamento ao recebimento, com visibilidade em tempo real." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/design-system.css" />
-  <link rel="stylesheet" href="css/style.css" />
-  <script src="js/auth-guard.js"></script>
+  <link rel="stylesheet" href="css/landing.css" />
 </head>
+
 <body>
 
-<!-- Sidebar -->
-<aside class="sidebar" id="sidebar">
-  <div class="sidebar-header">
-    <div class="brand">
-      <div class="brand-icon">CM</div>
-      <span class="brand-name">CourtManager</span>
+  <!-- ── NAV ── -->
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="index.html" class="nav-brand">
+        <div class="nav-brand-icon">CM</div>
+        <span class="nav-brand-name">CourtManager</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="#funcionalidades">Funcionalidades</a></li>
+        <li><a href="#precos">Preços</a></li>
+      </ul>
+      <div class="nav-ctas">
+        <a href="login.html" class="btn btn-ghost">Entrar como Arena</a>
+        <a href="landing-cadastro.html" class="btn btn-dark">Começar grátis</a>
+      </div>
     </div>
-    <button class="sidebar-close" id="sidebarClose" aria-label="Fechar menu">✕</button>
-  </div>
-
-  <nav class="sidebar-nav" aria-label="Navegação principal">
-    <a href="index.html" class="nav-item active" id="nav-dashboard">
-      <span class="nav-icon">⊡</span>
-      <span>Dashboard</span>
-    </a>
-    <a href="reservas.html" class="nav-item" id="nav-reservas">
-      <span class="nav-icon">⊞</span>
-      <span>Reservas</span>
-    </a>
-    <a href="pagamentos.html" class="nav-item" id="nav-pagamentos">
-      <span class="nav-icon">◈</span>
-      <span>Pagamentos</span>
-    </a>
-    <a href="clientes.html" class="nav-item" id="nav-clientes">
-      <span class="nav-icon">◉</span>
-      <span>Clientes</span>
-    </a>
-    <a href="relatorios.html" class="nav-item" id="nav-relatorios">
-      <span class="nav-icon">▤</span>
-      <span>Relatórios</span>
-    </a>
-    <a href="auditoria.html" class="nav-item" id="nav-auditoria">
-      <span class="nav-icon">◎</span>
-      <span>Auditoria</span>
-    </a>
-    <a href="configuracoes.html" class="nav-item" id="nav-config">
-      <span class="nav-icon">⊙</span>
-      <span>Configurações</span>
-    </a>
   </nav>
 
-  <div class="sidebar-footer">
-    <div class="user-card">
-      <div class="user-avatar" id="sidebar-avatar">...</div>
-      <div class="user-info">
-        <span class="user-name" id="sidebar-name">Carregando...</span>
-        <span class="user-role" id="sidebar-role">—</span>
+  <!-- ── HERO ── -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-badge">
+        🏐 Gestão completa de arenas esportivas
+      </div>
+      <h1 class="hero-title">
+        Sua arena organizada.<br />
+        <span>Do agendamento ao recebimento.</span>
+      </h1>
+      <p class="hero-sub">
+        Chega de planilha, WhatsApp e caixa manual. O CourtManager centraliza reservas, controle de pagamentos e
+        visibilidade financeira em um único lugar.
+      </p>
+      <div class="hero-ctas">
+        <a href="landing-cadastro.html" class="btn btn-dark btn-lg">Criar conta grátis — 14 dias</a>
+        <a href="#funcionalidades" class="btn btn-ghost btn-lg">Ver funcionalidades</a>
+      </div>
+      <p class="hero-note">Sem cartão de crédito. Cancele quando quiser.</p>
+
+      <!-- Mockup do sistema -->
+      <div class="hero-mockup">
+        <div class="mockup-bar">
+          <div class="mockup-dot"></div>
+          <div class="mockup-dot"></div>
+          <div class="mockup-dot"></div>
+        </div>
+        <div class="mockup-inner">
+          <div class="mockup-sidebar">
+            <div class="mockup-nav-item active">⊡ Dashboard</div>
+            <div class="mockup-nav-item">⊞ Reservas</div>
+            <div class="mockup-nav-item">◈ Pagamentos</div>
+            <div class="mockup-nav-item">◉ Clientes</div>
+            <div class="mockup-nav-item">▤ Relatórios</div>
+          </div>
+          <div class="mockup-content">
+            <div class="mockup-kpis">
+              <div class="mockup-kpi">
+                <div class="mockup-kpi-label">Faturamento Hoje</div>
+                <div class="mockup-kpi-value">R$ 1.840</div>
+              </div>
+              <div class="mockup-kpi">
+                <div class="mockup-kpi-label">Reservas Ativas</div>
+                <div class="mockup-kpi-value">11</div>
+              </div>
+              <div class="mockup-kpi">
+                <div class="mockup-kpi-label">Ocupação</div>
+                <div class="mockup-kpi-value">74%</div>
+              </div>
+            </div>
+            <div class="mockup-slots">
+              <div></div>
+              <div class="mockup-slot-h">Q1</div>
+              <div class="mockup-slot-h">Q2</div>
+              <div class="mockup-slot-h">Q3</div>
+              <div class="mockup-slot-h">Q4</div>
+
+              <div class="mockup-time">08:00</div>
+              <div class="mockup-slot ms-paid">Carlos M.</div>
+              <div class="mockup-slot ms-free">Livre</div>
+              <div class="mockup-slot ms-paid">Ana S.</div>
+              <div class="mockup-slot ms-blocked">Manutenção</div>
+
+              <div class="mockup-time">09:00</div>
+              <div class="mockup-slot ms-paid">Carlos M.</div>
+              <div class="mockup-slot ms-pending">Pedro L.</div>
+              <div class="mockup-slot ms-free">Livre</div>
+              <div class="mockup-slot ms-free">Livre</div>
+
+              <div class="mockup-time">10:00</div>
+              <div class="mockup-slot ms-free">Livre</div>
+              <div class="mockup-slot ms-pending">Pedro L.</div>
+              <div class="mockup-slot ms-free">Livre</div>
+              <div class="mockup-slot ms-free">Livre</div>
+
+              <div class="mockup-time">11:00</div>
+              <div class="mockup-slot ms-paid">João V.</div>
+              <div class="mockup-slot ms-free">Livre</div>
+              <div class="mockup-slot ms-paid">Maria C.</div>
+              <div class="mockup-slot ms-free">Livre</div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-    <a href="login.html" class="btn-logout" id="btn-logout">Sair</a>
+  </section>
+
+  <!-- ── SOCIAL PROOF ── -->
+  <div class="logos">
+    <div class="container">
+      <p class="logos-label">Já usado em arenas em todo o Brasil</p>
+      <div class="logos-list">
+        <span>Arena Carioca BT</span>
+        <span>Vôlei Prime SP</span>
+        <span>Padel North</span>
+        <span>BT Litoral</span>
+        <span>Arena Movimento</span>
+      </div>
+    </div>
   </div>
-</aside>
 
-<!-- Overlay -->
-<div class="sidebar-overlay" id="sidebarOverlay"></div>
-
-<!-- Main content -->
-<main class="main-content">
-  <!-- Top bar -->
-  <header class="topbar">
-    <div class="topbar-left">
-      <button class="hamburger" id="hamburgerBtn" aria-label="Abrir menu">
-        <span></span><span></span><span></span>
-      </button>
-      <div class="page-title-block">
-        <h1 class="page-title">Dashboard</h1>
-        <span class="page-subtitle" id="page-subtitle">Carregando...</span>
+  <!-- ── FEATURES ── -->
+  <section class="features" id="funcionalidades">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-badge">Funcionalidades</span>
+        <h2 class="section-title">Tudo que sua arena precisa</h2>
+        <p class="section-sub">Do primeiro agendamento à prestação de contas, sem nada de fora.</p>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">⊞</div>
+          <div class="feature-title">Grade de Disponibilidade</div>
+          <p class="feature-desc">Visualize todas as quadras e horários em tempo real. Crie reservas clicando no slot
+            livre. Status coloridos para pago, pendente e parcial.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">◈</div>
+          <div class="feature-title">Controle Financeiro</div>
+          <p class="feature-desc">Registre pagamentos via Pix, dinheiro ou cartão. Acompanhe inadimplência e emita
+            comprovantes em PDF automaticamente.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">⊡</div>
+          <div class="feature-title">Dashboard em Tempo Real</div>
+          <p class="feature-desc">Faturamento do dia, taxa de ocupação por quadra, alertas de saldo devedor e próximas
+            reservas. Tudo na tela inicial.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">◉</div>
+          <div class="feature-title">Gestão de Clientes</div>
+          <p class="feature-desc">Mantenha o histórico de todos os praticantes da sua arena. Saiba quem são os clientes
+            frequentes e controle mensalistas com facilidade.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">▤</div>
+          <div class="feature-title">Relatórios Completos</div>
+          <p class="feature-desc">Faturamento, ocupação, inadimplência e cancelamentos. Exporte em CSV ou PDF. Filtre
+            por quadra, período ou método de pagamento.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">◎</div>
+          <div class="feature-title">Auditoria e Segurança</div>
+          <p class="feature-desc">Todos os eventos são registrados em log imutável: quem fez, quando e o quê. Controle
+            de acesso por perfil (Admin, Gerente, Recepcionista).</p>
+        </div>
       </div>
     </div>
-    <div class="topbar-right">
-      <div class="alert-badge" title="2 alertas de pagamento pendente">
-        <span class="alert-icon">◈</span>
-        <span class="alert-count">2</span>
-      </div>
-      <div class="topbar-arena">
-        <span class="arena-dot"></span>
-        Arena Principal
+  </section>
+
+  <!-- ── STATS ── -->
+  <section class="stats" style="border-top: 1px solid var(--border-warm);">
+    <div class="container">
+      <div class="stats-grid">
+        <div>
+          <div class="stat-value">+300</div>
+          <div class="stat-label">arenas ativas na plataforma</div>
+        </div>
+        <div>
+          <div class="stat-value">98%</div>
+          <div class="stat-label">de satisfação nas avaliações</div>
+        </div>
+        <div>
+          <div class="stat-value">40h</div>
+          <div class="stat-label">economizadas por mês em média</div>
+        </div>
+        <div>
+          <div class="stat-value">R$ 0</div>
+          <div class="stat-label">para começar — 14 dias grátis</div>
+        </div>
       </div>
     </div>
-  </header>
+  </section>
 
-  <!-- Page body -->
-  <div class="page-body">
+  <!-- ── PRICING ── -->
+  <section class="pricing" id="precos">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-badge">Planos</span>
+        <h2 class="section-title">Simples e transparente</h2>
+        <p class="section-sub">Sem taxas por reserva. Sem surpresas. Cancele quando quiser.</p>
 
-    <!-- KPI Cards Row -->
-    <section class="kpi-row" aria-label="Indicadores do dia">
-      <div class="kpi-card" id="kpi-faturamento">
-        <div class="kpi-label">Faturamento do Dia</div>
-        <div class="kpi-value">—</div>
-        <div class="kpi-sub">Carregando...</div>
-      </div>
-      <div class="kpi-card" id="kpi-pendente">
-        <div class="kpi-label">Faturamento Pendente</div>
-        <div class="kpi-value">—</div>
-        <div class="kpi-sub">Carregando...</div>
-      </div>
-      <div class="kpi-card" id="kpi-reservas">
-        <div class="kpi-label">Reservas do Dia</div>
-        <div class="kpi-value">—</div>
-        <div class="kpi-sub">Carregando...</div>
-      </div>
-      <div class="kpi-card" id="kpi-ocupacao">
-        <div class="kpi-label">Taxa de Ocupação</div>
-        <div class="kpi-value">—</div>
-        <div class="kpi-sub">Carregando...</div>
-        <div class="progress-bar">
-          <div class="progress-fill" id="kpi-ocupacao-bar" style="width:0%"></div>
+        <!-- Billing toggle -->
+        <div class="billing-toggle" id="billing-toggle">
+          <button class="billing-btn active" data-period="monthly" id="btn-monthly">Mensal</button>
+          <button class="billing-btn" data-period="yearly" id="btn-yearly">
+            Anual
+            <span class="billing-save-badge">–20%</span>
+          </button>
         </div>
       </div>
-    </section>
 
-    <!-- Middle row: Mini grade + próximas reservas -->
-    <section class="mid-row">
-
-      <!-- Mini grade de quadras -->
-      <div class="card grade-card" id="grade-preview">
-        <div class="card-header">
-          <h2 class="card-title">Grade do Dia — Hoje</h2>
-          <a href="reservas.html" class="btn-ghost btn-sm">Ver grade completa →</a>
-        </div>
-        <div class="grade-legend">
-          <span class="legend-item"><i class="dot dot--paid"></i>Pago</span>
-          <span class="legend-item"><i class="dot dot--pending"></i>Pendente</span>
-          <span class="legend-item"><i class="dot dot--partial"></i>Parcial</span>
-          <span class="legend-item"><i class="dot dot--available"></i>Livre</span>
-          <span class="legend-item"><i class="dot dot--blocked"></i>Bloqueado</span>
-        </div>
-        <div class="mini-grade" id="mini-grade-container">
-          <div style="padding: 20px; text-align: center; color: var(--muted);">
-            Carregando grade do dia...
+      <div class="pricing-grid">
+        <!-- Starter -->
+        <div class="price-card" id="card-starter">
+          <div class="price-plan">Starter</div>
+          <div class="price-value">
+            <span class="price-amount" data-monthly="49,99" data-yearly="39,99">R$ 49,99</span>
           </div>
-        </div>
-      </div>
-
-      <!-- Painel lateral direito -->
-      <div class="right-panels">
-
-        <!-- Próximas reservas -->
-        <div class="card" id="proximas-reservas">
-          <div class="card-header">
-            <h2 class="card-title">Próximas Reservas</h2>
+          <div class="price-period">
+            <span class="period-label" data-monthly="/mês · até 3 quadras" data-yearly="/mês · cobrado anualmente">/mês
+              · até 3 quadras</span>
           </div>
-          <ul class="reservas-list">
-            <li style="padding: 20px; text-align: center; color: var(--muted);">Carregando próximas reservas...</li>
+          <ul class="price-features">
+            <li>Reservas e pagamentos</li>
+            <li>Dashboard básico</li>
+            <li>2 usuários internos</li>
+            <li>Suporte via e-mail</li>
           </ul>
-          <a href="reservas.html" class="btn-primary btn-full" id="btn-nova-reserva">+ Nova Reserva</a>
+          <a href="landing-cadastro.html" class="btn btn-dark btn-full">Começar grátis</a>
         </div>
 
-        <!-- Alertas -->
-        <div class="card card--alert" id="alertas-card">
-          <div class="card-header">
-            <h2 class="card-title">⚠ Atenção</h2>
+        <!-- Pro -->
+        <div class="price-card" id="card-pro">
+          <div class="price-badge">Mais popular</div>
+          <div class="price-plan">Pro</div>
+          <div class="price-value">
+            <span class="price-amount" data-monthly="79,99" data-yearly="63,99">R$ 79,99</span>
           </div>
-          <ul class="alert-list" id="lista-alertas">
-            <!-- Renderizado via JS -->
+          <div class="price-period">
+            <span class="period-label" data-monthly="/mês · até 10 quadras" data-yearly="/mês · cobrado anualmente">/mês
+              · até 10 quadras</span>
+          </div>
+          <ul class="price-features">
+            <li>Tudo do Starter</li>
+            <li>Relatórios completos</li>
+            <li>Usuários ilimitados</li>
+            <li>Auditoria e logs</li>
+            <li>Gestão de mensalistas</li>
+            <li>Suporte prioritário</li>
           </ul>
+          <a href="landing-cadastro.html" class="btn btn-dark btn-full">Começar grátis</a>
         </div>
 
-      </div>
-    </section>
-
-    <!-- Financial Row -->
-    <section class="financial-row">
-      <div class="card" id="faturamento-mes">
-        <div class="card-header">
-          <h2 class="card-title">Faturamento do Mês</h2>
-          <span class="card-tag">Julho 2026</span>
-        </div>
-        <div class="big-number" id="faturamento-mes-valor">R$ 0,00</div>
-        <div class="compare" id="faturamento-mes-sub">No mês vigente</div>
-        <div class="payment-breakdown" id="grafico-pagamentos">
-          <div style="font-size: 12px; color: var(--muted); padding-top: 10px;">
-            Quebra por método de pagamento em desenvolvimento.
+        <!-- Enterprise -->
+        <div class="price-card" id="card-enterprise">
+          <div class="price-plan">Enterprise</div>
+          <div class="price-value">
+            <span class="price-amount" data-monthly="Sob consulta" data-yearly="Sob consulta">Sob consulta</span>
           </div>
+          <div class="price-period">
+            <span class="period-label" data-monthly="múltiplas unidades" data-yearly="múltiplas unidades">múltiplas
+              unidades</span>
+          </div>
+          <ul class="price-features">
+            <li>Tudo do Pro</li>
+            <li>Múltiplas arenas</li>
+            <li>Precificação dinâmica</li>
+            <li>Integrações via API</li>
+            <li>SLA dedicado</li>
+          </ul>
+          <a href="mailto:sales@courtmanager.app" class="btn btn-dark btn-full">Falar com vendas</a>
         </div>
       </div>
 
-      <div class="card" id="inadimplencia-card">
-        <div class="card-header">
-          <h2 class="card-title">Inadimplência</h2>
-          <a href="relatorios.html" class="btn-ghost btn-sm gerente-only">Ver relatório →</a>
-        </div>
-        <div class="big-number danger" id="inadimplencia-total">R$ 0,00</div>
-        <div class="compare" id="inadimplencia-sub">0 reservas em aberto</div>
-        <ul class="inadimplentes-list" id="lista-inadimplentes">
-          <!-- Renderizado via JS -->
-        </ul>
-      </div>
+      <p class="pricing-note">
+        Todos os planos incluem 14 dias gratuitos. Sem cartão de crédito para começar.
+      </p>
+    </div>
+  </section>
 
-      <div class="card" id="quadras-status">
-        <div class="card-header">
-          <h2 class="card-title">Status das Quadras</h2>
-        </div>
-        <ul class="quadras-status-list" id="lista-quadras-status">
-          <!-- Renderizado via JS -->
-        </ul>
-      </div>
-    </section>
-
-  </div>
-</main>
-
-<script src="js/app.js"></script>
-<script>
-  // Autenticação
-  const token = localStorage.getItem('courtmanager_token');
-  const userJson = localStorage.getItem('courtmanager_user');
-  const user = userJson ? JSON.parse(userJson) : null;
-
-  // Preencher nome do usuário no sidebar
-  const userNameElem = document.querySelector('.user-name');
-  const userRoleElem = document.querySelector('.user-role');
-  const userAvatar = document.querySelector('.user-avatar');
-  
-  if (userNameElem) userNameElem.textContent = user?.nome || '';
-  if (userRoleElem) userRoleElem.textContent = user?.perfil || '';
-  if (userAvatar) userAvatar.textContent = user?.nome ? user.nome.substring(0, 2).toUpperCase() : '';
-
-  document.getElementById('btn-logout').addEventListener('click', (e) => {
-    e.preventDefault();
-    localStorage.removeItem('courtmanager_token');
-    localStorage.removeItem('courtmanager_user');
-    window.location.href = 'login.html';
-  });
-
-  const formatCurrency = (val) => {
-    return 'R$ ' + parseFloat(val).toFixed(2).replace('.', ',');
-  };
-
-  const carregarDashboard = async () => {
-    try {
-      const res = await fetch('http://localhost:3000/api/dashboard/resumo', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (!res.ok) throw new Error('Erro na requisição');
-      const data = await res.json();
-
-      // Atualizar data no subtítulo
-      const parts = data.hoje.split('-');
-      document.getElementById('page-subtitle').textContent = `Dados de ${parts[2]}/${parts[1]}/${parts[0]}`;
-
-      // KPIs
-      document.querySelector('#kpi-faturamento .kpi-value').textContent = formatCurrency(data.faturamentoDia);
-      document.querySelector('#kpi-faturamento .kpi-sub').textContent = 'hoje';
-      document.querySelector('#kpi-pendente .kpi-value').textContent = formatCurrency(data.faturamentoPendente);
-      document.querySelector('#kpi-pendente .kpi-sub').textContent = `${data.reservasDia} reserva(s) ativas hoje`;
-      document.querySelector('#kpi-reservas .kpi-value').textContent = data.reservasDia;
-      document.querySelector('#kpi-reservas .kpi-sub').textContent = 'no dia de hoje';
-      document.querySelector('#kpi-ocupacao .kpi-value').textContent = data.taxaOcupacao + '%';
-      document.querySelector('#kpi-ocupacao .kpi-sub').textContent = 'da capacidade hoje';
-      
-      const ocupacaoBar = document.getElementById('kpi-ocupacao-bar');
-      if (ocupacaoBar) {
-        ocupacaoBar.style.width = data.taxaOcupacao + '%';
-        // Muda a cor dependendo da taxa
-        if (data.taxaOcupacao >= 80) ocupacaoBar.style.backgroundColor = 'var(--paid)';
-        else if (data.taxaOcupacao >= 40) ocupacaoBar.style.backgroundColor = 'var(--pending)';
-        else ocupacaoBar.style.backgroundColor = 'var(--partial)';
-      }
-
-      // Próximas reservas
-      const list = document.querySelector('#proximas-reservas .reservas-list');
-      list.innerHTML = '';
-      
-      if (!data.proximasReservas || data.proximasReservas.length === 0) {
-        const nowHour = new Date().getHours();
-        const isEndOfDay = nowHour >= 20;
-        list.innerHTML = `
-          <li style="padding: 24px 16px; text-align: center;">
-            <div style="font-size: 28px; margin-bottom: 8px;">${isEndOfDay ? '🌙' : '☀️'}</div>
-            <div style="font-weight: 600; color: var(--charcoal); font-size: 14px; margin-bottom: 4px;">
-              ${isEndOfDay ? 'Dia encerrado por aqui!' : 'Nenhuma reserva futura hoje'}
-            </div>
-            <div style="font-size: 12px; color: var(--muted);">
-              ${isEndOfDay ? 'Bom descanso. Amanhã tem mais!' : 'Que tal criar uma nova reserva?'}
-            </div>
-          </li>`;
-      } else {
-        data.proximasReservas.forEach(r => {
-          let badge = 'badge--pending';
-          if(r.status_pagamento === 'Pago') badge = 'badge--paid';
-          if(r.status_pagamento === 'Parcial') badge = 'badge--partial';
-
-          const li = document.createElement('li');
-          li.className = 'reserva-item';
-          li.innerHTML = `
-            <div class="reserva-time">${r.hora_inicio}</div>
-            <div class="reserva-info">
-              <span class="reserva-client">${r.cliente_nome}</span>
-              <span class="reserva-detail">${r.quadra_nome}</span>
-            </div>
-            <span class="badge ${badge}">${r.status_pagamento}</span>
-          `;
-          list.appendChild(li);
-        });
-      }
-
-      // Alertas
-      const listaAlertas = document.getElementById('lista-alertas');
-      listaAlertas.innerHTML = '';
-      if (!data.alertas || data.alertas.length === 0) {
-        listaAlertas.innerHTML = '<li style="padding: 10px 16px; font-size: 13px; color: var(--muted);">Nenhum alerta pendente.</li>';
-        document.querySelector('.alert-badge .alert-count').style.display = 'none';
-      } else {
-        document.querySelector('.alert-badge .alert-count').style.display = 'inline-flex';
-        document.querySelector('.alert-badge .alert-count').textContent = data.alertas.length;
-        data.alertas.forEach(a => {
-          listaAlertas.innerHTML += `
-            <li class="alert-item">
-              <span class="alert-text">${a.cliente_nome} · ${a.quadra_nome} · ${a.hora_inicio} — pagamento pendente</span>
-            </li>
-          `;
-        });
-      }
-
-      // Faturamento Mês
-      document.getElementById('faturamento-mes-valor').textContent = formatCurrency(data.faturamentoMes);
-
-      // Inadimplência
-      let totalInadimplente = 0;
-      const listaInadimplentes = document.getElementById('lista-inadimplentes');
-      listaInadimplentes.innerHTML = '';
-      if (!data.inadimplentes || data.inadimplentes.length === 0) {
-        listaInadimplentes.innerHTML = '<li style="padding: 10px 16px; font-size: 13px; color: var(--muted);">Sem inadimplentes.</li>';
-        document.getElementById('inadimplencia-sub').textContent = '0 reservas em aberto';
-      } else {
-        data.inadimplentes.forEach(i => {
-          totalInadimplente += i.deve;
-          listaInadimplentes.innerHTML += `<li>${i.nome} <span>${formatCurrency(i.deve)}</span></li>`;
-        });
-        document.getElementById('inadimplencia-sub').textContent = `${data.inadimplentes.length} reservas em aberto`;
-      }
-      document.getElementById('inadimplencia-total').textContent = formatCurrency(totalInadimplente);
-
-      // Status das Quadras
-      const listaQuadrasStatus = document.getElementById('lista-quadras-status');
-      listaQuadrasStatus.innerHTML = '';
-      if (!data.quadrasStatus || data.quadrasStatus.length === 0) {
-        listaQuadrasStatus.innerHTML = '<li style="padding: 10px 16px; font-size: 13px; color: var(--muted);">Nenhuma quadra cadastrada.</li>';
-      } else {
-        data.quadrasStatus.forEach(q => {
-          let badgeClass = 'available';
-          if(q.estado === 'Em uso') badgeClass = 'online';
-          listaQuadrasStatus.innerHTML += `
-            <li class="quadra-status-item">
-              <span class="quadra-name">${q.nome} <small style="display:block;color:var(--muted);font-weight:normal">${q.cliente || ''}</small></span>
-              <span class="quadra-badge ${badgeClass}">${q.estado}</span>
-            </li>
-          `;
-        });
-      }
-
-      // Mini Grade do Dia
-      await carregarMiniGrade();
-
-    } catch (err) {
-      console.error(err);
+  <style>
+    /* ── Billing Toggle ── */
+    .billing-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--cream);
+      border: 1px solid var(--border-warm);
+      border-radius: var(--r-pill);
+      padding: 4px;
+      margin-top: 24px;
     }
-  };
 
-  // Mini-grade do dia usando as classes do design system
-  const carregarMiniGrade = async () => {
-    const container = document.getElementById('mini-grade-container');
-    try {
-      const hoje = new Date().toISOString().split('T')[0];
-      const res = await fetch(`http://localhost:3000/api/reservas/grade?data=${hoje}`, {
-        headers: { 'Authorization': `Bearer ${token}`, 'Cache-Control': 'no-store' }
-      });
-      if (!res.ok) throw new Error('Erro ao carregar grade');
-      const data = await res.json();
-
-      const { quadras, reservas, bloqueios } = data;
-      if (!quadras || quadras.length === 0) {
-        container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);">Nenhuma quadra disponível.</div>';
-        return;
-      }
-
-      // Cabeçalho com nomes das quadras
-      let html = `<div class="mini-grade-labels" style="grid-template-columns: 52px repeat(${quadras.length}, 1fr);">`;
-      html += '<div class="court-label"></div>';
-      quadras.forEach(q => {
-        html += `<div class="court-label">${q.nome}</div>`;
-      });
-      html += '</div>';
-
-      // Calcula a hora mínima de abertura e máxima de fechamento
-      let earliest = '23:59';
-      let latest = '00:00';
-      quadras.forEach(q => {
-        if (q.hora_abertura && q.hora_abertura < earliest) earliest = q.hora_abertura;
-        if (q.hora_fechamento && q.hora_fechamento > latest) latest = q.hora_fechamento;
-      });
-      let minHour = earliest !== '23:59' ? parseInt(earliest.split(':')[0], 10) : 8;
-      let maxHour = latest !== '00:00' ? parseInt(latest.split(':')[0], 10) : 22;
-
-      // Impede que mostre 22h se a quadra fecha exatamente às 22:00
-      if (latest.endsWith(':00')) maxHour--;
-
-      // Hora atual local para marcar passados
-      const nowLocal = new Date();
-      const tzOffsetLocal = nowLocal.getTimezoneOffset() * 60000;
-      const nowISOLocal = new Date(Date.now() - tzOffsetLocal).toISOString();
-      const currentHour = nowISOLocal.split('T')[1].substring(0, 5);
-
-      // Linhas de horário
-      for (let h = minHour; h <= maxHour; h++) {
-        const horaStr = h.toString().padStart(2, '0') + ':00';
-        const isPastHour = horaStr <= currentHour;
-        html += `<div class="mini-grade-row" style="grid-template-columns: 52px repeat(${quadras.length}, 1fr);">`;
-        html += `<div class="time-label" style="${isPastHour ? 'opacity:0.4;' : ''}">${horaStr}</div>`;
-
-        quadras.forEach(q => {
-          // Só desenha o slot se a quadra estiver aberta nesse horário
-          if (horaStr >= q.hora_abertura && horaStr < q.hora_fechamento) {
-            const reserva  = (reservas  || []).find(r => r.quadra_id === q.id && r.hora_inicio <= horaStr && r.hora_fim > horaStr);
-            const bloqueio = (bloqueios || []).find(b => b.quadra_id === q.id && b.hora_inicio <= horaStr && b.hora_fim > horaStr);
-
-            if (bloqueio) {
-              if (isPastHour) {
-                html += `<div class="slot" style="background:rgba(0,0,0,0.04);border:none;"></div>`;
-              } else {
-                html += `<div class="slot slot--blocked" title="${bloqueio.motivo || 'Bloqueado'}">⊘</div>`;
-              }
-            } else if (reserva) {
-              let cls = 'slot--pending';
-              if (reserva.status_pagamento === 'Pago')    cls = 'slot--paid';
-              if (reserva.status_pagamento === 'Parcial') cls = 'slot--partial';
-              html += `<div class="slot ${cls}" title="${reserva.cliente_nome}">${reserva.cliente_nome || '—'}</div>`;
-            } else {
-              if (isPastHour) {
-                html += `<div class="slot" style="background:rgba(0,0,0,0.04);border:none;"></div>`;
-              } else {
-                html += `<div class="slot slot--available" title="Livre"></div>`;
-              }
-            }
-          } else {
-            // Quadra fechada
-            html += `<div class="slot" style="background:transparent; border:none;"></div>`;
-          }
-        });
-
-        html += '</div>';
-      }
-
-      container.innerHTML = html;
-    } catch (e) {
-      console.error('Erro mini-grade:', e);
-      if (container) container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--danger);">Erro ao carregar a grade do dia.</div>';
+    .billing-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 18px;
+      border-radius: var(--r-pill);
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-family: var(--font);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s, box-shadow 0.2s;
     }
-  };
 
-  carregarDashboard();
-</script>
+    .billing-btn.active,
+    .billing-btn:hover {
+      background: var(--charcoal);
+      color: var(--off-white);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+    }
+
+    .billing-save-badge {
+      font-size: 11px;
+      font-weight: 600;
+      background: #d1fae5;
+      color: #065f46;
+      padding: 2px 7px;
+      border-radius: var(--r-pill);
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .billing-btn.active .billing-save-badge,
+    .billing-btn:hover .billing-save-badge {
+      background: rgba(209, 250, 229, 0.25);
+      color: #6ee7b7;
+    }
+
+    /* ── Interactive Price Cards ── */
+    .price-card,
+    .price-card .price-plan,
+    .price-card .price-value,
+    .price-card .price-period,
+    .price-card .price-features li,
+    .price-card .price-features li::before,
+    .price-card .btn-ghost,
+    .price-card .btn-dark,
+    .price-card .price-badge {
+      transition: background 0.55s cubic-bezier(0.4, 0, 0.2, 1),
+                  color 0.55s cubic-bezier(0.4, 0, 0.2, 1),
+                  border-color 0.55s cubic-bezier(0.4, 0, 0.2, 1),
+                  opacity 0.55s cubic-bezier(0.4, 0, 0.2, 1),
+                  transform 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+                  box-shadow 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .price-card:hover {
+      background: var(--charcoal) !important;
+      border-color: var(--charcoal) !important;
+      color: var(--off-white) !important;
+    }
+
+    .price-card:hover .price-plan {
+      color: var(--off-white) !important;
+      opacity: 0.7 !important;
+    }
+
+    .price-card:hover .price-value {
+      color: var(--off-white) !important;
+    }
+
+    .price-card:hover .price-period {
+      color: rgba(252, 251, 248, 0.55) !important;
+    }
+
+    .price-card:hover .price-features li {
+      color: rgba(252, 251, 248, 0.7) !important;
+    }
+
+    .price-card:hover .price-features li::before {
+      color: var(--off-white) !important;
+    }
+
+    .price-card:hover .btn-ghost {
+      border-color: rgba(252, 251, 248, 0.3) !important;
+      color: var(--off-white) !important;
+    }
+
+    .price-card:hover .btn-ghost:hover {
+      background: rgba(252, 251, 248, 0.08) !important;
+    }
+
+    /* Inverter botão escuro do Enterprise */
+    .price-card:hover .btn-dark {
+      background: var(--off-white) !important;
+      color: var(--charcoal) !important;
+    }
+
+    /* Badge Mais Popular */
+    .price-card:hover .price-badge {
+      background: var(--off-white) !important;
+      color: var(--charcoal) !important;
+    }
+
+    /* ── Price card hover lift & Layout ── */
+    .price-card {
+      cursor: default;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .price-card .btn-ghost,
+    .price-card .btn-dark {
+      margin-top: auto;
+    }
+
+    .price-card:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.09);
+      border-color: var(--border-active);
+    }
+
+    .price-card.featured:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 16px 48px rgba(28, 26, 24, 0.28);
+    }
+
+    /* ── Price amount animation ── */
+    .price-amount {
+      display: inline-block;
+      transition: opacity 0.18s ease, transform 0.18s ease;
+    }
+
+    .price-amount.fade-out {
+      opacity: 0;
+      transform: translateY(-6px);
+    }
+
+    .price-amount.fade-in {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ── Pricing note ── */
+    .pricing-note {
+      text-align: center;
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 28px;
+    }
+  </style>
+
+  <script>
+    (function () {
+      const btnMonthly = document.getElementById('btn-monthly');
+      const btnYearly = document.getElementById('btn-yearly');
+      const amounts = document.querySelectorAll('.price-amount');
+      const periods = document.querySelectorAll('.period-label');
+
+      function switchPeriod(period) {
+        /* Toggle active button */
+        btnMonthly.classList.toggle('active', period === 'monthly');
+        btnYearly.classList.toggle('active', period === 'yearly');
+
+        /* Animate prices out */
+        amounts.forEach(el => el.classList.add('fade-out'));
+
+        setTimeout(() => {
+          /* Update values */
+          amounts.forEach(el => {
+            el.textContent = period === 'monthly'
+              ? 'R$ ' + el.dataset.monthly
+              : (el.dataset.yearly === 'Sob consulta' ? 'Sob consulta' : 'R$ ' + el.dataset.yearly);
+          });
+          periods.forEach(el => {
+            el.textContent = el.dataset[period === 'monthly' ? 'monthly' : 'yearly'];
+          });
+
+          /* Animate prices in */
+          amounts.forEach(el => {
+            el.classList.remove('fade-out');
+            el.classList.add('fade-in');
+          });
+
+          setTimeout(() => amounts.forEach(el => el.classList.remove('fade-in')), 200);
+        }, 180);
+      }
+
+      btnMonthly.addEventListener('click', () => switchPeriod('monthly'));
+      btnYearly.addEventListener('click', () => switchPeriod('yearly'));
+
+
+    })();
+  </script>
+
+  <!-- ── CTA ── -->
+  <section class="cta-strip">
+    <div class="container">
+      <h2 class="section-title">Pronto para organizar sua arena?</h2>
+      <p class="section-sub">Cadastre-se em 2 minutos e experimente gratuitamente por 14 dias. Sem cartão de crédito.
+      </p>
+      <div class="hero-ctas">
+        <a href="landing-cadastro.html" class="btn btn-dark btn-lg">Criar conta grátis</a>
+        <a href="login.html" class="btn btn-ghost btn-lg">Já tenho conta</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── FOOTER ── -->
+  <footer>
+    <div class="container">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <a href="index.html" class="nav-brand" style="margin-bottom: 12px; display: inline-flex;">
+            <div class="nav-brand-icon">CM</div>
+            <span class="nav-brand-name">CourtManager</span>
+          </a>
+          <p>Gestão completa de arenas esportivas. Do agendamento ao recebimento.</p>
+        </div>
+        <div class="footer-col">
+          <div class="footer-col-title">Produto</div>
+          <a href="#funcionalidades">Funcionalidades</a>
+          <a href="#precos">Preços</a>
+          <a href="login.html">Entrar como Arena</a>
+          <a href="landing-cadastro.html">Criar conta</a>
+        </div>
+        <div class="footer-col">
+          <div class="footer-col-title">Contato</div>
+          <a href="mailto:suporte@courtmanager.app">Suporte técnico</a>
+          <a href="mailto:vendas@courtmanager.app">Vendas</a>
+          <a href="#">Central de Ajuda</a>
+        </div>
+        <div class="footer-col">
+          <div class="footer-col-title">Legal</div>
+          <a href="#">Termos de Uso</a>
+          <a href="#">Política de Privacidade</a>
+          <a href="#">LGPD</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>CourtManager &copy; 2026 — Todos os direitos reservados</span>
+        <span>Feito para arenas brasileiras 🏐</span>
+      </div>
+    </div>
+  </footer>
+
 </body>
+
 </html>
