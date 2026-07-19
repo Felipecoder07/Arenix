@@ -20,12 +20,27 @@ const listarLogs = async (req, res) => {
       params.push(data_fim);
     }
     if (evento) {
-      baseQuery += ` AND l.evento = ?`;
-      params.push(evento);
+      if (evento === 'Login') {
+        baseQuery += ` AND (l.evento = 'Login bem-sucedido' OR l.evento = 'Tentativa de login falha')`;
+      } else if (evento === 'Registro de pagamento') {
+        baseQuery += ` AND l.evento = 'Pagamento Registrado'`;
+      } else if (evento === 'Aplicação de desconto') {
+        baseQuery += ` AND l.evento = 'Desconto Aplicado'`;
+      } else if (evento === 'Estorno de pagamento') {
+        baseQuery += ` AND l.evento = 'Estorno Realizado'`;
+      } else if (evento === 'Bloqueio de quadra') {
+        baseQuery += ` AND (l.evento = 'Criação de bloqueio' OR l.evento = 'Remoção de bloqueio' OR l.evento = 'Desbloqueio Parcial')`;
+      } else if (evento === 'Alteração de permissões') {
+        baseQuery += ` AND (l.evento = 'Criação de Usuário' OR l.evento = 'Edição de Usuário' OR l.evento = 'Exclusão de Usuário')`;
+      } else {
+        baseQuery += ` AND l.evento = ?`;
+        params.push(evento);
+      }
     }
+
     if (busca) {
-      baseQuery += ` AND (u.nome LIKE ? OR l.detalhes LIKE ?)`;
-      params.push(`%${busca}%`, `%${busca}%`);
+      baseQuery += ` AND (u.nome LIKE ? OR l.detalhes LIKE ? OR l.evento LIKE ? OR l.ip LIKE ? OR (u.nome IS NULL AND ? = 'sistema'))`;
+      params.push(`%${busca}%`, `%${busca}%`, `%${busca}%`, `%${busca}%`, busca.toLowerCase().trim());
     }
 
     if (exportar === 'true') {

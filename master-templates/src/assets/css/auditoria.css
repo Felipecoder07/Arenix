@@ -1,0 +1,81 @@
+/* auditoria.css - Custom styles for audit logs and ip badges */
+
+.log-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  display: inline-block;
+}
+
+.log-login {
+  background: var(--partial-bg);
+  color: var(--partial);
+}
+
+.log-reserva {
+  background: var(--paid-bg);
+  color: var(--paid);
+}
+
+.log-pagamento {
+  background: #eaf0fa;
+  color: #1a4a9a;
+}
+
+.log-cancelamento {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.log-preco {
+  background: var(--pending-bg);
+  color: var(--pending);
+}
+
+.log-permissao {
+  background: var(--blocked-bg);
+  color: var(--blocked);
+}
+
+.log-exclusao {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.log-bloqueio {
+  background: var(--blocked-bg);
+  color: var(--blocked);
+}
+
+.log-desconto {
+  background: var(--pending-bg);
+  color: var(--pending);
+}
+
+.log-exportacao {
+  background: var(--cream-surface);
+  color: var(--muted);
+  border: 1px solid var(--border-passive);
+}
+
+.ip-tag {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--cream-surface);
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+}
+
+.access-restricted {
+  background: var(--danger-bg);
+  border: 1px solid rgba(155,34,38,0.15);
+  border-radius: var(--r-card);
+  padding: var(--s-5);
+  text-align: center;
+  margin: var(--s-6) auto;
+  max-width: 400px;
+}

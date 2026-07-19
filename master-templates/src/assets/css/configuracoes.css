@@ -1,0 +1,114 @@
+/* configuracoes.css - Arena Settings Layout and Toggles style rules */
+
+.config-layout {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: var(--s-6);
+  align-items: start;
+}
+
+.config-nav {
+  border: 1px solid var(--border-passive);
+  border-radius: var(--r-card);
+  overflow: hidden;
+}
+
+.config-nav-item {
+  display: block;
+  padding: 11px var(--s-4);
+  font-size: 13px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border-passive);
+  transition: background 0.12s, color 0.12s;
+  cursor: pointer;
+}
+
+.config-nav-item:last-child {
+  border-bottom: none;
+}
+
+.config-nav-item:hover {
+  background: var(--charcoal-04);
+  color: var(--charcoal);
+}
+
+.config-nav-item.active {
+  background: var(--charcoal-04);
+  color: var(--charcoal);
+  font-weight: 500;
+}
+
+.config-section {
+  display: none;
+}
+
+.config-section.active {
+  display: block;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s-4) 0;
+  border-bottom: 1px solid var(--charcoal-03);
+}
+
+.setting-row:last-child {
+  border-bottom: none;
+}
+
+.setting-info .setting-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--charcoal);
+}
+
+.setting-info .setting-desc {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+/* Toggle switch */
+.toggle {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+}
+
+.toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: var(--border-passive);
+  border-radius: var(--r-pill);
+  transition: background 0.2s;
+}
+
+.toggle-slider:before {
+  content: '';
+  position: absolute;
+  height: 16px;
+  width: 16px;
+  left: 3px;
+  bottom: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.toggle input:checked + .toggle-slider {
+  background: var(--paid);
+}
+
+.toggle input:checked + .toggle-slider:before {
+  transform: translateX(18px);
+}

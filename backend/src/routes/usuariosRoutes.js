@@ -5,7 +5,7 @@ const { verifyToken, requireRole } = require('../middlewares/auth');
 
 // Rotas restritas para Administrador
 router.use(verifyToken);
-router.use(requireRole(['Administrador']));
+router.use(requireRole(['Administrador', 'Gerente']));
 
 router.get('/', usuariosController.listarUsuarios);
 router.post('/', usuariosController.criarUsuario);

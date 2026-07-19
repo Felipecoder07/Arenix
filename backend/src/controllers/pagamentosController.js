@@ -96,29 +96,61 @@ const aplicarDesconto = async (req, res) => {
 
 const registrarEstorno = async (req, res) => {
   try {
-    const { pagamento_id } = req.body;
+    const { pagamento_id, reserva_id, valor, motivo, motivo_estorno } = req.body;
     const ip = req.headers['x-forwarded-for'] || req.ip;
     const usuario = req.user;
+    const descMotivo = motivo || motivo_estorno || 'Estorno parcial';
 
     // RN-008: Apenas Admin pode estornar
     if (usuario.perfil !== 'Administrador') {
       return res.status(403).json({ error: 'Apenas Administradores podem realizar estornos.' });
     }
 
-    const pagamento = await db.getAsync('SELECT p.* FROM Pagamentos p JOIN Reservas r ON p.reserva_id = r.id WHERE p.id = ? AND r.tenant_id = ?', [pagamento_id, req.user.tenant_id]);
-    if (!pagamento) return res.status(404).json({ error: 'Pagamento não encontrado.' });
-    if (pagamento.valor < 0) return res.status(400).json({ error: 'Pagamento já é um estorno.' });
+    let finalReservaId;
+    let maxEstornavel = 0;
+
+    if (pagamento_id) {
+      const pagamento = await db.getAsync(
+        'SELECT p.* FROM Pagamentos p JOIN Reservas r ON p.reserva_id = r.id WHERE p.id = ? AND r.tenant_id = ?',
+        [pagamento_id, req.user.tenant_id]
+      );
+      if (!pagamento) return res.status(404).json({ error: 'Pagamento não encontrado.' });
+      if (pagamento.valor < 0) return res.status(400).json({ error: 'Pagamento já é um estorno.' });
+      
+      finalReservaId = pagamento.reserva_id;
+      maxEstornavel = pagamento.valor;
+    } else if (reserva_id) {
+      const reserva = await db.getAsync(
+        'SELECT r.*, COALESCE((SELECT SUM(p.valor) FROM Pagamentos p WHERE p.reserva_id = r.id), 0) AS total_pago FROM Reservas r WHERE r.id = ? AND r.tenant_id = ?',
+        [reserva_id, req.user.tenant_id]
+      );
+      if (!reserva) return res.status(404).json({ error: 'Reserva não encontrada.' });
+      
+      finalReservaId = reserva.id;
+      maxEstornavel = reserva.total_pago;
+    } else {
+      return res.status(400).json({ error: 'É necessário informar pagamento_id ou reserva_id.' });
+    }
+
+    const valorEstornoInfo = valor !== undefined ? parseFloat(valor) : maxEstornavel;
+    if (isNaN(valorEstornoInfo) || valorEstornoInfo <= 0) {
+      return res.status(400).json({ error: 'O valor do estorno deve ser maior que zero.' });
+    }
+
+    if (valorEstornoInfo > maxEstornavel) {
+      return res.status(400).json({ error: `O valor do estorno (R$ ${valorEstornoInfo.toFixed(2)}) não pode ser maior que o saldo disponível para estorno (R$ ${maxEstornavel.toFixed(2)}).` });
+    }
 
     // Criar um pagamento negativo para representar o estorno e manter rastreabilidade
-    const valorEstorno = -Math.abs(pagamento.valor);
+    const valorEstornoNegativo = -Math.abs(valorEstornoInfo);
     await db.runAsync(
       'INSERT INTO Pagamentos (reserva_id, valor, metodo, registrado_por) VALUES (?, ?, ?, ?)',
-      [pagamento.reserva_id, valorEstorno, 'Estorno', usuario.id]
+      [finalReservaId, valorEstornoNegativo, 'Estorno', usuario.id]
     );
 
-    const { saldoDevedor, novoStatus } = await atualizarStatusReserva(pagamento.reserva_id, req.user.tenant_id);
+    const { saldoDevedor, novoStatus } = await atualizarStatusReserva(finalReservaId, req.user.tenant_id);
 
-    logAuditEvent(usuario.id, 'Estorno Realizado', `Pagamento Original: ${pagamento_id}, Valor: ${Math.abs(valorEstorno)}`, ip);
+    logAuditEvent(usuario.id, 'Estorno Realizado', `Reserva: ${finalReservaId}, Valor: ${Math.abs(valorEstornoNegativo)}, Motivo: ${descMotivo}`, ip);
 
     res.json({
       message: 'Estorno realizado com sucesso.',
@@ -141,24 +173,24 @@ const resumoPagamentos = async (req, res) => {
 
     // Recebido hoje
     const recebidoHoje = await db.getAsync(
-      `SELECT COALESCE(SUM(p.valor),0) as total, COUNT(p.id) as qtd FROM Pagamentos p JOIN Reservas r ON p.reserva_id = r.id WHERE DATE(p.registrado_em) = ? AND p.valor > 0 AND r.tenant_id = ?`,
+      `SELECT COALESCE(SUM(p.valor),0) as total, COUNT(CASE WHEN p.valor > 0 THEN 1 END) as qtd FROM Pagamentos p JOIN Reservas r ON p.reserva_id = r.id WHERE DATE(p.registrado_em) = ? AND r.tenant_id = ?`,
       [hoje, tenant_id]);
 
     // Pendente hoje
     const pendenteHoje = await db.allAsync(
-      `SELECT r.valor_total, COALESCE((SELECT SUM(valor) FROM Pagamentos WHERE reserva_id = r.id AND valor > 0),0) as pago
+      `SELECT r.valor_total, COALESCE((SELECT SUM(valor) FROM Pagamentos WHERE reserva_id = r.id),0) as pago
        FROM Reservas r WHERE r.data_reserva = ? AND r.status != 'Cancelada' AND r.status_pagamento != 'Pago' AND r.tenant_id = ?`,
       [hoje, tenant_id]);
     const totalPendenteHoje = pendenteHoje.reduce((acc, r) => acc + Math.max(0, r.valor_total - r.pago), 0);
 
     // Recebido no mês
     const recebidoMes = await db.getAsync(
-      `SELECT COALESCE(SUM(p.valor),0) as total FROM Pagamentos p JOIN Reservas r ON p.reserva_id = r.id WHERE strftime('%Y-%m', p.registrado_em) = ? AND p.valor > 0 AND r.tenant_id = ?`,
+      `SELECT COALESCE(SUM(p.valor),0) as total FROM Pagamentos p JOIN Reservas r ON p.reserva_id = r.id WHERE strftime('%Y-%m', p.registrado_em) = ? AND r.tenant_id = ?`,
       [mes, tenant_id]);
 
     // Inadimplência global para o card
     const inadimplentes = await db.allAsync(
-      `SELECT r.valor_total, COALESCE((SELECT SUM(valor) FROM Pagamentos WHERE reserva_id = r.id AND valor > 0),0) as pago
+      `SELECT r.valor_total, COALESCE((SELECT SUM(valor) FROM Pagamentos WHERE reserva_id = r.id),0) as pago
        FROM Reservas r WHERE r.status != 'Cancelada' AND r.status_pagamento != 'Pago'`
     );
     const totalInadimplencia = inadimplentes.reduce((acc, r) => acc + Math.max(0, r.valor_total - r.pago), 0);
@@ -233,8 +265,8 @@ const listarReservasPagamentos = async (req, res) => {
         r.valor_total, r.status, r.status_pagamento,
         c.nome AS cliente_nome, c.telefone AS cliente_telefone,
         q.nome AS quadra_nome,
-        COALESCE((SELECT SUM(valor) FROM Pagamentos WHERE reserva_id = r.id AND valor > 0), 0) AS total_pago,
-        COALESCE((SELECT GROUP_CONCAT(DISTINCT metodo) FROM Pagamentos WHERE reserva_id = r.id AND valor > 0), '') AS metodos
+        COALESCE((SELECT SUM(valor) FROM Pagamentos WHERE reserva_id = r.id), 0) AS total_pago,
+        COALESCE((SELECT GROUP_CONCAT(DISTINCT metodo) FROM Pagamentos WHERE reserva_id = r.id AND metodo != 'Estorno'), '') AS metodos
       FROM Reservas r
       JOIN Clientes c ON r.cliente_id = c.id
       JOIN Quadras q ON r.quadra_id = q.id

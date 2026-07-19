@@ -1,17 +1,18 @@
 import { Menu, Search, Bell, ChevronRight } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
 import { NAV_ITEMS } from './Sidebar';
 
 interface TopbarProps {
-  active: string;
   onToggleSidebar: () => void;
-  onNavigate: (id: string) => void;
   search?: string;
   onSearchChange?: (v: string) => void;
   searchPlaceholder?: string;
 }
 
-export function Topbar({ active, onToggleSidebar, onNavigate, search, onSearchChange, searchPlaceholder }: TopbarProps) {
-  const item = NAV_ITEMS.find((n) => n.id === active);
+export function Topbar({ onToggleSidebar, search, onSearchChange, searchPlaceholder }: TopbarProps) {
+  const location = useLocation();
+  const item = NAV_ITEMS.find((n) => n.path === location.pathname);
+
   return (
     <header className="sticky top-0 z-30 h-16 bg-cream/85 backdrop-blur-md border-b border-border-passive flex items-center gap-3 px-4 md:px-6">
       <button onClick={onToggleSidebar} className="p-2 -ml-2 rounded-lg text-muted hover:text-charcoal hover:bg-cream-surface transition-colors" aria-label="Recolher menu">
@@ -46,13 +47,13 @@ export function Topbar({ active, onToggleSidebar, onNavigate, search, onSearchCh
       </button>
 
       {/* Quick switch */}
-      <button
-        onClick={() => onNavigate('dashboard')}
+      <Link
+        to="/master/dashboard"
         className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border-passive bg-off-white text-xs font-medium text-charcoal hover:bg-cream-surface transition-colors"
       >
         <span className="w-1.5 h-1.5 rounded-full bg-warning pulse-dot" />
         Contexto: Master
-      </button>
+      </Link>
     </header>
   );
 }

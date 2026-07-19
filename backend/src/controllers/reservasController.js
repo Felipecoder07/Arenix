@@ -300,4 +300,54 @@ const desbloquearParcialmente = async (req, res) => {
   }
 };
 
-module.exports = { listarGrade, criarReserva, minhasReservas, cancelarReserva, criarBloqueio, removerBloqueio, desbloquearParcialmente };
+const desbloquearHoraDelete = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { hora } = req.query; 
+    if (!hora) return res.status(400).json({ error: 'Parâmetro "hora" é obrigatório.' });
+
+    const tenant_id = req.user.tenant_id;
+    const b = await db.getAsync(`
+      SELECT b.* FROM Bloqueios b
+      JOIN Quadras q ON b.quadra_id = q.id
+      WHERE b.id = ? AND q.tenant_id = ?
+    `, [id, tenant_id]);
+    if (!b) return res.status(404).json({ error: 'Bloqueio não encontrado.' });
+
+    const [h, m] = hora.split(':').map(Number);
+    const nextH = h + 1;
+    const hora_inicio_desbloqueio = hora;
+    const hora_fim_desbloqueio = `${nextH.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+
+    if (b.hora_inicio >= hora_inicio_desbloqueio && b.hora_fim <= hora_fim_desbloqueio) {
+      await db.runAsync('DELETE FROM Bloqueios WHERE id = ?', [id]);
+    } else if (b.hora_inicio === hora_inicio_desbloqueio) {
+      await db.runAsync('UPDATE Bloqueios SET hora_inicio = ? WHERE id = ?', [hora_fim_desbloqueio, id]);
+    } else if (b.hora_fim === hora_fim_desbloqueio) {
+      await db.runAsync('UPDATE Bloqueios SET hora_fim = ? WHERE id = ?', [hora_inicio_desbloqueio, id]);
+    } else {
+      await db.runAsync('UPDATE Bloqueios SET hora_fim = ? WHERE id = ?', [hora_inicio_desbloqueio, id]);
+      await db.runAsync(`
+        INSERT INTO Bloqueios (quadra_id, data_bloqueio, hora_inicio, hora_fim, motivo, criado_por)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `, [b.quadra_id, b.data_bloqueio, hora_fim_desbloqueio, b.hora_fim, b.motivo, b.criado_por]);
+    }
+
+    logAuditEvent(req.user.id, 'Desbloqueio Parcial', `Bloqueio ID: ${id}, Furo: ${hora_inicio_desbloqueio} - ${hora_fim_desbloqueio}`, req.ip);
+    res.json({ message: 'Horário desbloqueado com sucesso.' });
+  } catch (error) {
+    console.error('Erro ao desbloquear parcialmente via DELETE:', error);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+};
+
+module.exports = { 
+  listarGrade, 
+  criarReserva, 
+  minhasReservas, 
+  cancelarReserva, 
+  criarBloqueio, 
+  removerBloqueio, 
+  desbloquearParcialmente,
+  desbloquearHoraDelete
+};

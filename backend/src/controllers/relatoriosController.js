@@ -30,8 +30,8 @@ const relatorioFaturamento = async (req, res) => {
         c.nome AS cliente_nome,
         q.nome AS quadra_nome,
         u.nome AS operador_nome,
-        COALESCE((SELECT SUM(valor) FROM Pagamentos WHERE reserva_id = r.id AND valor > 0), 0) AS total_pago,
-        COALESCE((SELECT GROUP_CONCAT(DISTINCT metodo) FROM Pagamentos WHERE reserva_id = r.id AND valor > 0), '—') AS metodos
+        COALESCE((SELECT SUM(valor) FROM Pagamentos WHERE reserva_id = r.id), 0) AS total_pago,
+        COALESCE((SELECT GROUP_CONCAT(DISTINCT metodo) FROM Pagamentos WHERE reserva_id = r.id AND metodo != 'Estorno'), '—') AS metodos
       FROM Reservas r
       JOIN Clientes c ON r.cliente_id = c.id
       JOIN Quadras q ON r.quadra_id = q.id
@@ -168,7 +168,7 @@ const relatorioInadimplencia = async (req, res) => {
         c.nome AS cliente_nome,
         c.telefone AS cliente_contato,
         q.nome AS quadra_nome,
-        COALESCE((SELECT SUM(valor) FROM Pagamentos WHERE reserva_id = r.id AND valor > 0), 0) AS total_pago
+        COALESCE((SELECT SUM(valor) FROM Pagamentos WHERE reserva_id = r.id), 0) AS total_pago
       FROM Reservas r
       JOIN Clientes c ON r.cliente_id = c.id
       JOIN Quadras q ON r.quadra_id = q.id
@@ -241,7 +241,7 @@ const relatorioFormasPagamento = async (req, res) => {
 
     const porMetodo = await db.allAsync(`
       SELECT
-        p.metodo,
+        LOWER(p.metodo) AS metodo,
         COUNT(*) AS total_transacoes,
         SUM(p.valor) AS total_valor
       FROM Pagamentos p
@@ -250,7 +250,7 @@ const relatorioFormasPagamento = async (req, res) => {
         AND DATE(p.registrado_em) BETWEEN ? AND ?
         AND r.tenant_id = ?
         ${quadra_id ? 'AND r.quadra_id = ?' : ''}
-      GROUP BY p.metodo
+      GROUP BY LOWER(p.metodo)
       ORDER BY total_valor DESC
     `, quadra_id ? [inicio, fim, req.user.tenant_id, quadra_id] : [inicio, fim, req.user.tenant_id]);
 

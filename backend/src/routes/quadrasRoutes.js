@@ -13,7 +13,7 @@ router.get('/', listarQuadras);
 router.post('/', requireRole(['Administrador', 'Gerente']), criarQuadra);
 router.put('/:id', requireRole(['Administrador', 'Gerente']), atualizarQuadra);
 router.patch('/:id/status', requireRole(['Administrador', 'Gerente']), alterarStatusQuadra);
-router.delete('/:id', requireRole(['Administrador']), deletarQuadra);
+router.delete('/:id', requireRole(['Administrador', 'Gerente']), deletarQuadra);
 
 // Bloqueios
 router.post('/bloqueios', requireRole(['Administrador', 'Gerente', 'Recepcionista']), criarBloqueio);

@@ -1,34 +1,35 @@
+import { Link, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Building2, FileText, Wallet, Users, Megaphone, ShieldCheck, Settings, LogOut, ChevronRight, type LucideIcon } from 'lucide-react';
 
 export interface NavItem {
   id: string;
+  path: string;
   label: string;
   icon: LucideIcon;
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'arenas', label: 'Arenas', icon: Building2 },
-  { id: 'arena-detalhe', label: 'Detalhe da arena', icon: FileText },
-  { id: 'financeiro', label: 'Financeiro', icon: Wallet },
-  { id: 'usuarios', label: 'Usuários', icon: Users },
-  { id: 'comunicacao', label: 'Comunicação', icon: Megaphone },
-  { id: 'auditoria', label: 'Auditoria', icon: ShieldCheck },
-  { id: 'configuracoes', label: 'Configurações', icon: Settings },
+  { id: 'dashboard', path: '/master/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'arenas', path: '/master/arenas', label: 'Arenas', icon: Building2 },
+  { id: 'arena-detalhe', path: '/master/arena-detalhe', label: 'Detalhe da arena', icon: FileText },
+  { id: 'financeiro', path: '/master/financeiro', label: 'Financeiro', icon: Wallet },
+  { id: 'usuarios', path: '/master/usuarios', label: 'Usuários', icon: Users },
+  { id: 'comunicacao', path: '/master/comunicacao', label: 'Comunicação', icon: Megaphone },
+  { id: 'auditoria', path: '/master/auditoria', label: 'Auditoria', icon: ShieldCheck },
+  { id: 'configuracoes', path: '/master/configuracoes', label: 'Configurações', icon: Settings },
 ];
 
-interface SidebarProps {
-  active: string;
-  onNavigate: (id: string) => void;
-  collapsed: boolean;
-  onToggle: () => void;
-}
+export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+  const location = useLocation();
 
-export function Sidebar({ active, onNavigate, collapsed }: SidebarProps) {
   return (
-    <aside className={`${collapsed ? 'w-[68px]' : 'w-[248px]'} shrink-0 h-screen sticky top-0 bg-charcoal text-off-white flex flex-col transition-[width] duration-200 ease-out`}>
+    <aside className={`${collapsed ? 'w-[68px]' : 'w-[248px]'} shrink-0 h-screen sticky top-0 bg-charcoal text-off-white flex flex-col transition-[width] duration-200 ease-out z-20`}>
       {/* Brand */}
-      <div className="px-4 h-16 flex items-center gap-2.5 border-b border-white/10">
+      <div
+        className="px-4 h-16 flex items-center gap-2.5 border-b border-white/10 cursor-pointer"
+        onClick={onToggle}
+        title="Toggle Menu"
+      >
         <div className="w-9 h-9 rounded-lg bg-off-white text-charcoal flex items-center justify-center font-bold text-sm shrink-0">
           CM
         </div>
@@ -47,22 +48,21 @@ export function Sidebar({ active, onNavigate, collapsed }: SidebarProps) {
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
-          const isActive = active === item.id;
-          const isHiddenInMenu = item.id === 'arena-detalhe'; // accessed via arenas list
+          const isActive = location.pathname === item.path;
+          const isHiddenInMenu = item.id === 'arena-detalhe';
           if (isHiddenInMenu) return null;
           return (
-            <button
+            <Link
               key={item.id}
-              onClick={() => onNavigate(item.id)}
+              to={item.path}
               title={collapsed ? item.label : undefined}
-              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-colors group ${
-                isActive ? 'bg-white/10 text-off-white font-medium' : 'text-off-white/65 hover:text-off-white hover:bg-white/5'
-              }`}
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-colors group ${isActive ? 'bg-white/10 text-off-white font-medium' : 'text-off-white/65 hover:text-off-white hover:bg-white/5'
+                }`}
             >
               <Icon size={17} className="shrink-0" />
               {!collapsed && <span className="truncate">{item.label}</span>}
               {!collapsed && isActive && <ChevronRight size={14} className="ml-auto opacity-60" />}
-            </button>
+            </Link>
           );
         })}
       </nav>
@@ -76,9 +76,9 @@ export function Sidebar({ active, onNavigate, collapsed }: SidebarProps) {
           {!collapsed && (
             <div className="min-w-0 flex-1">
               <div className="text-xs font-medium truncate">master@courtmanager</div>
-              <div className="text-[11px] text-off-white/50 flex items-center gap-1">
+              <Link to="/" onClick={() => localStorage.removeItem('courtmanager_token')} className="text-[11px] text-off-white/50 flex items-center gap-1 hover:text-white transition-colors cursor-pointer">
                 <LogOut size={11} /> Sair
-              </div>
+              </Link>
             </div>
           )}
         </div>

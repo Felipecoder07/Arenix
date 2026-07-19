@@ -1,0 +1,159 @@
+/* reservas.css - Grade full específica da página de reservas */
+
+.admin-reservas-page .grade-container {
+  overflow-x: auto;
+}
+
+.admin-reservas-page .grade-table {
+  display: grid;
+  grid-template-columns: 64px repeat(var(--court-count, 4), minmax(130px, 1fr));
+  grid-auto-rows: minmax(54px, auto);
+  gap: 3px;
+  min-width: 640px;
+}
+
+.admin-reservas-page .grade-table[data-courts="5"] {
+  --court-count: 5;
+}
+
+.admin-reservas-page .grade-table[data-courts="6"] {
+  --court-count: 6;
+}
+
+.admin-reservas-page .gh-cell {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--charcoal);
+  text-align: center;
+  padding: 10px 6px;
+  background: var(--cream-surface);
+  border: 1px solid var(--border-passive);
+  border-radius: var(--r-md);
+}
+
+.admin-reservas-page .gh-cell:first-child {
+  background: transparent;
+  border: none;
+}
+
+.admin-reservas-page .gt-time {
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 8px;
+}
+
+.admin-reservas-page .gt-slot {
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: var(--r-md);
+  text-align: center;
+  cursor: pointer;
+  transition: opacity 0.12s, transform 0.1s;
+  border: 1px solid transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 52px;
+  box-sizing: border-box;
+}
+
+.admin-reservas-page .gt-slot:hover {
+  opacity: 0.82;
+  transform: scale(1.02);
+}
+
+.admin-reservas-page .gt-slot.s-available {
+  background: var(--cream-surface);
+  border: 1px dashed var(--border-passive);
+  color: var(--muted);
+}
+
+.admin-reservas-page .gt-slot.s-available:hover {
+  background: var(--charcoal-04);
+  border-color: var(--border-active);
+  color: var(--charcoal);
+}
+
+.admin-reservas-page .gt-slot.s-paid {
+  background: var(--paid-bg);
+  color: var(--paid);
+}
+
+.admin-reservas-page .gt-slot.s-pending {
+  background: var(--pending-bg);
+  color: var(--pending);
+}
+
+.admin-reservas-page .gt-slot.s-partial {
+  background: var(--partial-bg);
+  color: var(--partial);
+}
+
+.admin-reservas-page .gt-slot.s-blocked {
+  background: var(--blocked-bg);
+  color: var(--blocked);
+  cursor: default;
+}
+
+.admin-reservas-page .gt-slot.s-past-empty {
+  background: rgba(0, 0, 0, 0.08);
+  border: 1px dashed rgba(0, 0, 0, 0.05);
+  opacity: 0.75;
+  pointer-events: none;
+  cursor: default;
+}
+
+.admin-reservas-page .slot-name {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.admin-reservas-page .slot-label {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.admin-reservas-page .today-pill {
+  font-size: 10px;
+  background: var(--charcoal);
+  color: var(--off-white);
+  border-radius: var(--r-pill);
+  padding: 2px 8px;
+  margin-top: 3px;
+  display: inline-block;
+}
+
+/* Date nav */
+.admin-reservas-page .date-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.admin-reservas-page .date-nav-btn {
+  background: var(--cream);
+  border: 1px solid var(--border-passive);
+  border-radius: var(--r-md);
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--charcoal);
+  transition: opacity 0.15s;
+}
+
+.admin-reservas-page .date-nav-btn:hover {
+  opacity: 0.7;
+}
+
+.admin-reservas-page #grade-date-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--charcoal);
+  min-width: 160px;
+  text-align: center;
+}
