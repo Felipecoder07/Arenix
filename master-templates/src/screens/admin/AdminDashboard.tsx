@@ -99,7 +99,8 @@ export function AdminDashboard() {
 
     const fetchGrade = async () => {
       try {
-        const hoje = new Date().toISOString().split('T')[0];
+        const tzOffset = new Date().getTimezoneOffset() * 60000;
+        const hoje = new Date(Date.now() - tzOffset).toISOString().split('T')[0];
         const res = await fetch(`http://localhost:3000/api/reservas/grade?data=${hoje}`, {
           headers: { 
             'Authorization': `Bearer ${token}`,
@@ -185,7 +186,7 @@ export function AdminDashboard() {
 
           if (b) {
             return isPastHour ? (
-              <div key={q.id} className="slot" style={{ background: 'rgba(0,0,0,0.04)', border: 'none' }} />
+              <div key={q.id} className="slot slot--past-blocked" title={b.motivo || 'Bloqueado'} />
             ) : (
               <div key={q.id} className="slot slot--blocked" title={b.motivo || 'Bloqueado'}>⊘</div>
             );
@@ -200,7 +201,7 @@ export function AdminDashboard() {
             );
           } else {
             return isPastHour ? (
-              <div key={q.id} className="slot" style={{ background: 'rgba(0,0,0,0.04)', border: 'none' }} />
+              <div key={q.id} className="slot slot--past-available" title="Livre (Passado)" />
             ) : (
               <div key={q.id} className="slot slot--available" title="Livre" />
             );

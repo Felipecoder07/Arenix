@@ -22,15 +22,22 @@
   --border-passive:  #eceae4;
   --border-active:   rgba(28, 28, 28, 0.40);
 
-  /* Status Colors — harmonious, not saturated */
-  --paid:            #2a6e4a;    /* forest green */
-  --paid-bg:         #eaf3ee;
-  --pending:         #8a5a00;    /* amber */
-  --pending-bg:      #fdf3dc;
-  --partial:         #2155a8;    /* slate blue */
-  --partial-bg:      #e8eefa;
-  --blocked:         #5f5f5d;    /* muted */
-  --blocked-bg:      #ebebeb;
+  /* Status Colors — High contrast & visual distinction */
+  --paid:            #15803d;    /* Emerald green text */
+  --paid-bg:         #dcfce7;    /* Mint green background */
+  --paid-border:     #16a34a;    /* Emerald green accent border */
+
+  --pending:         #b45309;    /* Deep amber text */
+  --pending-bg:      #fef3c7;    /* Warm yellow background */
+  --pending-border:  #d97706;    /* Amber accent border */
+
+  --partial:         #1d4ed8;    /* Vivid royal blue text */
+  --partial-bg:      #dbeafe;    /* Bright sky blue background */
+  --partial-border:  #2563eb;    /* Royal blue accent border */
+
+  --blocked:         #1f2937;    /* Dark Charcoal/Slate text */
+  --blocked-bg:      #e2e8f0;    /* Solid Distinct Gray background */
+  --blocked-border:  #4b5563;    /* Dark Slate accent border */
   --danger:          #9b2226;
   --danger-bg:       #fce8e8;
 

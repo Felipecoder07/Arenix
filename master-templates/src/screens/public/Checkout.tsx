@@ -1,7 +1,13 @@
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
 import '../../assets/css/landing.css';
 import '../../assets/css/checkout.css';
+
+const DEFAULT_PLANOS = [
+  { id: 1, nome: 'Basic', max_quadras: 3, max_usuarios: 3, valor_mensal: 49.99 },
+  { id: 2, nome: 'Pro', max_quadras: 10, max_usuarios: 10, valor_mensal: 79.99 },
+  { id: 3, nome: 'Enterprise', max_quadras: 999, max_usuarios: 999, valor_mensal: 0 }
+];
 
 export function Checkout() {
   const navigate = useNavigate();
@@ -14,13 +20,27 @@ export function Checkout() {
     resp_email: '',
     resp_telefone: '',
     resp_senha: '',
-    plano: 'pro'
+    plano: '2'
   });
 
+  const [planosPublicos, setPlanosPublicos] = useState<any[]>(DEFAULT_PLANOS);
   const [errors, setErrors] = useState<Record<string, boolean>>({});
   const [errorMsg, setErrorMsg] = useState('');
   const [shake, setShake] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    fetch('http://localhost:3000/api/auth/planos')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setPlanosPublicos(data);
+          const pro = data.find(p => p.nome.toLowerCase() === 'pro');
+          setFormData(prev => ({ ...prev, plano: String(pro ? pro.id : data[0].id) }));
+        }
+      })
+      .catch(err => console.error('Erro ao buscar planos públicos:', err));
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -257,30 +277,31 @@ export function Checkout() {
                 Plano
               </div>
               <div className="plan-selector">
-                <label className={`plan-option ${formData.plano === 'starter' ? 'selected' : ''}`} onClick={() => setFormData(prev => ({ ...prev, plano: 'starter' }))}>
-                  <input type="radio" name="plano" value="starter" checked={formData.plano === 'starter'} readOnly />
-                  <div className="plan-option-info">
-                    <div className="plan-name">Starter</div>
-                    <div className="plan-desc">Até 3 quadras — Reservas e Pagamentos</div>
-                  </div>
-                  <span className="plan-option-price">R$ 49,99/mês</span>
-                </label>
-                <label className={`plan-option ${formData.plano === 'pro' ? 'selected' : ''}`} onClick={() => setFormData(prev => ({ ...prev, plano: 'pro' }))}>
-                  <input type="radio" name="plano" value="pro" checked={formData.plano === 'pro'} readOnly />
-                  <div className="plan-option-info">
-                    <div className="plan-name">Pro</div>
-                    <div className="plan-desc">Até 10 quadras — MVP completo + Gestão de Mensalistas</div>
-                  </div>
-                  <span className="plan-option-price">R$ 79,99/mês</span>
-                </label>
-                <label className={`plan-option ${formData.plano === 'enterprise' ? 'selected' : ''}`} onClick={() => setFormData(prev => ({ ...prev, plano: 'enterprise' }))}>
-                  <input type="radio" name="plano" value="enterprise" checked={formData.plano === 'enterprise'} readOnly />
-                  <div className="plan-option-info">
-                    <div className="plan-name">Enterprise</div>
-                    <div className="plan-desc">Múltiplas unidades — API e integrações</div>
-                  </div>
-                  <span className="plan-option-price">Sob consulta</span>
-                </label>
+                {planosPublicos.length > 0 ? (
+                  planosPublicos.map((p) => {
+                    const isSelected = String(formData.plano) === String(p.id) || formData.plano === p.nome.toLowerCase();
+                    const priceText = p.valor_mensal > 0
+                      ? `R$ ${p.valor_mensal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/mês`
+                      : 'Sob consulta';
+                    return (
+                      <label
+                        key={p.id}
+                        className={`plan-option ${isSelected ? 'selected' : ''}`}
+                        onClick={() => setFormData(prev => ({ ...prev, plano: String(p.id) }))}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <input type="radio" name="plano" value={p.id} checked={isSelected} readOnly />
+                        <div className="plan-option-info">
+                          <div className="plan-name">{p.nome}</div>
+                          <div className="plan-desc">Até {p.max_quadras} quadras — Até {p.max_usuarios} usuários</div>
+                        </div>
+                        <span className="plan-option-price">{priceText}</span>
+                      </label>
+                    );
+                  })
+                ) : (
+                  <div style={{ padding: '12px', fontSize: '13px', color: 'var(--muted)' }}>Carregando planos da plataforma...</div>
+                )}
               </div>
 
               <p style={{ "fontSize": "11px", "color": "var(--muted)", "marginBottom": "16px" }}>

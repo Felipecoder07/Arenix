@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mapa de Arquitetura — Arenix SaaS (CourtManager)</title>
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --bg-card: #1e293b;
+      --bg-card-hover: #334155;
+      --border-color: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      
+      --color-client: #06b6d4;   /* Cyan */
+      --color-server: #10b981;   /* Emerald */
+      --color-db: #f59e0b;       /* Amber */
+      --color-ext: #a855f7;      /* Purple */
+      --color-build: #f43f5e;    /* Rose */
+      --color-accent: #3b82f6;   /* Blue */
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      line-height: 1.5;
+      padding-bottom: 40px;
+    }
+
+    header {
+      background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%);
+      border-bottom: 1px solid var(--border-color);
+      padding: 24px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .brand-title {
+      font-size: 22px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #fff;
+    }
+
+    .brand-title span {
+      background: linear-gradient(90deg, #38bdf8, #818cf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .stats-badge {
+      display: flex;
+      gap: 12px;
+    }
+
+    .badge-pill {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .badge-pill strong { color: #fff; }
+
+    nav.tab-nav {
+      display: flex;
+      gap: 8px;
+      background: #1e293b;
+      padding: 6px;
+      border-radius: 12px;
+      margin: 24px 32px 0 32px;
+      border: 1px solid var(--border-color);
+    }
+
+    .tab-btn {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-align: center;
+    }
+
+    .tab-btn.active {
+      background: var(--color-accent);
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+
+    main.container {
+      max-width: 1400px;
+      margin: 24px auto 0 auto;
+      padding: 0 32px;
+    }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Legend Bar */
+    .legend-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      background: var(--bg-card);
+      padding: 14px 20px;
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+      margin-bottom: 24px;
+      font-size: 12px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .dot-client { background-color: var(--color-client); }
+    .dot-server { background-color: var(--color-server); }
+    .dot-db { background-color: var(--color-db); }
+    .dot-ext { background-color: var(--color-ext); }
+
+    /* Search Input */
+    .search-box {
+      margin-bottom: 24px;
+    }
+
+    .search-box input {
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: #fff;
+      padding: 12px 18px;
+      border-radius: 10px;
+      font-size: 14px;
+      outline: none;
+      transition: border 0.2s;
+    }
+
+    .search-box input:focus {
+      border-color: var(--color-accent);
+    }
+
+    /* Grid Layout */
+    .modules-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 20px;
+    }
+
+    .module-card {
+      background: var(--bg-card);
+      border-radius: 14px;
+      border: 1px solid var(--border-color);
+      padding: 20px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .module-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 5px;
+      height: 100%;
+    }
+
+    .module-card.client::before { background-color: var(--color-client); }
+    .module-card.server::before { background-color: var(--color-server); }
+    .module-card.database::before { background-color: var(--color-db); }
+    .module-card.external::before { background-color: var(--color-ext); }
+
+    .module-card:hover {
+      transform: translateY(-3px);
+      background-color: var(--bg-card-hover);
+      box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5);
+    }
+
+    .card-type {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .client .card-type { color: var(--color-client); }
+    .server .card-type { color: var(--color-server); }
+    .database .card-type { color: var(--color-db); }
+    .external .card-type { color: var(--color-ext); }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+
+    .card-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      margin-bottom: 14px;
+    }
+
+    .card-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .tag {
+      background: rgba(255,255,255,0.06);
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      color: #cbd5e1;
+    }
+
+    /* Flow Sequence Styling */
+    .flow-container {
+      background: var(--bg-card);
+      border-radius: 14px;
+      border: 1px solid var(--border-color);
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .flow-header {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .step-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      position: relative;
+    }
+
+    .step-item {
+      display: flex;
+      gap: 16px;
+      background: rgba(15, 23, 42, 0.6);
+      padding: 14px 18px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.05);
+      align-items: center;
+    }
+
+    .step-num {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--color-accent);
+      color: #fff;
+      font-weight: 700;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .step-content {
+      font-size: 13px;
+      flex: 1;
+    }
+
+    .step-comp {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(255,255,255,0.1);
+      color: #cbd5e1;
+      margin-top: 4px;
+    }
+
+    /* Table Styling for Debt & Conventions */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--bg-card);
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border-color);
+    }
+
+    .data-table th, .data-table td {
+      padding: 14px 18px;
+      text-align: left;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .data-table th {
+      background: #0f172a;
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 11px;
+    }
+
+    /* Modal Styling */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 20px;
+    }
+
+    .modal-overlay.active { display: flex; }
+
+    .modal-body {
+      background: #1e293b;
+      border-radius: 16px;
+      border: 1px solid var(--border-color);
+      max-width: 650px;
+      width: 100%;
+      max-height: 85vh;
+      overflow-y: auto;
+      padding: 28px;
+      position: relative;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.8);
+    }
+
+    .modal-close {
+      position: absolute;
+      top: 20px; right: 20px;
+      background: rgba(255,255,255,0.1);
+      border: none;
+      color: #fff;
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      font-size: 18px;
+      cursor: pointer;
+    }
+
+    .modal-title { font-size: 20px; font-weight: 700; margin-bottom: 6px; color: #fff; }
+    .modal-type { font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 16px; }
+
+    .modal-section { margin-bottom: 18px; }
+    .modal-section h4 { font-size: 12px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; }
+    .modal-section p { font-size: 13px; color: #cbd5e1; }
+
+    .file-list { list-style: none; }
+    .file-list li {
+      font-family: monospace;
+      font-size: 12px;
+      background: #0f172a;
+      padding: 6px 10px;
+      border-radius: 6px;
+      margin-bottom: 4px;
+      color: #38bdf8;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand-title">
+      🎾 <span>Arenix SaaS (CourtManager)</span> — Mapa de Arquitetura Interativo
+    </div>
+    <div class="stats-badge">
+      <div class="badge-pill">Módulos Mapeados: <strong>10</strong></div>
+      <div class="badge-pill">Fluxos Principais: <strong>3</strong></div>
+      <div class="badge-pill">Status: <strong>Produção Pronta</strong></div>
+    </div>
+  </header>
+
+  <nav class="tab-nav">
+    <button class="tab-btn active" onclick="switchTab('diagram')">🗺️ Módulos & Componentes</button>
+    <button class="tab-btn" onclick="switchTab('flows')">🔄 Sequência dos Fluxos</button>
+    <button class="tab-btn" onclick="switchTab('conventions')">📐 Decisões & Convenções</button>
+    <button class="tab-btn" onclick="switchTab('debts')">🔍 Pontos de Atenção</button>
+  </nav>
+
+  <main class="container">
+
+    <!-- TAB 1: DIAGRAMA E MÓDULOS -->
+    <div id="tab-diagram" class="tab-content active">
+      
+      <div class="legend-bar">
+        <span style="font-weight:700; margin-right:8px;">Filtros:</span>
+        <div class="legend-item" onclick="filterType('all')"><span class="dot" style="background:#cbd5e1"></span> Todos</div>
+        <div class="legend-item" onclick="filterType('client-side')"><span class="dot dot-client"></span> Frontend Client-Side</div>
+        <div class="legend-item" onclick="filterType('server-side')"><span class="dot dot-server"></span> Backend Server-Side</div>
+        <div class="legend-item" onclick="filterType('database')"><span class="dot dot-db"></span> Banco de Dados SQLite</div>
+        <div class="legend-item" onclick="filterType('external')"><span class="dot dot-ext"></span> Serviços Externos</div>
+      </div>
+
+      <div class="search-box">
+        <input type="text" id="searchInput" placeholder="Digite para buscar módulos, arquivos ou responsabilidades..." oninput="handleSearch()">
+      </div>
+
+      <div class="modules-grid" id="modulesGrid">
+        <!-- Renderizado dinamicamente via JS -->
+      </div>
+    </div>
+
+    <!-- TAB 2: FLUXOS PRINCIPAIS -->
+    <div id="tab-flows" class="tab-content">
+      
+      <div class="flow-container">
+        <div class="flow-header">🔑 Fluxo 1: Autenticação & Sessão Multi-Tenant</div>
+        <div class="step-list">
+          <div class="step-item">
+            <div class="step-num">1</div>
+            <div class="step-content">
+              <strong>Submissão do Formulário</strong>: O usuário insere e-mail e senha no <code>TenantLogin.tsx</code> ou <code>MasterLogin.tsx</code>.
+              <div><span class="step-comp">Frontend React</span></div>
+            </div>
+          </div>
+          <div class="step-item">
+            <div class="step-num">2</div>
+            <div class="step-content">
+              <strong>Requisição HTTP POST /api/auth/login</strong>: O backend recebe o payload e busca o registro na tabela <code>Usuarios</code>.
+              <div><span class="step-comp">authController.js</span></div>
+            </div>
+          </div>
+          <div class="step-item">
+            <div class="step-num">3</div>
+            <div class="step-content">
+              <strong>Validação de Senha & Status</strong>: Verifica o hash Bcrypt. Se a arena estiver suspensa (<code>arena_status = 0</code>), permite o login exclusivo do Administrador para efetuar o pagamento.
+              <div><span class="step-comp">authController.js + SQLite</span></div>
+            </div>
+          </div>
+          <div class="step-item">
+            <div class="step-num">4</div>
+            <div class="step-content">
+              <strong>Assinatura JWT & Sessão</strong>: Retorna o token JWT assinado contendo <code>id</code>, <code>tenant_id</code> e <code>perfil</code>, e grava na tabela <code>SessoesAtivas</code>.
+              <div><span class="step-comp">jsonwebtoken</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-container">
+        <div class="flow-header">💳 Fluxo 2: Cobrança SaaS, Pix Online & Auto-Desbloqueio</div>
+        <div class="step-list">
+          <div class="step-item">
+            <div class="step-num">1</div>
+            <div class="step-content">
+              <strong>Geração da Fatura Mensal</strong>: O Job diário <code>cronSaaS.js</code> lê as arenas ativas na data de vencimento e insere uma fatura em <code>FaturasSaaS</code>.
+              <div><span class="step-comp">cronSaaS.js</span></div>
+            </div>
+          </div>
+          <div class="step-item">
+            <div class="step-num">2</div>
+            <div class="step-content">
+              <strong>Solicitação de Pix</strong>: O Administrador clica em 'Pagar com PIX' em <code>AdminAssinatura.tsx</code>. O backend executa <code>saasBillingService.gerarPixFaturaSaaS</code> usando o Access Token do Master.
+              <div><span class="step-comp">saasBillingService.js + Mercado Pago API</span></div>
+            </div>
+          </div>
+          <div class="step-item">
+            <div class="step-num">3</div>
+            <div class="step-content">
+              <strong>Pagamento no Banco</strong>: O cliente paga no aplicativo do seu banco lendo o QR Code ou colando a chave Pix.
+              <div><span class="step-comp">App Bancário</span></div>
+            </div>
+          </div>
+          <div class="step-item">
+            <div class="step-num">4</div>
+            <div class="step-content">
+              <strong>Confirmação Real-Time & Liquidação Idempotente</strong>: O Webhook ou o Polling Live (<code>/status-pagamento</code>) detecta o status <code>approved</code>, executa <code>liquidarFaturaSaaS</code>, atualiza a fatura para 'Paga' e reativa a arena (<code>status = 1</code>) instantaneamente.
+              <div><span class="step-comp">saasBillingService.js</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- TAB 3: CONVENÇÕES E DECISÕES -->
+    <div id="tab-conventions" class="tab-content">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Categoria</th>
+            <th>Padrão Adoptado</th>
+            <th>Rationale / Motivo de Engenharia</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Isolamento Multi-Tenant</strong></td>
+            <td>Logicamente isolado via <code>tenant_id</code> em todas as tabelas operacionais.</td>
+            <td>Garante alta performance no SQLite mantendo rigidez absoluta nas consultas parametrizadas.</td>
+          </tr>
+          <tr>
+            <td><strong>Separação de Gateway</strong></td>
+            <td>Access Token Master (Mensalidades SaaS) vs Access Token Tenant OAuth (Reservas Atletas).</td>
+            <td>Impede cruzamento de caixas entre o dono da plataforma SaaS e os donos das arenas.</td>
+          </tr>
+          <tr>
+            <td><strong>Live Polling Fallback</strong></td>
+            <td>Polling a cada 4s no modal Pix com consulta direta à API do Mercado Pago.</td>
+            <td>Resolve a limitação de webhooks no ambiente local (localhost) garantindo teste e uso perfeitos.</td>
+          </tr>
+          <tr>
+            <td><strong>Convenção de Arquivos</strong></td>
+            <td>Backend MVC em <code>camelCase.js</code> | Frontend React TSX em <code>PascalCase.tsx</code>.</td>
+            <td>Facilita a identificação imediata dos componentes no monorepo desacoplado.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- TAB 4: DÉBITOS TÉCNICOS -->
+    <div id="tab-debts" class="tab-content">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Gravidade</th>
+            <th>Item Encontrado</th>
+            <th>Descrição & Recomendação</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span style="color:#f59e0b; font-weight:bold;">Média</span></td>
+            <td>Registro Duplicado de Rotas no Backend</td>
+            <td>Algumas rotas possuem declaração no <code>server.js</code> e no <code>app.js</code>. Recomenda-se mover o registro de rotas 100% para dentro de <code>app.js</code>.</td>
+          </tr>
+          <tr>
+            <td><span style="color:#38bdf8; font-weight:bold;">Baixa</span></td>
+            <td>Diretório <code>/frontend</code> Antigo Obsoleto</td>
+            <td>A pasta <code>/frontend</code> na raiz guarda os protótipos HTML estáticos anteriores à migração do React. Pode ser deletada ou arquivada.</td>
+          </tr>
+          <tr>
+            <td><span style="color:#38bdf8; font-weight:bold;">Baixa</span></td>
+            <td>Scripts Avulsos na Raiz do Projeto</td>
+            <td>Existem ~15 scripts JS soltos de automação inicial. Podem ser organizados dentro da pasta <code>scripts/</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </main>
+
+  <!-- MODAL DE DETALHES -->
+  <div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+    <div class="modal-body" onclick="event.stopPropagation()">
+      <button class="modal-close" onclick="closeModalDirect()">&times;</button>
+      <div class="modal-type" id="modalType">TYPE</div>
+      <h3 class="modal-title" id="modalTitle">Title</h3>
+      
+      <div class="modal-section">
+        <h4>Responsabilidade Principal</h4>
+        <p id="modalResp">...</p>
+      </div>
+
+      <div class="modal-section">
+        <h4>Arquivos Principais do Módulo</h4>
+        <ul class="file-list" id="modalFiles"></ul>
+      </div>
+
+      <div class="modal-section">
+        <h4>Entradas (Inputs)</h4>
+        <p id="modalInputs">...</p>
+      </div>
+
+      <div class="modal-section">
+        <h4>Saídas (Outputs)</h4>
+        <p id="modalOutputs">...</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const MODULES_DATA = [
+      {
+        id: 'fe_public',
+        name: 'Frontend - Portal Público & Checkout',
+        type: 'client-side',
+        typeLabel: 'Frontend Client-Side',
+        files: [
+          'master-templates/src/screens/public/LandingPage.tsx',
+          'master-templates/src/screens/public/Checkout.tsx',
+          'master-templates/src/screens/public/TenantLogin.tsx',
+          'master-templates/src/screens/public/PortalCliente.tsx'
+        ],
+        desc: 'Landing page institucional, formulário de cadastro de arena com escolha de planos, login de usuários e portal de agendamento do atleta.',
+        inputs: 'Formulários de cadastro, seleção de planos, credenciais de login.',
+        outputs: 'Requisições HTTP para /api/auth/* e salvamento de token JWT no localStorage.'
+      },
+      {
+        id: 'fe_tenant_admin',
+        name: 'Frontend - Painel da Arena (Tenant Admin)',
+        type: 'client-side',
+        typeLabel: 'Frontend Client-Side',
+        files: [
+          'master-templates/src/screens/admin/AdminDashboard.tsx',
+          'master-templates/src/screens/admin/AdminReservas.tsx',
+          'master-templates/src/screens/admin/AdminClientes.tsx',
+          'master-templates/src/screens/admin/AdminAssinatura.tsx'
+        ],
+        desc: 'Gestão da arena esportiva: grade de reservas, clientes, caixa balcão, relatórios e pagamento de mensalidades SaaS com Pix.',
+        inputs: 'Token JWT de autenticação e dados de gestão.',
+        outputs: 'Requisições HTTP para /api/reservas/*, /api/quadras/*, /api/tenant/assinatura/*.'
+      },
+      {
+        id: 'fe_master_admin',
+        name: 'Frontend - Painel SuperAdmin Master',
+        type: 'client-side',
+        typeLabel: 'Frontend Client-Side',
+        files: [
+          'master-templates/src/screens/MasterDashboard.tsx',
+          'master-templates/src/screens/MasterFinanceiro.tsx',
+          'master-templates/src/screens/MasterArenas.tsx',
+          'master-templates/src/screens/MasterConfiguracoes.tsx'
+        ],
+        desc: 'Painel global da plataforma SaaS para gerenciar arenas, métricas de MRR/Churn, edição de planos e credenciais Master do Mercado Pago.',
+        inputs: 'Credenciais com 2FA TOTP do SuperAdmin.',
+        outputs: 'Requisições para /api/saas/* e /api/arenas/*.'
+      },
+      {
+        id: 'be_core_server',
+        name: 'Backend - Core Server & Security Guard',
+        type: 'server-side',
+        typeLabel: 'Backend Server-Side',
+        files: [
+          'backend/src/server.js',
+          'backend/src/app.js',
+          'backend/src/middlewares/auth.js'
+        ],
+        desc: 'Inicialização do Express v5, roteamento central, validação JWT, controle RBAC de perfis e middleware de isolamento por tenant_id.',
+        inputs: 'Cabeçalho Authorization Bearer Token.',
+        outputs: 'Controle de fluxo de requisições, status 401/403 e injeção de req.user.'
+      },
+      {
+        id: 'be_saas_billing',
+        name: 'Backend - Motor de Cobrança SaaS & Pix',
+        type: 'server-side',
+        typeLabel: 'Backend Server-Side',
+        files: [
+          'backend/src/services/saasBillingService.js',
+          'backend/src/controllers/saasController.js',
+          'backend/src/routes/tenantAssinaturaRoutes.js',
+          'backend/src/jobs/cronSaaS.js'
+        ],
+        desc: 'Faturamento mensal automatizado, emissão de Pix via Mercado Pago Master, liquidação idempotente e auto-desbloqueio instantâneo.',
+        inputs: 'Webhooks de pagamento e Polling Live do frontend.',
+        outputs: 'Atualização de FaturasSaaS, reativação de Arenas.status = 1.'
+      },
+      {
+        id: 'db_sqlite',
+        name: 'Banco de Dados SQLite3 Relacional',
+        type: 'database',
+        typeLabel: 'Banco de Dados Relacional',
+        files: [
+          'backend/src/config/database.js',
+          'backend/src/config/init_db.js'
+        ],
+        desc: 'Armazenamento de Arenas, Usuarios, Quadras, Reservas, FaturasSaaS, LogsAuditoria e ConfiguracoesSaaS com suporte a queries assíncronas.',
+        inputs: 'Instruções SQL parametrizadas.',
+        outputs: 'Conjuntos de dados relacionais e controle de integridade.'
+      },
+      {
+        id: 'ext_mp',
+        name: 'Mercado Pago Gateway API',
+        type: 'external',
+        typeLabel: 'Serviço Externo',
+        files: [
+          'backend/src/services/saasBillingService.js',
+          'backend/src/services/gatewayService.js'
+        ],
+        desc: 'Geração de cobranças Pix de mensalidades SaaS e suporte a OAuth das contas individuais dos donos de arena.',
+        inputs: 'Tokens APP_USR-... do Master ou OAuth dos Tenants.',
+        outputs: 'QR Codes Pix, Chaves Copia e Cola e Webhooks.'
+      }
+    ];
+
+    function renderModules(items) {
+      const grid = document.getElementById('modulesGrid');
+      grid.innerHTML = items.map(mod => `
+        <div class="module-card ${mod.type.split('-')[0]}" onclick="openModal('${mod.id}')">
+          <div class="card-type">${mod.typeLabel}</div>
+          <div class="card-title">${mod.name}</div>
+          <div class="card-desc">${mod.desc}</div>
+          <div class="card-tags">
+            ${mod.files.slice(0, 2).map(f => `<span class="tag">${f.split('/').pop()}</span>`).join('')}
+            ${mod.files.length > 2 ? `<span class="tag">+${mod.files.length - 2} mais</span>` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      
+      event.target.classList.add('active');
+      document.getElementById(`tab-${tabId}`).classList.add('active');
+    }
+
+    function filterType(type) {
+      if (type === 'all') {
+        renderModules(MODULES_DATA);
+      } else {
+        renderModules(MODULES_DATA.filter(m => m.type === type));
+      }
+    }
+
+    function handleSearch() {
+      const q = document.getElementById('searchInput').value.toLowerCase();
+      const filtered = MODULES_DATA.filter(m => 
+        m.name.toLowerCase().includes(q) || 
+        m.desc.toLowerCase().includes(q) ||
+        m.files.some(f => f.toLowerCase().includes(q))
+      );
+      renderModules(filtered);
+    }
+
+    function openModal(id) {
+      const mod = MODULES_DATA.find(m => m.id === id);
+      if (!mod) return;
+
+      document.getElementById('modalType').innerText = mod.typeLabel;
+      document.getElementById('modalTitle').innerText = mod.name;
+      document.getElementById('modalResp').innerText = mod.desc;
+      document.getElementById('modalInputs').innerText = mod.inputs;
+      document.getElementById('modalOutputs').innerText = mod.outputs;
+      
+      const fileList = document.getElementById('modalFiles');
+      fileList.innerHTML = mod.files.map(f => `<li>${f}</li>`).join('');
+
+      document.getElementById('modalOverlay').classList.add('active');
+    }
+
+    function closeModal(e) {
+      if (e.target.id === 'modalOverlay') closeModalDirect();
+    }
+
+    function closeModalDirect() {
+      document.getElementById('modalOverlay').classList.remove('active');
+    }
+
+    // Inicialização
+    renderModules(MODULES_DATA);
+  </script>
+</body>
+</html>

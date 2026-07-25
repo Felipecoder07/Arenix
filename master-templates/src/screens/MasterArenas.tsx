@@ -9,6 +9,7 @@ const PAGE_SIZE = 8;
 
 export function MasterArenas({ onNavigate }: Props) {
   const [arenas, setArenas] = useState<any[]>([]);
+  const [planosSaaS, setPlanosSaaS] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | string>('all');
@@ -19,6 +20,18 @@ export function MasterArenas({ onNavigate }: Props) {
   const [showFilters, setShowFilters] = useState(false);
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newArena, setNewArena] = useState({
+    nome: '',
+    email: '',
+    telefone: '',
+    endereco: '',
+    plano_id: '',
+    dia_vencimento: '10',
+    trial_dias: '14',
+    senha: ''
+  });
+
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   const [blockTarget, setBlockTarget] = useState<any | null>(null);
 
@@ -26,11 +39,17 @@ export function MasterArenas({ onNavigate }: Props) {
     try {
       setLoading(true);
       const token = localStorage.getItem('courtmanager_token');
-      const res = await fetch('http://localhost:3000/api/saas/arenas', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      setArenas(data);
+      const [resArenas, resPlanos] = await Promise.all([
+        fetch('http://localhost:3000/api/saas/arenas', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('http://localhost:3000/api/saas/planos', { headers: { 'Authorization': `Bearer ${token}` } })
+      ]);
+      const dataArenas = await resArenas.json();
+      const dataPlanos = await resPlanos.json();
+      setArenas(dataArenas);
+      setPlanosSaaS(dataPlanos);
+      if (dataPlanos.length > 0 && !newArena.plano_id) {
+        setNewArena(prev => ({ ...prev, plano_id: String(dataPlanos[0].id) }));
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -41,6 +60,47 @@ export function MasterArenas({ onNavigate }: Props) {
   useEffect(() => {
     fetchArenas();
   }, []);
+
+  const handleCreateArena = async () => {
+    if (!newArena.nome || !newArena.email) {
+      alert('Nome da arena e e-mail do responsável são obrigatórios.');
+      return;
+    }
+    setCreating(true);
+    try {
+      const token = localStorage.getItem('courtmanager_token');
+      const res = await fetch('http://localhost:3000/api/saas/arenas', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(newArena)
+      });
+      if (res.ok) {
+        setCreateOpen(false);
+        setNewArena({
+          nome: '',
+          email: '',
+          telefone: '',
+          endereco: '',
+          plano_id: planosSaaS[0] ? String(planosSaaS[0].id) : '1',
+          dia_vencimento: '10',
+          trial_dias: '14',
+          senha: ''
+        });
+        fetchArenas();
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        alert(errJson.error || 'Erro ao cadastrar arena.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Erro de conexão ao cadastrar arena.');
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     return arenas.filter((a) => {
@@ -118,6 +178,7 @@ export function MasterArenas({ onNavigate }: Props) {
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 font-medium">Criada em</th>
                   <th className="px-4 py-3 font-medium">Financeiro</th>
+                  <th className="px-4 py-3 font-medium">Gateway MP</th>
                   <th className="px-4 py-3 font-medium text-right">Ações</th>
                 </tr>
               </thead>
@@ -130,7 +191,7 @@ export function MasterArenas({ onNavigate }: Props) {
                   return (
                   <tr key={a.id} className="hover:bg-cream/50 transition-colors">
                     <td className="px-4 py-3">
-                      <button onClick={() => onNavigate('arena-detalhe')} className="text-left">
+                      <button onClick={() => onNavigate('arena-detalhe?id=' + a.id)} className="text-left">
                         <div className="font-medium text-charcoal hover:underline">{a.nome}</div>
                         <div className="text-xs text-muted">{a.email}</div>
                       </button>
@@ -141,8 +202,19 @@ export function MasterArenas({ onNavigate }: Props) {
                     <td className="px-4 py-3 text-muted tabular">{formatDate(a.created_at || new Date().toISOString())}</td>
                     <td className="px-4 py-3"><Badge status={fin as any}>{financeLabel[fin]}</Badge></td>
                     <td className="px-4 py-3">
+                      {a.gateway_conectado ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 600 }}>
+                          ✅ MP Conectado
+                        </span>
+                      ) : (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: '#fef3c7', color: '#b45309', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 600 }}>
+                          ⚠️ Pendente
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-0.5">
-                        <button onClick={() => onNavigate('arena-detalhe')} title="Ver detalhes" className="p-1.5 rounded-md text-muted hover:text-charcoal hover:bg-cream-surface transition-colors"><Eye size={15} /></button>
+                        <button onClick={() => onNavigate('arena-detalhe?id=' + a.id)} title="Ver detalhes" className="p-1.5 rounded-md text-muted hover:text-charcoal hover:bg-cream-surface transition-colors"><Eye size={15} /></button>
                         <button title="Editar" className="p-1.5 rounded-md text-muted hover:text-charcoal hover:bg-cream-surface transition-colors"><Pencil size={15} /></button>
                         {a.status === 0 ? (
                           <button onClick={() => setBlockTarget(a)} title="Desbloquear" className="p-1.5 rounded-md text-success hover:bg-success-soft transition-colors"><CheckCircle size={15} /></button>
@@ -166,18 +238,32 @@ export function MasterArenas({ onNavigate }: Props) {
       {/* Create modal */}
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Cadastrar nova arena" description="Cadastro manual sem passar pelo fluxo público."
         size="lg"
-        footer={<><Button variant="ghost" onClick={() => setCreateOpen(false)}>Cancelar</Button><Button variant="primary" onClick={() => setCreateOpen(false)}>Cadastrar arena</Button></>}
+        footer={<><Button variant="ghost" onClick={() => setCreateOpen(false)}>Cancelar</Button><Button variant="primary" disabled={creating} onClick={handleCreateArena}>{creating ? 'Cadastrando...' : 'Cadastrar arena'}</Button></>}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Nome da arena"><Input placeholder="Ex.: Arena Vôlei Sul" /></Field>
-          <Field label="E-mail do responsável"><Input type="email" placeholder="contato@arena.com.br" /></Field>
-          <Field label="Telefone"><Input placeholder="(11) 90000-0000" /></Field>
-          <Field label="Cidade / Estado"><Input placeholder="São Paulo / SP" /></Field>
-          <Field label="Endereço"><Input placeholder="Rua, número, bairro" /></Field>
-          <Field label="Plano inicial">
-            <Select>
-              {PLANS.map((p) => <option key={p.id} value={p.id}>{p.id} — {formatBRL(p.price)}/mês</option>)}
+          <Field label="Nome da arena *">
+            <Input placeholder="Ex.: Arena Vôlei Sul" value={newArena.nome} onChange={(e) => setNewArena(prev => ({ ...prev, nome: e.target.value }))} />
+          </Field>
+          <Field label="E-mail do responsável *">
+            <Input type="email" placeholder="contato@arena.com.br" value={newArena.email} onChange={(e) => setNewArena(prev => ({ ...prev, email: e.target.value }))} />
+          </Field>
+          <Field label="Telefone">
+            <Input placeholder="(11) 90000-0000" value={newArena.telefone} onChange={(e) => setNewArena(prev => ({ ...prev, telefone: e.target.value }))} />
+          </Field>
+          <Field label="Endereço / Cidade">
+            <Input placeholder="Rua, número, bairro, cidade" value={newArena.endereco} onChange={(e) => setNewArena(prev => ({ ...prev, endereco: e.target.value }))} />
+          </Field>
+          <Field label="Plano inicial *">
+            <Select value={newArena.plano_id} onChange={(e) => setNewArena(prev => ({ ...prev, plano_id: e.target.value }))}>
+              {planosSaaS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome} — {p.valor_mensal > 0 ? `${formatBRL(p.valor_mensal)}/mês` : 'Sob consulta'} (Até {p.max_quadras} quadras)
+                </option>
+              ))}
             </Select>
+          </Field>
+          <Field label="Senha padrão do Admin">
+            <Input type="password" placeholder="Padrão: Arenix@2026" value={newArena.senha} onChange={(e) => setNewArena(prev => ({ ...prev, senha: e.target.value }))} />
           </Field>
         </div>
       </Modal>
@@ -220,7 +306,7 @@ export function MasterArenas({ onNavigate }: Props) {
           const res = await fetch(`http://localhost:3000/api/saas/arenas/${deleteTarget.id}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ senha: password })
+            body: JSON.stringify({ senha_master: password })
           });
           if (res.ok) {
             setDeleteTarget(null);

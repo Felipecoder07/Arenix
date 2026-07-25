@@ -20,9 +20,12 @@ app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/reservas', require('./routes/reservasRoutes'));
 app.use('/api/quadras', require('./routes/quadrasRoutes'));
 app.use('/api/pagamentos', require('./routes/pagamentosRoutes'));
+app.use('/api/pagamentos/gateway', require('./routes/gatewayRoutes'));
 app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 app.use('/api/clientes', require('./routes/clientesRoutes'));
 app.use('/api/saas', require('./routes/saasRoutes'));
+app.use('/api/tenant/assinatura', require('./routes/tenantAssinaturaRoutes'));
+app.use('/api/usuarios', require('./routes/usuariosRoutes'));
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'CourtManager API rodando com sucesso.' });
 });

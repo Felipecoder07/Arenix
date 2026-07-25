@@ -239,7 +239,7 @@ export const CANCELLATION_REASONS = [
 export const SYSTEM_VERSION = 'v3.4.2 — build 2026.07.18';
 
 export function formatBRL(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 export function formatDate(iso?: string) {
   if (!iso) return '—';

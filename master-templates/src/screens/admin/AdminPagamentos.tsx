@@ -72,6 +72,14 @@ export function AdminPagamentos() {
   // Toast / Status messages
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
+  // Gateway de Pagamentos em Lote Admin
+  const [gatewayRef, setGatewayRef] = useState('');
+  const [qrCode, setQrCode] = useState('');
+  const [copiaCola, setCopiaCola] = useState('');
+  const [loadingGateway, setLoadingGateway] = useState(false);
+  const [showPixCobranca, setShowPixCobranca] = useState(false);
+  const [posDeviceId, setPosDeviceId] = useState('');
+
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
@@ -188,6 +196,79 @@ export function AdminPagamentos() {
     }
   };
 
+  // Polling para o Pix Online no painel Admin
+  useEffect(() => {
+    if (!showPixCobranca || !reservaAtual) return;
+
+    let intervalId: any;
+    const checkStatus = async () => {
+      try {
+        const res = await fetch(`http://localhost:3000/api/pagamentos/gateway/status/${reservaAtual.id}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status_pagamento === 'Pago' || data.status_pagamento === 'Parcial') {
+            showToast(data.status_pagamento === 'Pago' ? 'Pagamento confirmado (Quitado) no caixa!' : 'Pagamento parcial registrado no caixa!', 'success');
+            
+            // Limpa estados e fecha modal
+            setShowPixCobranca(false);
+            setGatewayRef('');
+            setQrCode('');
+            setCopiaCola('');
+            setActiveModal(null);
+            setReservaAtual(null);
+            
+            // Recarrega dados
+            carregarKPIs();
+            carregarReservas();
+          }
+        }
+      } catch (err) {
+        console.warn(err);
+      }
+    };
+
+    intervalId = setInterval(checkStatus, 3000);
+    return () => clearInterval(intervalId);
+  }, [showPixCobranca, reservaAtual, token]);
+
+  const handleSimularPagamentoPix = async () => {
+    if (!gatewayRef) return;
+    try {
+      const payload: any = { gateway_ref: gatewayRef };
+      if (rpMetodo === 'Cartão (Maquineta Online)') {
+        payload.device_id = posDeviceId;
+        payload.valor_pago = parseCurrencyToFloat(rpValor);
+      }
+
+      const res = await fetch('http://localhost:3000/api/pagamentos/gateway/simular-pagamento', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao simular.');
+      
+      showToast('Pagamento simulação concluída!', 'success');
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const fecharModalPagamento = () => {
+    setActiveModal(null);
+    setReservaAtual(null);
+    setShowPixCobranca(false);
+    setGatewayRef('');
+    setQrCode('');
+    setCopiaCola('');
+    setPosDeviceId('');
+  };
+
   // Abrir Modal de Pagamento
   const abrirPagamento = (reserva: ReservaPagamento) => {
     setReservaAtual(reserva);
@@ -215,6 +296,69 @@ export function AdminPagamentos() {
       return;
     }
 
+    const valorNumerico = parseCurrencyToFloat(rpValor);
+
+    if (rpMetodo === 'Pix Online (Gateway)') {
+      setLoadingGateway(true);
+      setShowPixCobranca(true);
+      try {
+        const res = await fetch('http://localhost:3000/api/pagamentos/gateway/cobranca', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            reserva_id: reservaAtual.id,
+            metodo: 'Pix',
+            valor: valorNumerico
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erro ao gerar cobrança Pix.');
+
+        setGatewayRef(data.gateway_ref);
+        setQrCode(data.qr_code);
+        setCopiaCola(data.copia_cola);
+      } catch (err: any) {
+        showToast(err.message, 'error');
+        setShowPixCobranca(false);
+      } finally {
+        setLoadingGateway(false);
+      }
+      return;
+    }
+
+    if (rpMetodo === 'Cartão (Maquineta Online)') {
+      setLoadingGateway(true);
+      setShowPixCobranca(true);
+      try {
+        const res = await fetch('http://localhost:3000/api/pagamentos/gateway/cobranca', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            reserva_id: reservaAtual.id,
+            metodo: 'Maquineta',
+            valor: valorNumerico
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erro ao acionar maquineta.');
+
+        setGatewayRef(data.gateway_ref);
+        setPosDeviceId(data.device_id);
+      } catch (err: any) {
+        showToast(err.message, 'error');
+        setShowPixCobranca(false);
+      } finally {
+        setLoadingGateway(false);
+      }
+      return;
+    }
+
     try {
       const res = await fetch('http://localhost:3000/api/pagamentos', {
         method: 'POST',
@@ -224,7 +368,7 @@ export function AdminPagamentos() {
         },
         body: JSON.stringify({
           reserva_id: reservaAtual.id,
-          valor: parseCurrencyToFloat(rpValor),
+          valor: valorNumerico,
           metodo: rpMetodo
         })
       });
@@ -491,64 +635,136 @@ export function AdminPagamentos() {
           <div className="modal">
             <div className="modal-header">
               <h2 className="modal-title">Registrar Pagamento</h2>
-              <button className="modal-close" onClick={() => setActiveModal(null)}>✕</button>
+              <button className="modal-close" onClick={fecharModalPagamento}>✕</button>
             </div>
             <div className="modal-body">
-              <div style={{ background: 'var(--cream-surface)', border: '1px solid var(--border-passive)', borderRadius: 'var(--r-md)', padding: 'var(--s-3) var(--s-4)', marginBottom: 'var(--s-4)', fontSize: '13px' }}>
-                <strong>{reservaAtual.cliente_nome}</strong> · {reservaAtual.quadra_nome} · {formatData(reservaAtual.data_reserva)} {reservaAtual.hora_inicio}–{reservaAtual.hora_fim}<br />
-                Valor total: <strong>{formatCurrency(reservaAtual.valor_total)}</strong> · Pago: <strong className="valor-positivo">{formatCurrency(reservaAtual.total_pago)}</strong> · Saldo: <strong className="valor-negativo">{formatCurrency(reservaAtual.saldo_devedor)}</strong>
-              </div>
-
-              {/* Histórico */}
-              {pagamentosReserva.filter(p => p.valor > 0).length > 0 && (
-                <div style={{ marginBottom: 'var(--s-4)' }}>
-                  <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--muted)', marginBottom: 'var(--s-2)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
-                    Histórico de Pagamentos
-                  </div>
-                  <div style={{ maxHeight: '120px', overflowY: 'auto' }}>
-                    {pagamentosReserva.filter(p => p.valor > 0).map(p => (
-                      <div className="hist-item" key={p.id}>
-                        <span>{p.metodo} — {new Date(p.registrado_em).toLocaleDateString('pt-BR')}</span>
-                        <span className="valor-positivo">{formatCurrency(p.valor)}</span>
+              {showPixCobranca ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '10px 0' }}>
+                  {loadingGateway ? (
+                    <div style={{ fontSize: '13px', color: 'var(--muted)', margin: '40px 0' }}>
+                      {rpMetodo === 'Cartão (Maquineta Online)' ? 'Enviando cobrança para a maquineta...' : 'Gerando cobrança Pix...'}
+                    </div>
+                  ) : rpMetodo === 'Cartão (Maquineta Online)' ? (
+                    <>
+                      <div style={{ width: '120px', height: '120px', background: 'var(--cream-surface)', border: '1px solid var(--border-passive)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '48px', marginBottom: '16px' }}>
+                        💳
                       </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                      <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--success)', marginBottom: '8px' }}>
+                        Aguardando Cartão...
+                      </h3>
+                      <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '16px', maxWidth: '280px' }}>
+                        Cobrança enviada ao terminal <strong>{posDeviceId}</strong> no valor de <strong>{formatCurrency(parseCurrencyToFloat(rpValor))}</strong>. Insira ou aproxime o cartão.
+                      </p>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-4)' }}>
-                <div className="form-group">
-                  <label htmlFor="rp-valor">Valor a pagar *</label>
-                  <input 
-                    type="text" 
-                    id="rp-valor" 
-                    placeholder="0,00" 
-                    value={rpValor}
-                    onChange={(e) => setRpValor(formatCurrencyInput(e.target.value))}
-                    required 
-                  />
+                      <div style={{ width: '100%', borderTop: '1px solid var(--border-passive)', paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <button 
+                          type="button"
+                          onClick={handleSimularPagamentoPix}
+                          style={{ background: 'var(--amber)', color: 'white', border: 'none', padding: '10px', borderRadius: 'var(--r-md)', fontWeight: 600, cursor: 'pointer', fontSize: '13px' }}
+                        >
+                          ⚡ Simular Aproximação do Cartão
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ width: '150px', height: '150px', background: 'white', border: '1px solid var(--border-passive)', borderRadius: 'var(--r-md)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px', marginBottom: '16px' }}>
+                        <img src={qrCode} alt="Pix QR Code" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                      </div>
+                      <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '16px', maxWidth: '280px' }}>
+                        Peça para o cliente escanear o QR Code acima. A tela atualizará automaticamente após o pagamento.
+                      </p>
+                      
+                      <div style={{ width: '100%', textAlign: 'left', marginBottom: '20px' }}>
+                        <label style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>Pix Copia e Cola</label>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <input 
+                            type="text" 
+                            readOnly 
+                            value={copiaCola} 
+                            style={{ flex: 1, fontSize: '11px', fontFamily: 'monospace', border: '1px solid var(--border-passive)', padding: '6px 10px', borderRadius: '4px', background: 'var(--cream-surface)', outline: 'none' }}
+                          />
+                          <button 
+                            type="button" 
+                            style={{ background: 'rgba(47, 133, 90, 0.1)', color: '#2F855A', border: 'none', padding: '6px 12px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+                            onClick={() => {
+                              navigator.clipboard.writeText(copiaCola);
+                              showToast('Chave Pix copiada!', 'success');
+                            }}
+                          >
+                            Copiar
+                          </button>
+                        </div>
+                      </div>
+
+                    </>
+                  )}
                 </div>
-                <div className="form-group">
-                  <label htmlFor="rp-metodo">Método *</label>
-                  <select 
-                    id="rp-metodo" 
-                    value={rpMetodo}
-                    onChange={(e) => setRpMetodo(e.target.value)}
-                    required
-                  >
-                    <option value="">Selecione</option>
-                    <option value="Pix">Pix</option>
-                    <option value="Dinheiro">Dinheiro</option>
-                    <option value="Cartão de Crédito">Cartão de Crédito</option>
-                    <option value="Cartão de Débito">Cartão de Débito</option>
-                    <option value="Voucher Interno">Voucher Interno</option>
-                  </select>
-                </div>
-              </div>
+              ) : (
+                <>
+                  <div style={{ background: 'var(--cream-surface)', border: '1px solid var(--border-passive)', borderRadius: 'var(--r-md)', padding: 'var(--s-3) var(--s-4)', marginBottom: 'var(--s-4)', fontSize: '13px' }}>
+                    <strong>{reservaAtual.cliente_nome}</strong> · {reservaAtual.quadra_nome} · {formatData(reservaAtual.data_reserva)} {reservaAtual.hora_inicio}–{reservaAtual.hora_fim}<br />
+                    Valor total: <strong>{formatCurrency(reservaAtual.valor_total)}</strong> · Pago: <strong className="valor-positivo">{formatCurrency(reservaAtual.total_pago)}</strong> · Saldo: <strong className="valor-negativo">{formatCurrency(reservaAtual.saldo_devedor)}</strong>
+                  </div>
+
+                  {/* Histórico */}
+                  {pagamentosReserva.filter(p => p.valor > 0).length > 0 && (
+                    <div style={{ marginBottom: 'var(--s-4)' }}>
+                      <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--muted)', marginBottom: 'var(--s-2)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                        Histórico de Pagamentos
+                      </div>
+                      <div style={{ maxHeight: '120px', overflowY: 'auto' }}>
+                        {pagamentosReserva.filter(p => p.valor > 0).map(p => (
+                          <div className="hist-item" key={p.id}>
+                            <span>{p.metodo} — {new Date(p.registrado_em).toLocaleDateString('pt-BR')}</span>
+                            <span className="valor-positivo">{formatCurrency(p.valor)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-4)' }}>
+                    <div className="form-group">
+                      <label htmlFor="rp-valor">Valor a pagar *</label>
+                      <input 
+                        type="text" 
+                        id="rp-valor" 
+                        placeholder="0,00" 
+                        value={rpValor}
+                        onChange={(e) => setRpValor(formatCurrencyInput(e.target.value))}
+                        required 
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label htmlFor="rp-metodo">Método *</label>
+                      <select 
+                        id="rp-metodo" 
+                        value={rpMetodo}
+                        onChange={(e) => setRpMetodo(e.target.value)}
+                        required
+                      >
+                        <option value="">Selecione</option>
+                        <option value="Pix">Pix (Manual)</option>
+                        <option value="Pix Online (Gateway)">Pix Online (Gateway)</option>
+                        <option value="Cartão (Maquineta Online)">Cartão (Maquineta Online)</option>
+                        <option value="Dinheiro">Dinheiro</option>
+                        <option value="Cartão de Crédito">Cartão de Crédito</option>
+                        <option value="Cartão de Débito">Cartão de Débito</option>
+                        <option value="Voucher Interno">Voucher Interno</option>
+                      </select>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
             <div className="modal-footer">
-              <button className="btn-ghost" type="button" onClick={() => setActiveModal(null)}>Cancelar</button>
-              <button className="btn-primary" type="button" onClick={handleSalvarPagamento}>Salvar Pagamento</button>
+              <button className="btn-ghost" type="button" onClick={fecharModalPagamento}>
+                {showPixCobranca ? 'Voltar' : 'Cancelar'}
+              </button>
+              {!showPixCobranca && (
+                <button className="btn-primary" type="button" onClick={handleSalvarPagamento}>Salvar Pagamento</button>
+              )}
             </div>
           </div>
         )}

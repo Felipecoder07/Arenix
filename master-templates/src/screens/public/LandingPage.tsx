@@ -3,9 +3,30 @@ import '../../assets/css/landing.css';
 
 import { useState, useEffect } from 'react';
 
+const DEFAULT_PLANOS_LANDING = [
+  { id: 1, nome: 'Basic', max_quadras: 3, max_usuarios: 3, valor_mensal: 49.99, valor_anual: 39.99 },
+  { id: 2, nome: 'Pro', max_quadras: 10, max_usuarios: 10, valor_mensal: 79.99, valor_anual: 63.99 },
+  { id: 3, nome: 'Enterprise', max_quadras: 999, max_usuarios: 999, valor_mensal: 0, valor_anual: 0 }
+];
+
 export function LandingPage() {
   const [period, setPeriod] = useState('monthly');
   const [animating, setAnimating] = useState(false);
+  const [planos, setPlanos] = useState<any[]>(DEFAULT_PLANOS_LANDING);
+
+  useEffect(() => {
+    fetch('http://localhost:3000/api/auth/planos')
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) setPlanos(data);
+      })
+      .catch((err) => console.error('Erro ao buscar planos públicos:', err));
+  }, []);
+
+  const formatPrice = (val?: number) => {
+    if (val === undefined) return '';
+    return val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
 
   const handlePeriodChange = (p) => {
     if (p === period) return;
@@ -220,7 +241,6 @@ export function LandingPage() {
             <h2 className="section-title">Simples e transparente</h2>
             <p className="section-sub">Sem taxas por reserva. Sem surpresas. Cancele quando quiser.</p>
 
-
             <div className="billing-toggle" id="billing-toggle">
               <button className={`billing-btn ${period === 'monthly' ? 'active' : ''}`} onClick={() => handlePeriodChange('monthly')}>Mensal</button>
               <button className={`billing-btn ${period === 'yearly' ? 'active' : ''}`} onClick={() => handlePeriodChange('yearly')}>
@@ -231,63 +251,108 @@ export function LandingPage() {
           </div>
 
           <div className="pricing-grid">
+            {/* Starter / Basic Plan */}
+            {(() => {
+              const p = planos.find(x => x.id === 1 || x.nome.toLowerCase() === 'basic' || x.nome.toLowerCase() === 'starter');
+              const valorExibir = period === 'monthly'
+                ? (p?.valor_mensal ?? 49.99)
+                : (p?.valor_anual && p.valor_anual > 0 ? p.valor_anual : (p?.valor_mensal ? p.valor_mensal * 0.8 : 39.99));
+              const planName = p?.nome || 'Basic';
+              return (
+                <div className="price-card" id="card-starter">
+                  <div className="price-plan">{planName}</div>
+                  <div className="price-value">
+                    <span className={`price-amount ${animating ? 'fade-out' : 'fade-in'}`}>
+                      R$ {formatPrice(valorExibir)}
+                    </span>
+                  </div>
+                  <div className="price-period">
+                    <span className="period-label">
+                      {period === 'monthly' 
+                        ? `/mês — até ${p?.max_quadras || 3} quadras` 
+                        : '/mês — cobrado anualmente'}
+                    </span>
+                  </div>
+                  <ul className="price-features">
+                    <li>Reservas e pagamentos</li>
+                    <li>Dashboard básico</li>
+                    <li>{p?.max_usuarios || 3} usuários internos</li>
+                    <li>Suporte via e-mail</li>
+                  </ul>
+                  <Link to="/cadastro" className="btn btn-dark btn-full">Começar grátis</Link>
+                </div>
+              );
+            })()}
 
-            <div className="price-card" id="card-starter">
-              <div className="price-plan">Starter</div>
-              <div className="price-value">
-                <span className={`price-amount ${animating ? 'fade-out' : 'fade-in'}`}>R$ {period === 'monthly' ? '49,99' : '39,99'}</span>
-              </div>
-              <div className="price-period">
-                <span className="period-label">{period === 'monthly' ? '/mês — até 3 quadras' : '/mês — cobrado anualmente'}</span>
-              </div>
-              <ul className="price-features">
-                <li>Reservas e pagamentos</li>
-                <li>Dashboard básico</li>
-                <li>2 usuários internos</li>
-                <li>Suporte via e-mail</li>
-              </ul>
-              <Link to="/cadastro" className="btn btn-dark btn-full">Começar grátis</Link>
-            </div>
+            {/* Pro Plan */}
+            {(() => {
+              const p = planos.find(x => x.id === 2 || x.nome.toLowerCase() === 'pro');
+              const valorExibir = period === 'monthly'
+                ? (p?.valor_mensal ?? 79.99)
+                : (p?.valor_anual && p.valor_anual > 0 ? p.valor_anual : (p?.valor_mensal ? p.valor_mensal * 0.8 : 63.99));
+              const planName = p?.nome || 'Pro';
+              return (
+                <div className="price-card" id="card-pro">
+                  <div className="price-badge">Mais popular</div>
+                  <div className="price-plan">{planName}</div>
+                  <div className="price-value">
+                    <span className={`price-amount ${animating ? 'fade-out' : 'fade-in'}`}>
+                      R$ {formatPrice(valorExibir)}
+                    </span>
+                  </div>
+                  <div className="price-period">
+                    <span className="period-label">
+                      {period === 'monthly' 
+                        ? `/mês — até ${p?.max_quadras || 10} quadras` 
+                        : '/mês — cobrado anualmente'}
+                    </span>
+                  </div>
+                  <ul className="price-features">
+                    <li>Tudo do Starter</li>
+                    <li>Relatórios completos</li>
+                    <li>{p?.max_usuarios || 10} usuários internos</li>
+                    <li>Auditoria e logs</li>
+                    <li>Gestão de mensalistas</li>
+                    <li>Suporte prioritário</li>
+                  </ul>
+                  <Link to="/cadastro" className="btn btn-dark btn-full">Começar grátis</Link>
+                </div>
+              );
+            })()}
 
-
-            <div className="price-card" id="card-pro">
-              <div className="price-badge">Mais popular</div>
-              <div className="price-plan">Pro</div>
-              <div className="price-value">
-                <span className={`price-amount ${animating ? 'fade-out' : 'fade-in'}`}>R$ {period === 'monthly' ? '79,99' : '63,99'}</span>
-              </div>
-              <div className="price-period">
-                <span className="period-label">{period === 'monthly' ? '/mês — até 10 quadras' : '/mês — cobrado anualmente'}</span>
-              </div>
-              <ul className="price-features">
-                <li>Tudo do Starter</li>
-                <li>Relatórios completos</li>
-                <li>Usuários ilimitados</li>
-                <li>Auditoria e logs</li>
-                <li>Gestão de mensalistas</li>
-                <li>Suporte prioritário</li>
-              </ul>
-              <Link to="/cadastro" className="btn btn-dark btn-full">Começar grátis</Link>
-            </div>
-
-
-            <div className="price-card" id="card-enterprise">
-              <div className="price-plan">Enterprise</div>
-              <div className="price-value">
-                <span className={`price-amount ${animating ? 'fade-out' : 'fade-in'}`}>Sob consulta</span>
-              </div>
-              <div className="price-period">
-                <span className="period-label">múltiplas unidades</span>
-              </div>
-              <ul className="price-features">
-                <li>Tudo do Pro</li>
-                <li>Múltiplas arenas</li>
-                <li>Precificação dinâmica</li>
-                <li>Integrações via API</li>
-                <li>SLA dedicado</li>
-              </ul>
-              <a href="mailto:sales@courtmanager.app" className="btn btn-dark btn-full">Falar com vendas</a>
-            </div>
+            {/* Enterprise Plan */}
+            {(() => {
+              const p = planos.find(x => x.id === 3 || x.nome.toLowerCase() === 'enterprise');
+              const valorExibir = period === 'monthly'
+                ? p?.valor_mensal
+                : (p?.valor_anual && p.valor_anual > 0 ? p.valor_anual : p?.valor_mensal);
+              const planName = p?.nome || 'Enterprise';
+              return (
+                <div className="price-card" id="card-enterprise">
+                  <div className="price-plan">{planName}</div>
+                  <div className="price-value">
+                    <span className={`price-amount ${animating ? 'fade-out' : 'fade-in'}`}>
+                      {valorExibir !== undefined && valorExibir > 0 ? `R$ ${formatPrice(valorExibir)}` : 'Sob consulta'}
+                    </span>
+                  </div>
+                  <div className="price-period">
+                    <span className="period-label">
+                      {valorExibir !== undefined && valorExibir > 0 
+                        ? (period === 'monthly' ? '/mês — quadras ilimitadas' : '/mês — cobrado anualmente') 
+                        : 'múltiplas unidades'}
+                    </span>
+                  </div>
+                  <ul className="price-features">
+                    <li>Tudo do Pro</li>
+                    <li>Múltiplas arenas</li>
+                    <li>Precificação dinâmica</li>
+                    <li>Integrações via API</li>
+                    <li>SLA dedicado</li>
+                  </ul>
+                  <a href="mailto:sales@courtmanager.app" className="btn btn-dark btn-full">Falar com vendas</a>
+                </div>
+              );
+            })()}
           </div>
 
           <p className="pricing-note">

@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Calendar, Wallet, Users, BarChart3, ShieldCheck, Settings, LogOut, ChevronRight, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, Calendar, Wallet, Users, BarChart3, ShieldCheck, Settings, CreditCard, LogOut, ChevronRight, type LucideIcon } from 'lucide-react';
 
 export interface NavItem {
   id: string;
@@ -14,6 +14,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'pagamentos', path: '/admin/pagamentos', label: 'Pagamentos', icon: Wallet },
   { id: 'clientes', path: '/admin/clientes', label: 'Clientes', icon: Users },
   { id: 'relatorios', path: '/admin/relatorios', label: 'Relatórios', icon: BarChart3 },
+  { id: 'assinatura', path: '/admin/assinatura', label: 'Assinatura', icon: CreditCard },
   { id: 'auditoria', path: '/admin/auditoria', label: 'Auditoria', icon: ShieldCheck },
   { id: 'configuracoes', path: '/admin/configuracoes', label: 'Configurações', icon: Settings },
 ];
@@ -59,6 +60,12 @@ export function AdminSidebar({ collapsed, onToggle }: { collapsed: boolean; onTo
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
         {NAV_ITEMS.map((item) => {
+          // Filtragem de permissões por perfil
+          if (item.id === 'relatorios' && userRole !== 'Administrador' && userRole !== 'Gerente') return null;
+          if (item.id === 'assinatura' && userRole !== 'Administrador' && userRole !== 'Gerente') return null;
+          if (item.id === 'auditoria' && userRole !== 'Administrador') return null;
+          if (item.id === 'configuracoes' && userRole !== 'Administrador' && userRole !== 'Gerente') return null;
+
           const Icon = item.icon;
           const isActive = location.pathname === item.path;
           return (

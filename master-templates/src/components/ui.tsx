@@ -1,5 +1,5 @@
-import { useEffect, useRef, type ReactNode } from 'react';
-import { X } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { X, Eye, EyeOff } from 'lucide-react';
 
 interface ModalProps {
   open: boolean;
@@ -53,7 +53,7 @@ export function Modal({ open, onClose, title, description, children, footer, siz
 interface ConfirmModalProps {
   open: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: (password: string) => void;
   title: string;
   message: ReactNode;
   confirmLabel?: string;
@@ -64,12 +64,23 @@ interface ConfirmModalProps {
 export function ConfirmModal({
   open, onClose, onConfirm, title, message, confirmLabel = 'Confirmar', destructive, requirePassword,
 }: ConfirmModalProps) {
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Reset local state when the modal opens/closes
+  useEffect(() => {
+    if (open) {
+      setPassword('');
+      setShowPassword(false);
+    }
+  }, [open]);
+
   return (
     <Modal open={open} onClose={onClose} title={title} size="sm"
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-          <Button variant={destructive ? 'danger' : 'primary'} onClick={onConfirm}>{confirmLabel}</Button>
+          <Button variant={destructive ? 'danger' : 'primary'} onClick={() => onConfirm(password)}>{confirmLabel}</Button>
         </>
       }
     >
@@ -77,7 +88,23 @@ export function ConfirmModal({
       {requirePassword && (
         <div className="mt-4">
           <label className="block text-xs font-medium text-charcoal mb-1.5">Confirme com sua senha master</label>
-          <input type="password" className="input" placeholder="••••••••" autoFocus />
+          <div className="relative">
+            <input 
+              type={showPassword ? "text" : "password"} 
+              className="input pr-10" 
+              placeholder="••••••••" 
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoFocus 
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-muted hover:text-charcoal focus:outline-none"
+            >
+              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
         </div>
       )}
     </Modal>

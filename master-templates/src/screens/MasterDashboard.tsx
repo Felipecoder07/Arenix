@@ -9,7 +9,21 @@ interface Props { onNavigate: (id: string) => void; }
 
 export function MasterDashboard({ onNavigate }: Props) {
   const [metrics, setMetrics] = useState({
-    active: 0, blocked: 0, trial: 0, courts: 0, players: 0, mrr: 0, overdue: [] as any[]
+    active: 0,
+    blocked: 0,
+    trial: 0,
+    courts: 0,
+    players: 0,
+    mrr: 0,
+    churnRate: 0,
+    reservasHoje: 0,
+    reservasSemana: 0,
+    reservasMes: 0,
+    reservasVariacao: 0,
+    clientesNovos30d: 0,
+    mrrVariacao: 0,
+    growthChart: [] as Array<{ month: string; count: number }>,
+    overdue: [] as any[]
   });
   const [loading, setLoading] = useState(true);
 
@@ -25,18 +39,39 @@ export function MasterDashboard({ onNavigate }: Props) {
       setMetrics({
         active: metricsData.arenasAtivas || 0,
         blocked: metricsData.arenasBloqueadas || 0,
-        trial: 0,
+        trial: metricsData.arenasTrial || 0,
         courts: metricsData.totalQuadras || 0,
         players: metricsData.totalClientes || 0,
         mrr: metricsData.totalReceitaSaaS || 0,
+        churnRate: metricsData.churnRate || 0,
+        reservasHoje: metricsData.reservasHoje || 0,
+        reservasSemana: metricsData.reservasSemana || 0,
+        reservasMes: metricsData.reservasMes || 0,
+        reservasVariacao: metricsData.reservasVariacao || 0,
+        clientesNovos30d: metricsData.clientesNovos30d || 0,
+        mrrVariacao: metricsData.mrrVariacao || 0,
+        growthChart: metricsData.growthChart || [],
         overdue
       });
       setLoading(false);
     }).catch(console.error);
   }, []);
 
-  const { active, blocked, trial, courts, players, mrr, overdue } = metrics;
-  const churn = 3.2; // mock static
+  const { 
+    active, blocked, trial, courts, players, mrr, churnRate, 
+    reservasHoje, reservasSemana, reservasMes, reservasVariacao, 
+    clientesNovos30d, mrrVariacao, growthChart, overdue 
+  } = metrics;
+
+  const formatMonthLabel = (monthStr: string) => {
+    if (!monthStr) return '';
+    const parts = monthStr.split('-');
+    if (parts.length !== 2) return monthStr;
+    const year = parts[0].substring(2);
+    const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const monthIndex = parseInt(parts[1], 10) - 1;
+    return `${months[monthIndex]}/${year}`;
+  };
 
   if (loading) return <div className="p-8 text-center text-charcoal animate-pulse">Carregando painel...</div>;
 
@@ -60,10 +95,44 @@ export function MasterDashboard({ onNavigate }: Props) {
           accent="default"
         />
         <MetricCard label="Quadras na plataforma" value={String(courts)} icon={<LayoutGrid size={16} />} sub="Soma de todas as arenas" />
-        <MetricCard label="Reservas hoje" value="1.284" icon={<CalendarDays size={16} />} trend={{ value: '+8%', direction: 'up' }} sub={<span className="text-muted">Esta semana: 7.912 · Este mês: 31.420</span>} />
-        <MetricCard label="Jogadores (total)" value={players.toLocaleString('pt-BR')} icon={<Users size={16} />} trend={{ value: '+412', direction: 'up' }} sub="Clientes em toda a plataforma" />
-        <MetricCard label="MRR da plataforma" value={formatBRL(mrr)} icon={<Wallet size={16} />} trend={{ value: '+5,4%', direction: 'up' }} accent="success" sub="Receita recorrente mensal" />
-        <MetricCard label="Taxa de churn" value={`${churn}%`} icon={<TrendingDown size={16} />} trend={{ value: '-0,4 p.p.', direction: 'up' }} accent={churn > 4 ? 'warning' : 'default'} sub="Últimos 30 dias" />
+        <MetricCard 
+          label="Reservas hoje" 
+          value={reservasHoje.toLocaleString('pt-BR')} 
+          icon={<CalendarDays size={16} />} 
+          trend={reservasVariacao !== 0 ? { 
+            value: `${reservasVariacao > 0 ? '+' : ''}${reservasVariacao}%`, 
+            direction: reservasVariacao > 0 ? 'up' : 'down' 
+          } : undefined}
+          sub={<span className="text-muted">Esta semana: {reservasSemana.toLocaleString('pt-BR')} · Este mês: {reservasMes.toLocaleString('pt-BR')}</span>} 
+        />
+        <MetricCard 
+          label="Jogadores (total)" 
+          value={players.toLocaleString('pt-BR')} 
+          icon={<Users size={16} />} 
+          trend={clientesNovos30d > 0 ? { 
+            value: `+${clientesNovos30d}`, 
+            direction: 'up' 
+          } : undefined} 
+          sub="Clientes em toda a plataforma" 
+        />
+        <MetricCard 
+          label="MRR da plataforma" 
+          value={formatBRL(mrr)} 
+          icon={<Wallet size={16} />} 
+          trend={mrrVariacao > 0 ? { 
+            value: `+${mrrVariacao}%`, 
+            direction: 'up' 
+          } : undefined} 
+          accent="success" 
+          sub="Receita recorrente mensal" 
+        />
+        <MetricCard 
+          label="Taxa de cancelamento" 
+          value={`${churnRate}%`} 
+          icon={<TrendingDown size={16} />} 
+          accent={churnRate > 4 ? 'warning' : 'default'} 
+          sub="Últimos 30 dias" 
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -76,7 +145,13 @@ export function MasterDashboard({ onNavigate }: Props) {
             </div>
             <Button size="sm" variant="ghost" onClick={() => onNavigate('arenas')}>Ver arenas <ArrowRight size={13} /></Button>
           </div>
-          <LineChart data={GROWTH.map((g) => ({ label: g.month, value: g.count }))} formatValue={(v) => String(v)} />
+          <LineChart 
+            data={growthChart.map((g) => ({ 
+              label: formatMonthLabel(g.month), 
+              value: g.count 
+            }))} 
+            formatValue={(v) => String(v)} 
+          />
         </Card>
 
         {/* Overdue arenas */}
@@ -88,7 +163,7 @@ export function MasterDashboard({ onNavigate }: Props) {
           </div>
           <div className="space-y-1 -mx-2">
             {overdue.slice(0, 7).map((a) => (
-              <button key={a.id} onClick={() => onNavigate('arena-detalhe')}
+              <button key={a.id} onClick={() => onNavigate('arena-detalhe?id=' + a.id)}
                 className="w-full flex items-center justify-between gap-2 px-2 py-2 rounded-lg hover:bg-cream-surface transition-colors text-left">
                 <div className="min-w-0">
                   <div className="text-sm font-medium text-charcoal truncate">{a.nome}</div>

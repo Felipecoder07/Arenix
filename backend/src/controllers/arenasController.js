@@ -25,7 +25,7 @@ const atualizarMinhaArena = async (req, res) => {
   const admin_id = req.user.id;
   const ip = req.headers['x-forwarded-for'] || req.ip;
   const { 
-    nome, endereco, telefone, email,
+    nome, endereco, telefone, email, fuso_horario,
     notif_reserva_email, notif_reserva_whatsapp,
     notif_cancelamento_email, notif_pagamento_email,
     alerta_pagamento_minutos
@@ -38,13 +38,13 @@ const atualizarMinhaArena = async (req, res) => {
   try {
     await db.runAsync(
       `UPDATE Arenas 
-       SET nome = ?, endereco = ?, telefone = ?, email = ?,
+       SET nome = ?, endereco = ?, telefone = ?, email = ?, fuso_horario = ?,
            notif_reserva_email = ?, notif_reserva_whatsapp = ?,
            notif_cancelamento_email = ?, notif_pagamento_email = ?,
            alerta_pagamento_minutos = ?
        WHERE id = ?`,
       [
-        nome, endereco, telefone, email,
+        nome, endereco, telefone, email, fuso_horario || 'America/Sao_Paulo',
         notif_reserva_email !== undefined ? (notif_reserva_email ? 1 : 0) : 1,
         notif_reserva_whatsapp !== undefined ? (notif_reserva_whatsapp ? 1 : 0) : 0,
         notif_cancelamento_email !== undefined ? (notif_cancelamento_email ? 1 : 0) : 1,

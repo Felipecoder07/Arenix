@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { ShieldCheck, Search, KeyRound, Activity, Lock } from 'lucide-react';
+import { ShieldCheck, Search, KeyRound, Activity, Lock, Eye, EyeOff } from 'lucide-react';
 import { Card, Badge, Button, PageHeader, Field, Input, Select, EmptyState } from '../components/ui';
-import { ACTIVE_SESSIONS, ARENAS, formatDateTime, relativeTime } from '../data/mock';
+import { ARENAS, formatDateTime, relativeTime } from '../data/mock';
 
 export function MasterAuditoria() {
   const [arenaSearch, setArenaSearch] = useState('');
@@ -9,25 +9,70 @@ export function MasterAuditoria() {
   const [pwNew, setPwNew] = useState('');
   const [pw2fa, setPw2fa] = useState('');
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [activeSessions, setActiveSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pwMsg, setPwMsg] = useState<{ text: string; type: 'success' | 'danger' } | null>(null);
+  const [submittingPw, setSubmittingPw] = useState(false);
+  const [showPwCurrent, setShowPwCurrent] = useState(false);
+  const [showPwNew, setShowPwNew] = useState(false);
+
+  const fetchAuditoria = async () => {
+    try {
+      const token = localStorage.getItem('courtmanager_token');
+      const headers = { 'Authorization': `Bearer ${token}` };
+      
+      const [auditRes, sessionsRes] = await Promise.all([
+        fetch('http://localhost:3000/api/saas/auditoria', { headers }).then(r => r.json()),
+        fetch('http://localhost:3000/api/saas/sessoes', { headers }).then(r => r.json())
+      ]);
+      
+      setAuditLogs(auditRes);
+      setActiveSessions(sessionsRes);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchAuditoria = async () => {
-      try {
-        const token = localStorage.getItem('courtmanager_token');
-        const res = await fetch('http://localhost:3000/api/saas/auditoria', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const data = await res.json();
-        setAuditLogs(data);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchAuditoria();
   }, []);
+
+  const handleChangePassword = async () => {
+    setSubmittingPw(true);
+    setPwMsg(null);
+    try {
+      const token = localStorage.getItem('courtmanager_token');
+      const res = await fetch('http://localhost:3000/api/saas/alterar-senha', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          senha_atual: pwCurrent,
+          nova_senha: pwNew,
+          codigo_2fa: pw2fa
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPwMsg({ text: 'Senha master alterada com sucesso!', type: 'success' });
+        setPwCurrent('');
+        setPwNew('');
+        setPw2fa('');
+        fetchAuditoria(); // recarrega logs
+      } else {
+        setPwMsg({ text: data.error || 'Erro ao alterar a senha.', type: 'danger' });
+      }
+    } catch (err) {
+      console.error(err);
+      setPwMsg({ text: 'Erro de conexão com o servidor.', type: 'danger' });
+    } finally {
+      setSubmittingPw(false);
+    }
+  };
 
   const crossLogs = arenaSearch
     ? auditLogs.filter((l) => l.arena_nome?.toLowerCase().includes(arenaSearch.toLowerCase()))
@@ -114,17 +159,17 @@ export function MasterAuditoria() {
           <div className="flex items-center gap-2 mb-4">
             <Activity size={15} className="text-muted" />
             <h3 className="text-sm font-semibold">Sessões ativas</h3>
-            <Badge status="success">{ACTIVE_SESSIONS.length} arenas</Badge>
+            <Badge status="success">{activeSessions.length} arenas</Badge>
           </div>
-          {ACTIVE_SESSIONS.length === 0 ? (
+          {activeSessions.length === 0 ? (
             <EmptyState message="Nenhuma sessão ativa no momento." />
           ) : (
             <ul className="space-y-2">
-              {ACTIVE_SESSIONS.map((s) => (
+              {activeSessions.map((s) => (
                 <li key={s.arenaId} className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-cream/40 border border-border-passive">
                   <div>
                     <div className="text-sm font-medium text-charcoal">{s.arenaName}</div>
-                    <div className="text-xs text-muted">{s.users} usuário(s) logado(s) · {relativeTime(s.since)}</div>
+                    <div className="text-xs text-muted">{s.users} usuário(s) logado(s) · ativo desde {formatDateTime(s.since)}</div>
                   </div>
                   <span className="w-2 h-2 rounded-full bg-success pulse-dot" />
                 </li>
@@ -140,14 +185,61 @@ export function MasterAuditoria() {
             <h3 className="text-sm font-semibold">Alterar minha senha master</h3>
           </div>
           <div className="space-y-4">
-            <Field label="Senha atual"><Input type="password" value={pwCurrent} onChange={(e) => setPwCurrent(e.target.value)} placeholder="••••••••" /></Field>
-            <Field label="Nova senha"><Input type="password" value={pwNew} onChange={(e) => setPwNew(e.target.value)} placeholder="••••••••" /></Field>
-            <Field label="Segundo fator (código 2FA)" hint="Informe o código de 6 dígitos do app autenticador.">
-              <Input type="text" inputMode="numeric" maxLength={6} value={pw2fa} onChange={(e) => setPw2fa(e.target.value)} placeholder="000000" className="font-mono tracking-widest" />
+            <Field label="Senha atual">
+              <div className="relative">
+                <Input 
+                  type={showPwCurrent ? "text" : "password"} 
+                  value={pwCurrent} 
+                  onChange={(e: any) => setPwCurrent(e.target.value)} 
+                  placeholder="••••••••" 
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPwCurrent(!showPwCurrent)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-muted hover:text-charcoal focus:outline-none"
+                >
+                  {showPwCurrent ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
             </Field>
+
+            <Field label="Nova senha">
+              <div className="relative">
+                <Input 
+                  type={showPwNew ? "text" : "password"} 
+                  value={pwNew} 
+                  onChange={(e: any) => setPwNew(e.target.value)} 
+                  placeholder="••••••••" 
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPwNew(!showPwNew)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-muted hover:text-charcoal focus:outline-none"
+                >
+                  {showPwNew ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </Field>
+            <Field label="Segundo fator (código 2FA)" hint="Informe o código de 6 dígitos do app autenticador.">
+              <Input type="text" inputMode="numeric" maxLength={6} value={pw2fa} onChange={(e: any) => setPw2fa(e.target.value)} placeholder="000000" className="font-mono tracking-widest" />
+            </Field>
+            <p className="text-[11px] text-muted -mt-2">
+              💡 Para testar, adicione a chave <strong>JBSWY3DPEHPK3PXP</strong> no Google Authenticator para gerar o código.
+            </p>
+            {pwMsg && (
+              <p className={`text-sm font-medium ${pwMsg.type === 'success' ? 'text-success' : 'text-danger'}`}>
+                {pwMsg.text}
+              </p>
+            )}
             <div className="flex justify-end">
-              <Button variant="primary" disabled={!pwCurrent || !pwNew || pw2fa.length !== 6}>
-                <Lock size={14} /> Confirmar alteração
+              <Button 
+                variant="primary" 
+                disabled={!pwCurrent || !pwNew || pw2fa.length !== 6 || submittingPw}
+                onClick={handleChangePassword}
+              >
+                <Lock size={14} /> {submittingPw ? 'Alterando...' : 'Confirmar alteração'}
               </Button>
             </div>
           </div>

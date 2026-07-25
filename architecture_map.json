@@ -1,0 +1,238 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "project_info": {
+    "name": "Arenix CourtManager SaaS",
+    "description": "Plataforma SaaS Multi-Tenant para Gestão de Arenas Esportivas (Beach Tennis, Vôlei de Praia, Futevôlei) com faturamento mensal automatizado e gateway Mercado Pago integrado.",
+    "architecture_pattern": "Client-Server Monorepo / Decoupled Multi-Tenant SaaS",
+    "stack": {
+      "frontend": ["React 18", "TypeScript", "Vite 5", "Tailwind CSS", "React Router DOM v7", "ApexCharts"],
+      "backend": ["Node.js (v24)", "Express v5", "SQLite3", "JWT", "Bcrypt", "Node-Cron", "Nodemailer"],
+      "testing": ["Vitest", "Supertest"]
+    }
+  },
+  "modules": [
+    {
+      "id": "fe_public",
+      "name": "Frontend - Portal Público & Checkout",
+      "type": "client-side",
+      "files": [
+        "master-templates/src/screens/public/LandingPage.tsx",
+        "master-templates/src/screens/public/Checkout.tsx",
+        "master-templates/src/screens/public/TenantLogin.tsx",
+        "master-templates/src/screens/public/ForgotPassword.tsx",
+        "master-templates/src/screens/public/ResetPassword.tsx",
+        "master-templates/src/screens/public/PortalCliente.tsx",
+        "master-templates/src/screens/public/PortalNovaReserva.tsx"
+      ],
+      "responsibility": "Apresentação institucional, landing page dinâmica com planos SaaS, checkout de cadastro de arenas, login de usuários da arena e portal público de agendamento de quadras para atletas.",
+      "inputs": ["Payloads de login", "Formulário de cadastro de arena", "Seleção de planos", "Agendamento de quadras"],
+      "outputs": ["Requisições HTTP para /api/auth/*", "Requisições HTTP para /api/reservas/*", "Armazenamento do JWT Token no localStorage"]
+    },
+    {
+      "id": "fe_tenant_admin",
+      "name": "Frontend - Painel Administrativo da Arena (Tenant)",
+      "type": "client-side",
+      "files": [
+        "master-templates/src/screens/admin/AdminDashboard.tsx",
+        "master-templates/src/screens/admin/AdminReservas.tsx",
+        "master-templates/src/screens/admin/AdminClientes.tsx",
+        "master-templates/src/screens/admin/AdminPagamentos.tsx",
+        "master-templates/src/screens/admin/AdminRelatorios.tsx",
+        "master-templates/src/screens/admin/AdminAssinatura.tsx",
+        "master-templates/src/screens/admin/AdminConfiguracoes.tsx",
+        "master-templates/src/screens/admin/AdminAuditoria.tsx",
+        "master-templates/src/layouts/AdminLayout.tsx"
+      ],
+      "responsibility": "Interface de gestão diária da arena para Administrador, Gerente e Recepcionista. Inclui grade de reservas, controle de clientes, caixa/pagamentos, relatórios, logs e gestão da própria assinatura SaaS com emissão de Pix.",
+      "inputs": ["Token JWT de autenticação", "Interações do gestor da arena"],
+      "outputs": ["Chamadas de API para /api/quadras/*, /api/reservas/*, /api/tenant/assinatura/*"]
+    },
+    {
+      "id": "fe_master_admin",
+      "name": "Frontend - Painel SuperAdmin Master (Plataforma SaaS)",
+      "type": "client-side",
+      "files": [
+        "master-templates/src/screens/MasterDashboard.tsx",
+        "master-templates/src/screens/MasterArenas.tsx",
+        "master-templates/src/screens/MasterArenaDetalhe.tsx",
+        "master-templates/src/screens/MasterFinanceiro.tsx",
+        "master-templates/src/screens/MasterUsuarios.tsx",
+        "master-templates/src/screens/MasterComunicacao.tsx",
+        "master-templates/src/screens/MasterAuditoria.tsx",
+        "master-templates/src/screens/MasterConfiguracoes.tsx",
+        "master-templates/src/screens/MasterLogin.tsx",
+        "master-templates/src/layouts/MasterLayout.tsx"
+      ],
+      "responsibility": "Painel de controle global da plataforma SaaS. Usado exclusivamente pelo SuperAdmin para gerenciar arenas cadastradas, métricas de MRR/Churn, edição de planos SaaS, comunicados e credenciais do Mercado Pago Master.",
+      "inputs": ["Credenciais do SuperAdmin com 2FA TOTP"],
+      "outputs": ["Chamadas de API para /api/saas/*, /api/arenas/*"]
+    },
+    {
+      "id": "be_core_server",
+      "name": "Backend - Servidor HTTP & Middleware de Segurança",
+      "type": "server-side",
+      "files": [
+        "backend/src/server.js",
+        "backend/src/app.js",
+        "backend/src/middlewares/auth.js"
+      ],
+      "responsibility": "Inicialização do servidor Express v5, roteamento principal, validação de tokens JWT, controle de autorização RBAC, isolamento multi-tenant por tenant_id e whitelist de rotas de assinatura.",
+      "inputs": ["Requisições HTTP com Authorization Bearer Token"],
+      "outputs": ["Headers HTTP CORS, payloads JSON decodificados req.user, status HTTP 401/403/503"]
+    },
+    {
+      "id": "be_auth_controller",
+      "name": "Backend - Controlador de Autenticação & Registro",
+      "type": "server-side",
+      "files": [
+        "backend/src/controllers/authController.js",
+        "backend/src/routes/authRoutes.js"
+      ],
+      "responsibility": "Login de usuários, geração de tokens JWT, cadastro público de arenas, validação de 2FA TOTP do SuperAdmin e envio de e-mails de recuperação de senha.",
+      "inputs": ["POST /api/auth/login", "POST /api/auth/register", "POST /api/auth/forgot-password"],
+      "outputs": ["JWT Token com tenant_id e perfil", "Disparo de e-mails via Nodemailer"]
+    },
+    {
+      "id": "be_saas_billing",
+      "name": "Backend - Motor de Cobrança SaaS & Webhooks",
+      "type": "server-side",
+      "files": [
+        "backend/src/services/saasBillingService.js",
+        "backend/src/controllers/saasController.js",
+        "backend/src/routes/tenantAssinaturaRoutes.js",
+        "backend/src/routes/saasRoutes.js",
+        "backend/src/jobs/cronSaaS.js",
+        "backend/src/jobs/bloqueioInadimplencia.js"
+      ],
+      "responsibility": "Geração automática de faturas mensais, integração com Mercado Pago Master para emissão de Pix Online, liquidação de faturas idempotente, live-check polling e desbloqueio automático de arenas suspensas.",
+      "inputs": ["Geração de Pix por fatura", "Webhooks POST /api/saas/webhook-pagamento", "Cron diário à meia-noite"],
+      "outputs": ["Transações na API Mercado Pago", "Gravação em FaturasSaaS", "Atualização de Arenas.status"]
+    },
+    {
+      "id": "be_tenant_domain",
+      "name": "Backend - Domínio Operacional da Arena (Quadras & Reservas)",
+      "type": "server-side",
+      "files": [
+        "backend/src/controllers/reservasController.js",
+        "backend/src/controllers/quadrasController.js",
+        "backend/src/controllers/clientesController.js",
+        "backend/src/controllers/pagamentosController.js",
+        "backend/src/routes/reservasRoutes.js",
+        "backend/src/routes/quadrasRoutes.js",
+        "backend/src/routes/clientesRoutes.js",
+        "backend/src/routes/pagamentosRoutes.js"
+      ],
+      "responsibility": "Gerenciamento de reservas de quadras, verificação de conflitos de horário, cadastro de mensalistas e atletas, registro de pagamentos balcão/Pix da arena e relatórios de ocupação.",
+      "inputs": ["Payloads de criação de reserva", "Filtros de data e quadra"],
+      "outputs": ["Registros nas tabelas Reservas, Quadras, Clientes, Pagamentos"]
+    },
+    {
+      "id": "db_sqlite",
+      "name": "Banco de Dados SQLite3",
+      "type": "database",
+      "files": [
+        "backend/src/config/database.js",
+        "backend/src/config/init_db.js"
+      ],
+      "responsibility": "Armazenamento relacional persistente com suporte a transações assíncronas encapsuladas (`allAsync`, `getAsync`, `runAsync`).",
+      "inputs": ["Instruções SQL parametrizadas"],
+      "outputs": ["Conjuntos de resultados relacionais"]
+    },
+    {
+      "id": "ext_mercadopago",
+      "name": "Mercado Pago API Gateway",
+      "type": "external",
+      "files": [
+        "backend/src/services/saasBillingService.js",
+        "backend/src/services/gatewayService.js"
+      ],
+      "responsibility": "Processamento de pagamentos Pix Online para mensalidades do SaaS e integração OAuth / Pix individual das arenas.",
+      "inputs": ["Access Tokens (Master APP_USR-... e Tenant OAuth)", "Payloads de cobrança"],
+      "outputs": ["QR Code Pix, código copia e cola, webhook de notificação de status"]
+    },
+    {
+      "id": "ext_email",
+      "name": "Serviço SMTP de E-mail (Nodemailer)",
+      "type": "external",
+      "files": [
+        "backend/src/services/emailService.js"
+      ],
+      "responsibility": "Envio de e-mails transacionais (boas-vindas, redefinição de senha, avisos de vencimento de faturas SaaS).",
+      "inputs": ["Configurações SMTP (.env)", "Destinatário, Assunto e corpo HTML"],
+      "outputs": ["Entrega de e-mails aos usuários e donos de arena"]
+    }
+  ],
+  "main_flows": [
+    {
+      "id": "flow_auth",
+      "name": "Fluxo 1: Autenticação de Usuário e Controle de Sessão",
+      "steps": [
+        {"step": 1, "description": "Usuário envia e-mail e senha no formulário do TenantLogin ou MasterLogin.", "component": "fe_public"},
+        {"step": 2, "description": "Requisição POST /api/auth/login recebida pelo backend.", "component": "be_auth_controller"},
+        {"step": 3, "description": "Busca usuário no SQLite e valida senha com Bcrypt.compare().", "component": "db_sqlite"},
+        {"step": 4, "description": "Verifica arena_status. Se arena_status == 0 (suspensa) e usuário for Administrador, permite login para regularização.", "component": "be_auth_controller"},
+        {"step": 5, "description": "Assina Token JWT contendo id, tenant_id, perfil e retorna ao cliente.", "component": "be_auth_controller"},
+        {"step": 6, "description": "Frontend armazena o token no localStorage e navega para /admin/dashboard ou /admin/assinatura.", "component": "fe_tenant_admin"}
+      ]
+    },
+    {
+      "id": "flow_saas_billing",
+      "name": "Fluxo 2: Cobrança SaaS, Pagamento Pix e Desbloqueio Automático",
+      "steps": [
+        {"step": 1, "description": "Cron diário à meia-noite (cronSaaS.js) ou requisição do usuário gera fatura pendente na tabela FaturasSaaS.", "component": "be_saas_billing"},
+        {"step": 2, "description": "Administrador da arena acessa /admin/assinatura e clica em 'Pagar com PIX'.", "component": "fe_tenant_admin"},
+        {"step": 3, "description": "Backend chama saasBillingService.gerarPixFaturaSaaS que consome a API do Mercado Pago com a credencial Master.", "component": "ext_mercadopago"},
+        {"step": 4, "description": "Mercado Pago retorna QR Code e chave Pix Copia e Cola, persisidos na fatura.", "component": "be_saas_billing"},
+        {"step": 5, "description": "Administrador realiza o pagamento Pix no aplicativo do seu banco.", "component": "ext_mercadopago"},
+        {"step": 6, "description": "Mercado Pago dispara Webhook ou o Polling do frontend (/status-pagamento) detecta o status 'approved'.", "component": "be_saas_billing"},
+        {"step": 7, "description": "Função liquidarFaturaSaaS atualiza FaturasSaaS para 'Paga' e Arenas.status para 1 (Ativa), liberando o acesso instantaneamente.", "component": "be_saas_billing"}
+      ]
+    },
+    {
+      "id": "flow_booking",
+      "name": "Fluxo 3: Agendamento de Quadra e Validação de Conflitos",
+      "steps": [
+        {"step": 1, "description": "Atleta ou Recepcionista seleciona quadra, data e horário inicial/final.", "component": "fe_public"},
+        {"step": 2, "description": "Requisição POST /api/reservas recebida pelo backend.", "component": "be_tenant_domain"},
+        {"step": 3, "description": "Middleware verifyToken valida o token JWT e o tenant_id.", "component": "be_core_server"},
+        {"step": 4, "description": "Backend executa query de verificação de superposição de horários na quadra.", "component": "db_sqlite"},
+        {"step": 5, "description": "Se horário livre, registra reserva e gera registro em Pagamentos ou TransacoesGateway.", "component": "be_tenant_domain"}
+      ]
+    }
+  ],
+  "conventions": {
+    "directory_structure": {
+      "backend": "Servidor Node.js Express estruturado em MVC / Service-Controller.",
+      "master_templates": "Aplicação Frontend React com Vite, TypeScript, JSX em src/screens e layouts em src/layouts.",
+      "frontend_legacy": "Diretório antigo de protótipos HTML estáticos (marcado para desativação/arquivamento)."
+    },
+    "naming_conventions": {
+      "database_tables": "PascalCase no plural (ex: Arenas, Usuarios, FaturasSaaS, Reservas).",
+      "database_columns": "snake_case (ex: tenant_id, criado_em, valor_mensal, trial_expira_em).",
+      "backend_files": "camelCase com sufixos descritivos (ex: saasController.js, saasBillingService.js).",
+      "frontend_components": "PascalCase com extensão .tsx (ex: AdminAssinatura.tsx, MasterFinanceiro.tsx)."
+    },
+    "architectural_decisions": {
+      "multi_tenant_isolation": "Isolamento lógico no mesmo banco SQLite via coluna tenant_id injetada obrigatoriamente pelas rotas a partir do token JWT.",
+      "master_vs_arena_billing": "Separação total entre a conta recebedora do Master (mensalidades SaaS) e as contas das Arenas (reservas dos atletas).",
+      "live_polling_fallback": "Uso de Polling ativo a cada 4s no frontend como fallback de Webhook em ambiente local (localhost)."
+    }
+  },
+  "technical_debts_and_observations": [
+    {
+      "severity": "medium",
+      "issue": "Duplicação parcial de registro de rotas entre server.js e app.js",
+      "description": "Tanto app.js quanto server.js possuem declarações app.use('/api/...'). O app.js é importado em server.js. Recomenda-se mover o registro de rotas 100% para dentro de app.js."
+    },
+    {
+      "severity": "low",
+      "issue": "Presença da pasta obsoleta /frontend com arquivos HTML estáticos antigos",
+      "description": "A pasta /frontend contém os arquivos HTML estáticos anteriores à refatoração para React. Não afeta a execução do React mas ocupa espaço no repositório."
+    },
+    {
+      "severity": "low",
+      "issue": "Scripts auxiliares soltos na raiz",
+      "description": "Existem diversos scripts .js avulsos na raiz (ex: addState.js, convert.js, rebuildCheckout.js) que podem ser movidos para uma pasta scripts/."
+    }
+  ]
+}

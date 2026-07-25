@@ -29,6 +29,7 @@ interface ArenaData {
   endereco: string;
   telefone: string;
   email: string;
+  fuso_horario?: string;
   notif_reserva_email: number;
   notif_reserva_whatsapp: number;
   notif_cancelamento_email: number;
@@ -52,12 +53,18 @@ export function AdminConfiguracoes() {
     endereco: '',
     telefone: '',
     email: '',
+    fuso_horario: 'America/Sao_Paulo',
     notif_reserva_email: 0,
     notif_reserva_whatsapp: 0,
     notif_cancelamento_email: 0,
     notif_pagamento_email: 0,
     alerta_pagamento_minutos: 30
   });
+
+  // Configuração Maquineta
+  const [maquinetaId, setMaquinetaId] = useState('');
+  const [accessToken, setAccessToken] = useState('');
+  const [publicKey, setPublicKey] = useState('');
 
   // Loadings
   const [loadingQuadras, setLoadingQuadras] = useState(true);
@@ -130,10 +137,13 @@ export function AdminConfiguracoes() {
     const res = await fetch(url, { ...options, headers });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      if (res.status === 401 || res.status === 403) {
+      if (res.status === 401) {
         localStorage.removeItem('courtmanager_token');
         window.location.href = '/login';
         return;
+      }
+      if (res.status === 403) {
+        throw new Error('Acesso negado para este perfil.');
       }
       throw new Error(err.error || 'Erro na requisição');
     }
@@ -185,6 +195,7 @@ export function AdminConfiguracoes() {
         endereco: data.endereco || '',
         telefone: data.telefone || '',
         email: data.email || '',
+        fuso_horario: data.fuso_horario || 'America/Sao_Paulo',
         notif_reserva_email: data.notif_reserva_email || 0,
         notif_reserva_whatsapp: data.notif_reserva_whatsapp || 0,
         notif_cancelamento_email: data.notif_cancelamento_email || 0,
@@ -195,6 +206,11 @@ export function AdminConfiguracoes() {
         localStorage.setItem('arena_nome', data.nome);
         window.dispatchEvent(new Event('arena_nome_changed'));
       }
+      
+      const gRes = await request('http://localhost:3000/api/pagamentos/gateway/maquineta');
+      setMaquinetaId(gRes.gateway_device_id || '');
+      setAccessToken(gRes.gateway_access_token || '');
+      setPublicKey(gRes.gateway_public_key || '');
     } catch (e: any) {
       console.error(e);
     }
@@ -206,6 +222,34 @@ export function AdminConfiguracoes() {
       loadUsuarios();
       loadArena();
       loadMotivos();
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const state = params.get('state');
+    const oauthStatus = params.get('oauth');
+
+    if (code && state) {
+      handleTabChange('pagamentos');
+      fetch('http://localhost:3000/api/pagamentos/gateway/oauth/exchange', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, state })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.accessToken) {
+            setAccessToken(data.accessToken);
+            if (data.publicKey) setPublicKey(data.publicKey);
+            showToast('✓ Conta do Mercado Pago conectada com sucesso!', 'success');
+            loadArena();
+            window.history.replaceState({}, document.title, window.location.pathname + '?tab=pagamentos');
+          }
+        })
+        .catch(err => console.error('Erro na troca de código OAuth:', err));
+    } else if (oauthStatus === 'success') {
+      handleTabChange('pagamentos');
+      showToast('✓ Conta do Mercado Pago conectada com sucesso!', 'success');
     }
   }, [token]);
 
@@ -394,6 +438,17 @@ export function AdminConfiguracoes() {
         method: 'PUT',
         body: JSON.stringify(arena)
       });
+      
+      // Salva o Serial Number e Credenciais da maquineta física
+      await request('http://localhost:3000/api/pagamentos/gateway/maquineta', {
+        method: 'POST',
+        body: JSON.stringify({ 
+          gateway_device_id: maquinetaId,
+          gateway_access_token: accessToken,
+          gateway_public_key: publicKey
+        })
+      });
+
       if (!silent) {
         showToast('Configurações salvas com sucesso!', 'success');
       }
@@ -469,6 +524,12 @@ export function AdminConfiguracoes() {
             onClick={() => handleTabChange('usuarios')}
           >
             Usuários
+          </button>
+          <button 
+            className={`config-nav-item w-full text-left ${relAtivo === 'pagamentos' ? 'active' : ''}`}
+            onClick={() => handleTabChange('pagamentos')}
+          >
+            Pagamentos
           </button>
           <button 
             className={`config-nav-item w-full text-left ${relAtivo === 'notificacoes' ? 'active' : ''}`}
@@ -743,6 +804,174 @@ export function AdminConfiguracoes() {
             </ul>
           </div>
 
+          {/* SEÇÃO SEPARADA: PAGAMENTOS & MAQUINETA */}
+          <form className={`config-section card ${relAtivo === 'pagamentos' ? 'active' : ''}`} onSubmit={handleSaveArena}>
+            <div className="card-header">
+              <h2 className="card-title">Pagamentos</h2>
+            </div>
+            <p style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: 'var(--s-4)' }}>
+              Configure as credenciais bancárias e as maquinetas físicas da sua Arena para receber pagamentos de Pix e Cartão diretamente na sua conta.
+            </p>
+
+            {/* BANNER OAUTH CONEXÃO AUTOMÁTICA */}
+            <div style={{
+              backgroundColor: 'rgba(0, 158, 227, 0.08)',
+              border: '1px solid rgba(0, 158, 227, 0.3)',
+              borderRadius: 'var(--r-md)',
+              padding: 'var(--s-4)',
+              marginBottom: 'var(--s-5)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#007eb5', margin: 0 }}>
+                    Conexão Automática Mercado Pago
+                  </h3>
+                  <p style={{ fontSize: '12px', color: 'var(--charcoal)', margin: '4px 0 0 0' }}>
+                    Conecte a conta bancária da sua arena em 1 clique sem precisar copiar chaves ou códigos manuais.
+                  </p>
+                </div>
+                {accessToken ? (
+                  <span style={{ background: '#dcfce7', color: '#15803d', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 600 }}>
+                    ✓ Conta Conectada
+                  </span>
+                ) : (
+                  <span style={{ background: '#fef3c7', color: '#b45309', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 600 }}>
+                    ⚠️ Pendente (Não Conectado)
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  style={{
+                    background: '#009ee3',
+                    color: 'white',
+                    border: 'none',
+                    padding: '10px 18px',
+                    borderRadius: '6px',
+                    fontWeight: 600,
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                  onClick={async () => {
+                    try {
+                      const authToken = localStorage.getItem('courtmanager_token') || token;
+                      const res = await fetch('http://localhost:3000/api/pagamentos/gateway/oauth/url', {
+                        headers: { 'Authorization': `Bearer ${authToken}` }
+                      });
+                      const data = await res.json();
+                      if (!res.ok) throw new Error(data.error || 'Erro ao iniciar conexão automática.');
+                      if (data.url) {
+                        window.location.href = data.url;
+                      }
+                    } catch (e: any) {
+                      setToast({ message: e.message || 'Erro ao iniciar conexão automática.', type: 'error' });
+                    }
+                  }}
+                >
+                  {accessToken ? '🔗 Reautorizar ou Trocar Conta' : '🔗 Conectar com Mercado Pago'}
+                </button>
+
+                {accessToken && (
+                  <button
+                    type="button"
+                    style={{
+                      background: 'rgba(224, 86, 86, 0.1)',
+                      color: 'var(--danger)',
+                      border: '1px solid rgba(224, 86, 86, 0.3)',
+                      padding: '10px 16px',
+                      borderRadius: '6px',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      cursor: 'pointer'
+                    }}
+                    onClick={async () => {
+                      try {
+                        const authToken = localStorage.getItem('courtmanager_token') || token;
+                        const res = await fetch('http://localhost:3000/api/pagamentos/gateway/oauth/desconectar', {
+                          method: 'POST',
+                          headers: { 'Authorization': `Bearer ${authToken}` }
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || 'Erro ao desconectar.');
+                        
+                        setAccessToken('');
+                        setPublicKey('');
+                        showToast('Conta Mercado Pago desconectada com sucesso!', 'success');
+                        loadArena();
+                      } catch (e: any) {
+                        showToast('Erro ao desconectar: ' + e.message, 'error');
+                      }
+                    }}
+                  >
+                    ❌ Desconectar Conta
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--muted)', marginBottom: 'var(--s-3)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+              Ou insira as chaves manuais (Avançado)
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="arena-token">Chave de API / Access Token da Arena (Mercado Pago / PagBank)</label>
+              <input 
+                type="password" 
+                id="arena-token" 
+                placeholder="Ex: APP_USR-1234567890..."
+                value={accessToken}
+                onChange={(e) => setAccessToken(e.target.value)}
+              />
+              <span style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginTop: '4px' }}>
+                Chave secreta obtida no painel da conta bancária da Arena. Garante que os pagamentos caiam direto na sua conta.
+              </span>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="arena-public-key">Chave Pública / Public Key (Opcional)</label>
+              <input 
+                type="text" 
+                id="arena-public-key" 
+                placeholder="Ex: APP_USR-9876543210..."
+                value={publicKey}
+                onChange={(e) => setPublicKey(e.target.value)}
+              />
+              <span style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginTop: '4px' }}>
+                Utilizada para a geração de formulários transparentes de cartão de crédito no Portal do Cliente.
+              </span>
+            </div>
+
+            <div style={{ height: '1px', background: 'var(--border-passive)', margin: 'var(--s-4) 0' }}></div>
+            
+            <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: 'var(--s-3)' }}>Maquineta Física do Balcão (POS Smart Cloud)</h3>
+
+            <div className="form-group">
+              <label htmlFor="arena-maquineta">Número de Série da Maquineta (Serial Number / Device ID)</label>
+              <input 
+                type="text" 
+                id="arena-maquineta" 
+                placeholder="Ex: MP-POINT-12345"
+                value={maquinetaId}
+                onChange={(e) => setMaquinetaId(e.target.value)}
+              />
+              <span style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginTop: '4px' }}>
+                Código localizado na etiqueta atrás do aparelho. Conecta o caixa do sistema diretamente ao visor da maquineta via Wi-Fi/4G.
+              </span>
+            </div>
+
+            <div style={{ marginTop: 'var(--s-4)', display: 'flex', justifyContent: 'flex-end' }}>
+              <button type="submit" className="btn-primary" id="btn-salvar-pagamentos">Salvar Configurações de Pagamento</button>
+            </div>
+          </form>
+
           {/* ARENA */}
           <form className={`config-section card ${relAtivo === 'arena' ? 'active' : ''}`} onSubmit={handleSaveArena}>
             <div className="card-header">
@@ -784,6 +1013,22 @@ export function AdminConfiguracoes() {
                 value={arena.email}
                 onChange={(e) => setArena({ ...arena, email: e.target.value })}
               />
+            </div>
+            <div className="form-group">
+              <label htmlFor="arena-fuso">Horário Local da Arena (Fuso Horário)</label>
+              <select 
+                id="arena-fuso"
+                value={arena.fuso_horario || 'America/Sao_Paulo'}
+                onChange={(e) => setArena({ ...arena, fuso_horario: e.target.value })}
+              >
+                <option value="America/Sao_Paulo">Horário de Brasília (SP, RJ, MG, ES, Sul, Nordeste, GO, DF, TO, PA, AP - UTC-3)</option>
+                <option value="America/Manaus">Horário do Amazonas / MT / MS / RO / RR (AM, MT, MS, RO, RR - UTC-4)</option>
+                <option value="America/Rio_Branco">Horário do Acre (AC - UTC-5)</option>
+                <option value="America/Noronha">Horário de Fernando de Noronha (UTC-2)</option>
+              </select>
+              <span style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginTop: '4px' }}>
+                Garante que a agenda, caixa e relatórios funcionem exatamente na hora da sua cidade.
+              </span>
             </div>
             <div style={{ height: '1px', background: 'var(--border-passive)', margin: 'var(--s-4) 0' }}></div>
             <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: 'var(--s-3)' }}>Aparência do Sistema</h3>
@@ -918,11 +1163,11 @@ export function AdminConfiguracoes() {
           <div className="form-group">
             <label htmlFor="eq-preco">Preço base por hora (R$) *</label>
             <input 
-              type="number" 
+              type="text" 
               id="eq-preco" 
-              step="0.01" 
+              placeholder="Ex: 150,00"
               value={nqPreco}
-              onChange={(e) => setNqPreco(e.target.value)}
+              onChange={(e) => setNqPreco(formatCurrencyInput(e.target.value))}
               required 
             />
           </div>

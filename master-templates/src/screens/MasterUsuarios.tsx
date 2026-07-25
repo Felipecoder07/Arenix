@@ -1,57 +1,161 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { KeyRound, Power, History } from 'lucide-react';
 import { Card, Badge, PageHeader, Modal, ConfirmModal, Input, Select, EmptyState, Pagination } from '../components/ui';
-import { USERS, ARENAS, formatDateTime, type UserRole } from '../data/mock';
+import { formatDateTime } from '../data/mock';
 
 const PAGE_SIZE = 10;
 
 export function MasterUsuarios() {
   const [search, setSearch] = useState('');
   const [arenaFilter, setArenaFilter] = useState('all');
-  const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
+  const [roleFilter, setRoleFilter] = useState<'all' | string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'ativo' | 'desativado'>('all');
   const [page, setPage] = useState(1);
-  const [accessUser, setAccessUser] = useState<typeof USERS[number] | null>(null);
-  const [deactivateUser, setDeactivateUser] = useState<typeof USERS[number] | null>(null);
-  const [resetUser, setResetUser] = useState<typeof USERS[number] | null>(null);
+  
+  const [users, setUsers] = useState<any[]>([]);
+  const [arenas, setArenas] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  const [accessUser, setAccessUser] = useState<any | null>(null);
+  const [accessLogs, setAccessLogs] = useState<any[]>([]);
+  const [loadingAccess, setLoadingAccess] = useState(false);
+  
+  const [deactivateUser, setDeactivateUser] = useState<any | null>(null);
+  const [resetUser, setResetUser] = useState<any | null>(null);
+
+  const fetchUsuarios = async () => {
+    try {
+      const token = localStorage.getItem('courtmanager_token');
+      const headers = { 'Authorization': `Bearer ${token}` };
+      
+      const [usersRes, arenasRes] = await Promise.all([
+        fetch('http://localhost:3000/api/saas/usuarios', { headers }).then(r => r.json()),
+        fetch('http://localhost:3000/api/saas/arenas', { headers }).then(r => r.json())
+      ]);
+
+      const mappedUsers = (Array.isArray(usersRes) ? usersRes : []).map((u: any) => ({
+        id: u.id,
+        name: u.nome,
+        email: u.email,
+        role: u.role === 'Administrador' ? 'admin' : u.role === 'Gerente' ? 'gerente' : 'recepcionista',
+        roleOriginal: u.role,
+        status: u.ativo === 1 ? 'ativo' : 'desativado',
+        arenaId: String(u.arenaId || ''),
+        arenaName: u.arenaName || 'Master/SuperAdmin',
+      }));
+
+      setUsers(mappedUsers);
+      setArenas(Array.isArray(arenasRes) ? arenasRes : []);
+    } catch (e) {
+      console.error('Erro ao buscar dados de usuários:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchUsuarios();
+  }, []);
+
+  const handleOpenAccess = async (u: any) => {
+    setAccessUser(u);
+    setLoadingAccess(true);
+    setAccessLogs([]);
+    try {
+      const token = localStorage.getItem('courtmanager_token');
+      const res = await fetch(`http://localhost:3000/api/saas/usuarios/${u.id}/acessos`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setAccessLogs(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingAccess(false);
+    }
+  };
+
+  const handleToggleStatus = async () => {
+    if (!deactivateUser) return;
+    try {
+      const token = localStorage.getItem('courtmanager_token');
+      const res = await fetch(`http://localhost:3000/api/saas/usuarios/${deactivateUser.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        fetchUsuarios();
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDeactivateUser(null);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetUser) return;
+    try {
+      const token = localStorage.getItem('courtmanager_token');
+      const res = await fetch(`http://localhost:3000/api/saas/usuarios/${resetUser.id}/reset-senha`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        alert(`Senha de ${resetUser.name} redefinida para "arena123" com sucesso!`);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setResetUser(null);
+    }
+  };
 
   const filtered = useMemo(() => {
-    return USERS.filter((u) => {
+    return users.filter((u) => {
       if (search && !`${u.name} ${u.email}`.toLowerCase().includes(search.toLowerCase())) return false;
       if (arenaFilter !== 'all' && u.arenaId !== arenaFilter) return false;
       if (roleFilter !== 'all' && u.role !== roleFilter) return false;
       if (statusFilter !== 'all' && u.status !== statusFilter) return false;
       return true;
     });
-  }, [search, arenaFilter, roleFilter, statusFilter]);
+  }, [users, search, arenaFilter, roleFilter, statusFilter]);
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  if (loading) return <div className="p-8 text-center text-charcoal animate-pulse">Carregando usuários...</div>;
 
   return (
     <div>
       <PageHeader title="Usuários" description="Todos os usuários de todas as arenas da plataforma." />
 
       <Card className="p-3 mb-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[200px]">
-            <Input placeholder="Buscar por nome ou e-mail..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex-1 min-w-[250px]">
+            <Input placeholder="Buscar por nome ou e-mail..." value={search} onChange={(e: any) => { setSearch(e.target.value); setPage(1); }} />
           </div>
-          <Select value={arenaFilter} onChange={(e) => { setArenaFilter(e.target.value); setPage(1); }} className="w-auto min-w-[160px]">
-            <option value="all">Todas as arenas</option>
-            {ARENAS.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </Select>
-          <Select value={roleFilter} onChange={(e) => { setRoleFilter(e.target.value as any); setPage(1); }} className="w-auto min-w-[130px]">
-            <option value="all">Todos os perfis</option>
-            <option value="admin">Admin</option>
-            <option value="gerente">Gerente</option>
-            <option value="recepcionista">Recepcionista</option>
-          </Select>
-          <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value as any); setPage(1); }} className="w-auto min-w-[130px]">
-            <option value="all">Todos os status</option>
-            <option value="ativo">Ativo</option>
-            <option value="desativado">Desativado</option>
-          </Select>
+          <div className="w-full sm:w-[220px]">
+            <Select value={arenaFilter} onChange={(e: any) => { setArenaFilter(e.target.value); setPage(1); }}>
+              <option value="all">Todas as arenas</option>
+              {arenas.map((a) => <option key={a.id} value={String(a.id)}>{a.nome}</option>)}
+            </Select>
+          </div>
+          <div className="w-full sm:w-[160px]">
+            <Select value={roleFilter} onChange={(e: any) => { setRoleFilter(e.target.value); setPage(1); }}>
+              <option value="all">Todos os perfis</option>
+              <option value="admin">Admin</option>
+              <option value="gerente">Gerente</option>
+              <option value="recepcionista">Recepcionista</option>
+            </Select>
+          </div>
+          <div className="w-full sm:w-[150px]">
+            <Select value={statusFilter} onChange={(e: any) => { setStatusFilter(e.target.value); setPage(1); }}>
+              <option value="all">Todos os status</option>
+              <option value="ativo">Ativo</option>
+              <option value="desativado">Desativado</option>
+            </Select>
+          </div>
         </div>
       </Card>
 
@@ -75,11 +179,11 @@ export function MasterUsuarios() {
                     <td className="px-5 py-3 font-medium text-charcoal">{u.name}</td>
                     <td className="px-5 py-3 text-muted">{u.email}</td>
                     <td className="px-5 py-3 text-muted">{u.arenaName}</td>
-                    <td className="px-5 py-3"><span className="capitalize">{u.role}</span></td>
+                    <td className="px-5 py-3"><span className="capitalize">{u.roleOriginal || u.role}</span></td>
                     <td className="px-5 py-3"><Badge status={u.status}>{u.status}</Badge></td>
                     <td className="px-5 py-3">
                       <div className="flex items-center justify-end gap-0.5">
-                        <button onClick={() => setAccessUser(u)} title="Últimos acessos" className="p-1.5 rounded-md text-muted hover:text-charcoal hover:bg-cream-surface transition-colors"><History size={15} /></button>
+                        <button onClick={() => handleOpenAccess(u)} title="Últimos acessos" className="p-1.5 rounded-md text-muted hover:text-charcoal hover:bg-cream-surface transition-colors"><History size={15} /></button>
                         <button onClick={() => setResetUser(u)} title="Resetar senha" className="p-1.5 rounded-md text-muted hover:text-charcoal hover:bg-cream-surface transition-colors"><KeyRound size={15} /></button>
                         <button onClick={() => setDeactivateUser(u)} title={u.status === 'ativo' ? 'Desativar' : 'Ativar'} className={`p-1.5 rounded-md transition-colors ${u.status === 'ativo' ? 'text-warning hover:bg-warning-soft' : 'text-success hover:bg-success-soft'}`}><Power size={15} /></button>
                       </div>
@@ -97,25 +201,31 @@ export function MasterUsuarios() {
 
       {/* Access history */}
       <Modal open={!!accessUser} onClose={() => setAccessUser(null)} title="Últimos acessos" description={accessUser?.email}>
-        <ol className="relative border-l border-border-passive ml-2 space-y-3">
-          {accessUser && Array.from({ length: 5 }).map((_, i) => (
-            <li key={i} className="pl-4">
-              <span className="absolute -left-[5px] w-2.5 h-2.5 rounded-full bg-charcoal/40 border-2 border-cream" />
-              <div className="text-sm text-charcoal">Login bem-sucedido</div>
-              <div className="text-xs text-muted">{formatDateTime(accessUser.lastAccess)} · 200.143.0.{10 + i}</div>
-            </li>
-          ))}
-        </ol>
+        {loadingAccess ? (
+          <div className="py-8 text-center text-charcoal animate-pulse">Carregando acessos...</div>
+        ) : accessLogs.length === 0 ? (
+          <EmptyState message="Nenhum log de acesso encontrado para este usuário." />
+        ) : (
+          <ol className="relative border-l border-border-passive ml-2 space-y-3">
+            {accessLogs.map((l, i) => (
+              <li key={i} className="pl-4">
+                <span className="absolute -left-[5px] w-2.5 h-2.5 rounded-full bg-charcoal/40 border-2 border-cream" />
+                <div className="text-sm text-charcoal">{l.evento}</div>
+                <div className="text-xs text-muted">{formatDateTime(l.criado_em)} · IP: {l.ip || 'Desconhecido'} {l.detalhes ? `· ${l.detalhes}` : ''}</div>
+              </li>
+            ))}
+          </ol>
+        )}
       </Modal>
 
       {/* Reset password */}
-      <ConfirmModal open={!!resetUser} onClose={() => setResetUser(null)} onConfirm={() => setResetUser(null)}
+      <ConfirmModal open={!!resetUser} onClose={() => setResetUser(null)} onConfirm={handleResetPassword}
         title="Resetar senha do usuário" destructive confirmLabel="Gerar senha temporária"
-        message={<>Será gerada uma senha temporária para <strong>{resetUser?.name}</strong> e enviada por e-mail. O usuário precisará redefini-la no próximo acesso.</>}
+        message={<>A senha de <strong>{resetUser?.name}</strong> será redefinida para o valor padrão <strong>arena123</strong>. O usuário poderá alterar após acessar.</>}
       />
 
       {/* Deactivate */}
-      <ConfirmModal open={!!deactivateUser} onClose={() => setDeactivateUser(null)} onConfirm={() => setDeactivateUser(null)}
+      <ConfirmModal open={!!deactivateUser} onClose={() => setDeactivateUser(null)} onConfirm={handleToggleStatus}
         title={deactivateUser?.status === 'ativo' ? 'Desativar usuário?' : 'Reativar usuário?'}
         destructive={deactivateUser?.status === 'ativo'}
         confirmLabel={deactivateUser?.status === 'ativo' ? 'Desativar' : 'Reativar'}

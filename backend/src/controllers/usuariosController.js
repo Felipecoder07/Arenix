@@ -27,17 +27,63 @@ const criarUsuario = async (req, res) => {
   }
 
   try {
-    const senha_hash = await bcrypt.hash(senha, 12);
+    const crypto = require('crypto');
+    // Gerar token de ativação (válido por 7 dias)
+    const token = crypto.randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + 7 * 24 * 3600000).toISOString();
+
+    // Senha aleatória temporária (conta travada até o primeiro reset)
+    const tempPassword = crypto.randomBytes(16).toString('hex');
+    const senha_hash = await bcrypt.hash(tempPassword, 12);
+
     const result = await db.runAsync(
-      `INSERT INTO Usuarios (tenant_id, nome, email, senha_hash, perfil) VALUES (?, ?, ?, ?, ?)`,
-      [req.user.tenant_id, nome, email, senha_hash, perfil]
+      `INSERT INTO Usuarios (tenant_id, nome, email, senha_hash, perfil, reset_password_token, reset_password_expires) 
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [req.user.tenant_id, nome, email, senha_hash, perfil, token, expires]
     );
 
     logAuditEvent(admin_id, 'Criação de Usuário', `Criou o usuário ${email} (${perfil})`, ip);
-    res.status(201).json({ message: 'Usuário criado com sucesso.', id: result.lastID });
+
+    // Identificar origem dinâmica
+    const referer = req.headers['referer'] || req.headers['origin'] || 'http://localhost:5173';
+    const baseUri = referer.includes('5174') ? 'http://localhost:5174' : 'http://localhost:5173';
+    const activationLink = `${baseUri}/redefinir-senha?token=${token}`;
+
+    // Dispara o e-mail de boas-vindas do funcionário em background
+    (async () => {
+      try {
+        const arenaObj = await db.getAsync('SELECT nome FROM Arenas WHERE id = ?', [req.user.tenant_id]);
+        const arenaName = arenaObj ? arenaObj.nome : 'Sua Arena';
+
+        const { sendEmail } = require('../services/emailService');
+        const subject = `Sua conta foi criada no Arenix - Ative seu Acesso 🎾`;
+        const html = `
+          <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; line-height: 1.6;">
+            <h2 style="color: #2F855A; border-bottom: 2px solid #E2E8F0; padding-bottom: 10px;">Boas-vindas à Equipe! 🎉</h2>
+            <p>Olá, <strong>${nome}</strong>!</p>
+            <p>Sua conta de colaborador na arena <strong>${arenaName}</strong> foi criada com sucesso no sistema <strong>Arenix CourtManager</strong>.</p>
+            <p>Seu perfil de acesso configurado é: <strong>${perfil}</strong>.</p>
+            <p>Para ativar sua conta e cadastrar a sua senha de acesso, clique no botão abaixo:</p>
+            <div style="margin: 30px 0;">
+              <a href="${activationLink}" style="background-color: #2F855A; color: #FFF; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">Ativar Minha Conta</a>
+            </div>
+            <p style="font-size: 0.9em; color: #718096;">Ou copie o link a seguir no seu navegador:</p>
+            <p style="font-size: 0.85em; color: #2F855A; word-break: break-all;"><a href="${activationLink}">${activationLink}</a></p>
+            <p style="font-size: 0.9em; color: #E53E3E; font-weight: bold;">Este link de ativação é válido por 7 dias.</p>
+            <hr style="border: 0; border-top: 1px solid #E2E8F0; margin: 20px 0;" />
+            <p style="font-size: 0.8em; color: #A0AEC0;">Esta é uma mensagem automática enviada por Arenix CourtManager.</p>
+          </div>
+        `;
+        await sendEmail(email, subject, html);
+      } catch (e) {
+        console.error('[SMTP] Erro ao disparar e-mail de boas-vindas do funcionário:', e.message);
+      }
+    })();
+
+    res.status(201).json({ message: 'Usuário criado com sucesso e e-mail de ativação enviado.', id: result.lastID });
   } catch (error) {
     console.error(error);
-    if (error.message.includes('UNIQUE constraint failed')) {
+    if (error.message && error.message.includes('UNIQUE constraint failed')) {
       return res.status(400).json({ error: 'Já existe um usuário cadastrado com este e-mail.' });
     }
     res.status(500).json({ error: 'Erro ao criar usuário.' });

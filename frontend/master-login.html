@@ -182,7 +182,7 @@
         localStorage.setItem('courtmanager_user', JSON.stringify(data.usuario));
 
         const userData = btoa(encodeURIComponent(JSON.stringify(data.usuario)));
-        window.location.href = `http://localhost:5173/?token=${data.token}&user=${userData}`;
+        window.location.href = `http://localhost:5173/master?token=${data.token}&user=${userData}`;
       } catch (err) {
         errorDiv.textContent = 'Connection Error';
         errorDiv.style.display = 'block';

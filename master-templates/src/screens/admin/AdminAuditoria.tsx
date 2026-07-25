@@ -70,10 +70,13 @@ export function AdminAuditoria() {
       });
 
       if (!res.ok) {
-        if (res.status === 401 || res.status === 403) {
+        if (res.status === 401) {
           localStorage.removeItem('courtmanager_token');
           window.location.href = '/login';
           return;
+        }
+        if (res.status === 403) {
+          throw new Error('Acesso negado para este perfil.');
         }
         throw new Error('Erro ao buscar logs');
       }

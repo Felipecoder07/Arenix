@@ -1,9 +1,13 @@
 const db = require('../config/database');
+const { getTodayString, getLocalTimeString } = require('../utils/dateUtils');
 
 const obterResumoDia = async (req, res) => {
   try {
-    const hoje = new Date().toISOString().split('T')[0];
     const tenant_id = req.user.tenant_id;
+    const arena = await db.getAsync('SELECT fuso_horario FROM Arenas WHERE id = ?', [tenant_id]);
+    const fuso = arena && arena.fuso_horario ? arena.fuso_horario : 'America/Sao_Paulo';
+
+    const hoje = getTodayString(fuso);
     
     // RF-DASH-001: Faturamento do Dia
     // Soma de pagamentos registrados hoje
@@ -38,7 +42,7 @@ const obterResumoDia = async (req, res) => {
     const reservasDia = reservasDiaResult.total || 0;
 
     // RF-DASH-006: Próximas Reservas
-    const horaAtual = new Date().toTimeString().split(' ')[0].substring(0, 5); // "HH:MM"
+    const horaAtual = getLocalTimeString(fuso); // "HH:MM" no fuso da arena
     const proximasReservas = await db.allAsync(`
       SELECT r.id, r.hora_inicio, r.hora_fim, r.status, r.status_pagamento, q.nome as quadra_nome,
              c.nome as cliente_nome

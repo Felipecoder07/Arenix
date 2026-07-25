@@ -68,8 +68,14 @@ export function AdminReservas() {
 
   // Modais de Controle
   const [activeModal, setActiveModal] = useState<
-    'new-reserva' | 'detalhe-reserva' | 'cancelar-reserva' | 'registrar-pagamento' | 'estornar-pagamento' | 'bloquear-quadra' | 'gerenciar-bloqueio' | null
+    'new-reserva' | 'detalhe-reserva' | 'cancelar-reserva' | 'registrar-pagamento' | 'estornar-pagamento' | 'bloquear-quadra' | 'gerenciar-bloqueio' | 'pix-gateway' | null
   >(null);
+
+  // Estados de Gateway Pix
+  const [gatewayRef, setGatewayRef] = useState('');
+  const [qrCode, setQrCode] = useState('');
+  const [copiaCola, setCopiaCola] = useState('');
+  const [loadingGateway, setLoadingGateway] = useState(false);
 
   // Estados dos Formulários
   // 1. Nova Reserva
@@ -129,6 +135,32 @@ export function AdminReservas() {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
+
+  // Polling em tempo real do Pix Gateway no modal de reservas
+  useEffect(() => {
+    if (activeModal !== 'pix-gateway' || !selectedReserva || !gatewayRef) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`http://localhost:3000/api/pagamentos/gateway/status/${selectedReserva.id}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status_pagamento === 'Pago' || data.status_pagamento === 'Parcial') {
+            showToast(`Pagamento Pix de R$ ${data.total_pago?.toFixed(2)} verificado e confirmado!`, 'success');
+            setActiveModal(null);
+            setSelectedReserva(null);
+            fetchGrade();
+          }
+        }
+      } catch (e) {
+        console.error('Erro no polling do Pix:', e);
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [activeModal, selectedReserva, gatewayRef, token]);
 
   const formatCurrencyInput = (value: string) => {
     const digits = value.replace(/\D/g, '');
@@ -529,8 +561,8 @@ export function AdminReservas() {
     }
 
     try {
-      const res = await fetch(`http://localhost:3000/api/reservas/${selectedReserva.id}`, {
-        method: 'DELETE',
+      const res = await fetch(`http://localhost:3000/api/reservas/${selectedReserva.id}/cancelar`, {
+        method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -560,6 +592,65 @@ export function AdminReservas() {
       return;
     }
 
+    const valorNumerico = parseCurrencyToFloat(pagValor);
+
+    if (pagMetodo === 'Pix Online (Gateway)') {
+      try {
+        const res = await fetch('http://localhost:3000/api/pagamentos/gateway/cobranca', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            reserva_id: selectedReserva.id,
+            metodo: 'Pix',
+            valor: valorNumerico
+          })
+        });
+
+        const dataJson = await res.json();
+        if (!res.ok) throw new Error(dataJson.error || 'Erro ao gerar cobrança Pix.');
+
+        setGatewayRef(dataJson.gateway_ref);
+        setQrCode(dataJson.qr_code || (dataJson.qr_code_base64 ? `data:image/png;base64,${dataJson.qr_code_base64}` : ''));
+        setCopiaCola(dataJson.copia_cola || '');
+        setActiveModal('pix-gateway');
+        showToast('Cobrança Pix Online gerada com sucesso!', 'success');
+      } catch (e: any) {
+        showToast(e.message, 'error');
+      }
+      return;
+    }
+
+    if (pagMetodo === 'Cartão (Maquineta Online)') {
+      try {
+        const res = await fetch('http://localhost:3000/api/pagamentos/gateway/cobranca', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            reserva_id: selectedReserva.id,
+            metodo: 'Maquineta',
+            valor: valorNumerico
+          })
+        });
+
+        const dataJson = await res.json();
+        if (!res.ok) throw new Error(dataJson.error || 'Erro ao comunicar com a Maquineta.');
+
+        showToast(`Cobrança enviada para a maquineta ${dataJson.device_id}!`, 'success');
+        setActiveModal(null);
+        setSelectedReserva(null);
+        fetchGrade();
+      } catch (e: any) {
+        showToast(e.message, 'error');
+      }
+      return;
+    }
+
     try {
       const res = await fetch('http://localhost:3000/api/pagamentos', {
         method: 'POST',
@@ -569,7 +660,7 @@ export function AdminReservas() {
         },
         body: JSON.stringify({
           reserva_id: selectedReserva.id,
-          valor: parseCurrencyToFloat(pagValor),
+          valor: valorNumerico,
           desconto: pagDesconto ? parseCurrencyToFloat(pagDesconto) : 0,
           metodo: pagMetodo
         })
@@ -1419,11 +1510,13 @@ export function AdminReservas() {
                   required
                 >
                   <option value="">Selecione</option>
-                  <option value="pix">Pix</option>
-                  <option value="dinheiro">Dinheiro</option>
-                  <option value="credito">Cartão de Crédito</option>
-                  <option value="debito">Cartão de Débito</option>
-                  <option value="voucher">Voucher Interno</option>
+                  <option value="Pix">Pix (Manual)</option>
+                  <option value="Pix Online (Gateway)">Pix Online (Gateway)</option>
+                  <option value="Cartão (Maquineta Online)">Cartão (Maquineta Online)</option>
+                  <option value="Dinheiro">Dinheiro</option>
+                  <option value="Cartão de Crédito">Cartão de Crédito</option>
+                  <option value="Cartão de Débito">Cartão de Débito</option>
+                  <option value="Voucher Interno">Voucher Interno</option>
                 </select>
               </div>
 
@@ -1441,6 +1534,63 @@ export function AdminReservas() {
             <div className="modal-footer">
               <button className="btn-ghost" onClick={() => setActiveModal('detalhe-reserva')}>Cancelar</button>
               <button className="btn-primary" onClick={handleConfirmarPagamento}>Confirmar Pagamento</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* MODAL: PIX GATEWAY */}
+      <div className={`modal-overlay ${activeModal === 'pix-gateway' ? 'open' : ''}`}>
+        {selectedReserva && (
+          <div className="modal" style={{ maxWidth: '420px', textAlign: 'center' }}>
+            <div className="modal-header">
+              <h2 className="modal-title">Pagamento via Pix Online</h2>
+              <button className="modal-close" onClick={() => setActiveModal('detalhe-reserva')}>✕</button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div style={{ background: 'var(--cream-surface)', border: '1px solid var(--border-passive)', borderRadius: 'var(--r-md)', padding: '10px 14px', marginBottom: '16px', fontSize: '13px', width: '100%', textAlign: 'left' }}>
+                Reserva #{selectedReserva.id} &middot; <strong>{selectedReserva.cliente_nome}</strong> <br />
+                Valor da Cobrança: <strong style={{ color: 'var(--paid)' }}>{pagValor ? `R$ ${pagValor}` : formatCurrency(selectedReserva.valor_total)}</strong>
+              </div>
+
+              {qrCode ? (
+                <div style={{ width: '180px', height: '180px', background: 'white', border: '1px solid var(--border-passive)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px', marginBottom: '14px' }}>
+                  <img src={qrCode} alt="QR Code Pix" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                </div>
+              ) : (
+                <div style={{ padding: '24px', color: 'var(--muted)', fontSize: '13px' }}>Gerando QR Code...</div>
+              )}
+
+              <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '14px' }}>
+                Peça para o cliente escanear o QR Code acima pelo app do banco dele. A tela atualizará sozinha.
+              </p>
+
+              {copiaCola && (
+                <div style={{ width: '100%', textAlign: 'left', marginBottom: '16px' }}>
+                  <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--charcoal)', display: 'block', marginBottom: '4px' }}>Pix Copia e Cola</label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input 
+                      type="text" 
+                      readOnly 
+                      value={copiaCola} 
+                      style={{ flex: 1, fontSize: '11px', fontFamily: 'monospace', border: '1px solid var(--border-passive)', padding: '6px 10px', borderRadius: '4px', background: 'white' }}
+                    />
+                    <button 
+                      type="button" 
+                      className="btn-ghost btn-sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(copiaCola);
+                        showToast('Chave Pix copiada para a área de transferência!', 'success');
+                      }}
+                    >
+                      Copiar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn-ghost" onClick={() => setActiveModal('detalhe-reserva')}>Voltar</button>
             </div>
           </div>
         )}

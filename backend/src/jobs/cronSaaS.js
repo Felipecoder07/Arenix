@@ -1,6 +1,8 @@
 const cron = require('node-cron');
 const db = require('../config/database');
 const logAuditEvent = require('../utils/auditLogger');
+const { enviarAvisosVencimento } = require('../services/saasBillingService');
+const { executarBloqueioInadimplencia } = require('./bloqueioInadimplencia');
 
 const processSaaS = async () => {
   console.log('[SaaS CRON] Iniciando processamento financeiro diário...');
@@ -12,13 +14,15 @@ const processSaaS = async () => {
     const currentYear = today.getFullYear();
     const todayStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`;
 
-    // 1. Gerar Novas Faturas
+    // 1. Gerar Novas Faturas (Ignora arenas em período de TRIAL ativo)
     const arenasParaFaturar = await db.allAsync(`
       SELECT a.id as tenant_id, a.plano_id, p.valor_mensal 
       FROM Arenas a 
       JOIN PlanosSaaS p ON a.plano_id = p.id
-      WHERE a.status = 1 AND a.dia_vencimento = ?
-    `, [currentDay]);
+      WHERE a.status = 1 
+        AND a.dia_vencimento = ?
+        AND (a.trial_expira_em IS NULL OR date(a.trial_expira_em) <= date(?))
+    `, [currentDay, todayStr]);
 
     for (let arena of arenasParaFaturar) {
       const existeFatura = await db.getAsync(`
@@ -31,32 +35,19 @@ const processSaaS = async () => {
           INSERT INTO FaturasSaaS (tenant_id, plano_id, valor, data_vencimento, status)
           VALUES (?, ?, ?, ?, 'Pendente')
         `, [arena.tenant_id, arena.plano_id, arena.valor_mensal, todayStr]);
-        console.log(`[SaaS CRON] Fatura gerada para Arena ID: ${arena.tenant_id}`);
+        console.log(`[SaaS CRON] Fatura de R$${arena.valor_mensal} gerada para Arena ID: ${arena.tenant_id}`);
       }
     }
 
-    // 2. Verificar Inadimplência e Bloquear
-    const configTolerancia = await db.getAsync(`SELECT valor FROM ConfiguracoesSaaS WHERE chave = 'dias_tolerancia_bloqueio'`);
-    const tolerancia = configTolerancia ? parseInt(configTolerancia.valor) : 5;
+    // 2. Enviar Avisos de Vencimento Próximo (faturas vencendo nos próximos 3 dias)
+    await enviarAvisosVencimento();
 
-    const faturasAtrasadas = await db.allAsync(`
-      SELECT f.id, f.tenant_id, f.data_vencimento 
-      FROM FaturasSaaS f
-      JOIN Arenas a ON f.tenant_id = a.id
-      WHERE f.status = 'Pendente' AND a.status = 1
-      AND (julianday(?) - julianday(f.data_vencimento)) > ?
-    `, [todayStr, tolerancia]);
+    // 3. Executar Job de Bloqueio por Inadimplência (RN-13)
+    await executarBloqueioInadimplencia();
 
-    for (let fatura of faturasAtrasadas) {
-      await db.runAsync(`UPDATE FaturasSaaS SET status = 'Atrasada' WHERE id = ?`, [fatura.id]);
-      await db.runAsync(`UPDATE Arenas SET status = 0 WHERE id = ?`, [fatura.tenant_id]);
-      logAuditEvent(null, 'SaaS: Bloqueio Automático', `Inadimplência na fatura #${fatura.id}. Arena ID: ${fatura.tenant_id}`, 'CRON JOB');
-      console.log(`[SaaS CRON] Arena ID: ${fatura.tenant_id} bloqueada por inadimplência.`);
-    }
-
-    console.log('[SaaS CRON] Processamento finalizado com sucesso.');
+    console.log('[SaaS CRON] Processamento financeiro finalizado com sucesso.');
   } catch (err) {
-    console.error('[SaaS CRON] Erro ao processar billing:', err);
+    console.error('[SaaS CRON Error] Falha ao processar billing:', err);
   }
 };
 

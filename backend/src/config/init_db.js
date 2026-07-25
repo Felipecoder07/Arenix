@@ -30,12 +30,36 @@ const initDb = () => {
         email TEXT UNIQUE NOT NULL,
         senha_hash TEXT NOT NULL,
         perfil TEXT CHECK(perfil IN ('Administrador', 'Gerente', 'Recepcionista', 'Cliente', 'SuperAdmin')) NOT NULL,
+        two_factor_secret TEXT,
         ativo INTEGER DEFAULT 1,
         criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (tenant_id) REFERENCES Arenas(id),
         FOREIGN KEY (cliente_id) REFERENCES Clientes(id)
       )
     `);
+
+    // Tabela SessoesAtivas
+    db.run(`
+      CREATE TABLE IF NOT EXISTS SessoesAtivas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        usuario_id INTEGER NOT NULL,
+        tenant_id INTEGER,
+        token TEXT UNIQUE NOT NULL,
+        ip TEXT,
+        user_agent TEXT,
+        criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+        ultimo_acesso DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Migração automática e atualização de 2FA
+    db.run("ALTER TABLE Usuarios ADD COLUMN two_factor_secret TEXT", (err) => {
+      db.run("UPDATE Usuarios SET two_factor_secret = 'JBSWY3DPEHPK3PXP' WHERE perfil = 'SuperAdmin' AND two_factor_secret IS NULL");
+    });
+
+    // Migrações para recuperação de senha
+    db.run("ALTER TABLE Usuarios ADD COLUMN reset_password_token TEXT", (err) => {});
+    db.run("ALTER TABLE Usuarios ADD COLUMN reset_password_expires DATETIME", (err) => {});
 
     // Tabela Clientes
     db.run(`
@@ -103,6 +127,21 @@ const initDb = () => {
       )
     `);
 
+    // Tabela TransacoesGateway
+    db.run(`
+      CREATE TABLE IF NOT EXISTS TransacoesGateway (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        reserva_id INTEGER NOT NULL,
+        gateway_ref TEXT NOT NULL UNIQUE,
+        valor REAL NOT NULL,
+        status TEXT NOT NULL,
+        metodo TEXT NOT NULL,
+        criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+        atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (reserva_id) REFERENCES Reservas (id)
+      )
+    `);
+
     // Tabela Bloqueios
     db.run(`
       CREATE TABLE IF NOT EXISTS Bloqueios (
@@ -144,6 +183,28 @@ const initDb = () => {
       )
     `);
 
+    // Tabela de Comunicados/Banners do SaaS
+    db.run(`
+      CREATE TABLE IF NOT EXISTS ComunicadosSaaS (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mensagem TEXT NOT NULL,
+        destino TEXT NOT NULL,
+        canal TEXT NOT NULL,
+        criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+        expira_em DATETIME NOT NULL,
+        ativo INTEGER DEFAULT 1
+      )
+    `, () => {
+      // Seedeando dados padrão para preencher a listagem inicialmente
+      db.get('SELECT COUNT(*) as count FROM ComunicadosSaaS', (err, row) => {
+        if (row && row.count === 0) {
+          db.run("INSERT INTO ComunicadosSaaS (mensagem, destino, canal, expira_em, ativo) VALUES ('Manutenção programada neste sábado das 02h às 04h.', 'all', 'alerta', datetime('now', '+3 days'), 1)");
+          // Associa um comunicado real à primeira Arena (ID 1)
+          db.run("INSERT INTO ComunicadosSaaS (mensagem, destino, canal, expira_em, ativo) VALUES ('Novo relatório de ocupação disponível no painel.', '1', 'email', datetime('now', '+7 days'), 1)");
+        }
+      });
+    });
+
     // --- MÓDULO SAAS (BILLING) ---
 
     // Planos do SaaS
@@ -154,6 +215,7 @@ const initDb = () => {
         max_quadras INTEGER NOT NULL,
         max_usuarios INTEGER NOT NULL,
         valor_mensal REAL NOT NULL,
+        valor_anual REAL DEFAULT 0,
         criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -161,9 +223,9 @@ const initDb = () => {
     // População Inicial de Planos Default
     db.get('SELECT COUNT(*) as count FROM PlanosSaaS', (err, row) => {
       if (row && row.count === 0) {
-        db.run("INSERT INTO PlanosSaaS (nome, max_quadras, max_usuarios, valor_mensal) VALUES ('Basic', 2, 3, 99.90)");
-        db.run("INSERT INTO PlanosSaaS (nome, max_quadras, max_usuarios, valor_mensal) VALUES ('Pro', 5, 10, 199.90)");
-        db.run("INSERT INTO PlanosSaaS (nome, max_quadras, max_usuarios, valor_mensal) VALUES ('Enterprise', 999, 999, 499.90)");
+        db.run("INSERT INTO PlanosSaaS (nome, max_quadras, max_usuarios, valor_mensal, valor_anual) VALUES ('Basic', 2, 3, 49.99, 39.99)");
+        db.run("INSERT INTO PlanosSaaS (nome, max_quadras, max_usuarios, valor_mensal, valor_anual) VALUES ('Pro', 5, 10, 79.99, 63.99)");
+        db.run("INSERT INTO PlanosSaaS (nome, max_quadras, max_usuarios, valor_mensal, valor_anual) VALUES ('Enterprise', 999, 999, 499.90, 399.90)");
       }
     });
 
@@ -177,6 +239,10 @@ const initDb = () => {
         data_vencimento DATE NOT NULL,
         data_pagamento DATE,
         status TEXT DEFAULT 'Pendente', -- Pendente, Paga, Atrasada
+        gateway_ref TEXT UNIQUE,         -- ID da transação no Mercado Pago
+        copia_cola TEXT,                 -- Código Pix copia e cola
+        qr_expira_em DATETIME,           -- Expiração do QR Code (24h após geração)
+        metodo_pagamento TEXT,           -- Ex: 'Pix Online', 'Manual'
         registrado_por INTEGER,
         criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (tenant_id) REFERENCES Arenas (id),
@@ -200,6 +266,39 @@ const initDb = () => {
         db.run("INSERT INTO ConfiguracoesSaaS (chave, valor) VALUES ('dias_tolerancia_bloqueio', '5')");
       }
     });
+    db.get("SELECT COUNT(*) as count FROM ConfiguracoesSaaS WHERE chave = 'dias_trial'", (err, row) => {
+      if (row && row.count === 0) {
+        db.run("INSERT INTO ConfiguracoesSaaS (chave, valor) VALUES ('dias_trial', '14')");
+      }
+    });
+    db.get("SELECT COUNT(*) as count FROM ConfiguracoesSaaS WHERE chave = 'manutencao_ativa'", (err, row) => {
+      if (row && row.count === 0) {
+        db.run("INSERT INTO ConfiguracoesSaaS (chave, valor) VALUES ('manutencao_ativa', '0')");
+      }
+    });
+    db.get("SELECT COUNT(*) as count FROM ConfiguracoesSaaS WHERE chave = 'manutencao_mensagem'", (err, row) => {
+      if (row && row.count === 0) {
+        db.run("INSERT INTO ConfiguracoesSaaS (chave, valor) VALUES ('manutencao_mensagem', 'Estamos em manutenção programada. Voltamos em instantes.')");
+      }
+    });
+
+    // Access Token pessoal do Master para RECEBER pagamentos das mensalidades das arenas
+    // DIFERENTE do Client ID/Secret (que são para OAuth dos tenants)
+    db.get("SELECT COUNT(*) as count FROM ConfiguracoesSaaS WHERE chave = 'mp_master_access_token'", (err, row) => {
+      if (row && row.count === 0) {
+        db.run("INSERT INTO ConfiguracoesSaaS (chave, valor) VALUES ('mp_master_access_token', '')");
+      }
+    });
+
+    // Seed de Motivos de Cancelamento Globais (tenant_id = 0)
+    db.get("SELECT COUNT(*) as count FROM MotivosCancelamento WHERE tenant_id = 0", (err, row) => {
+      if (row && row.count === 0) {
+        db.run("INSERT INTO MotivosCancelamento (tenant_id, motivo) VALUES (0, 'Preço muito alto')");
+        db.run("INSERT INTO MotivosCancelamento (tenant_id, motivo) VALUES (0, 'Mudei de sistema')");
+        db.run("INSERT INTO MotivosCancelamento (tenant_id, motivo) VALUES (0, 'Arena fechou')");
+        db.run("INSERT INTO MotivosCancelamento (tenant_id, motivo) VALUES (0, 'Falta de recursos')");
+      }
+    });
 
     // Migrações em Arenas (Tratando erro caso colunas já existam)
     db.run("ALTER TABLE Arenas ADD COLUMN plano_id INTEGER REFERENCES PlanosSaaS(id)", (err) => { /* ignora se já existir */ });
@@ -209,6 +308,21 @@ const initDb = () => {
         db.run("UPDATE Arenas SET plano_id = 1 WHERE plano_id IS NULL");
       }
     });
+    db.run("ALTER TABLE Arenas ADD COLUMN gateway_device_id TEXT", (err) => { /* ignora se já existir */ });
+    db.run("ALTER TABLE Arenas ADD COLUMN gateway_access_token TEXT", (err) => { /* ignora se já existir */ });
+    db.run("ALTER TABLE Arenas ADD COLUMN gateway_public_key TEXT", (err) => { /* ignora se já existir */ });
+    db.run("ALTER TABLE Arenas ADD COLUMN fuso_horario TEXT DEFAULT 'America/Sao_Paulo'", (err) => { /* ignora se já existir */ });
+    // trial_expira_em: data em que o período de trial da arena encerra.
+    // NULL = arena nunca teve trial ou trial foi encerrado manualmente.
+    // Enquanto trial_expira_em > date('now'), o cron não gera fatura para esta arena.
+    db.run("ALTER TABLE Arenas ADD COLUMN trial_expira_em DATE", (err) => { /* ignora se já existir */ });
+
+    // Migrações de FaturasSaaS — adiciona colunas de Pix para bancos existentes (idempotentes)
+    // Nota: SQLite não suporta UNIQUE em ALTER TABLE ADD COLUMN; unicidade garantida pela lógica da aplicação.
+    db.run("ALTER TABLE FaturasSaaS ADD COLUMN gateway_ref TEXT", (err) => { /* ignora se já existir */ });
+    db.run("ALTER TABLE FaturasSaaS ADD COLUMN copia_cola TEXT", (err) => { /* ignora se já existir */ });
+    db.run("ALTER TABLE FaturasSaaS ADD COLUMN qr_expira_em DATETIME", (err) => { /* ignora se já existir */ });
+    db.run("ALTER TABLE FaturasSaaS ADD COLUMN metodo_pagamento TEXT", (err) => { /* ignora se já existir */ });
     
     console.log('Tabelas base criadas com sucesso!');
   });

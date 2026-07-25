@@ -7,13 +7,17 @@ if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-const dbPath = path.resolve(__dirname, '../../data/courtmanager.sqlite');
+const isTest = process.env.NODE_ENV === 'test';
+const dbFile = isTest ? 'courtmanager_test.sqlite' : 'courtmanager.sqlite';
+const dbPath = path.resolve(__dirname, '../../data', dbFile);
 
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
     console.error('Erro ao conectar com o banco de dados:', err.message);
   } else {
-    console.log('Conectado ao banco de dados SQLite.');
+    if (!isTest) {
+      console.log('Conectado ao banco de dados SQLite.');
+    }
   }
 });
 

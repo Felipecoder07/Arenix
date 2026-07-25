@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run --globals --pool=forks --no-file-parallelism"
   },
   "keywords": [],
   "author": "",
@@ -20,6 +20,11 @@
     "express-rate-limit": "^8.5.2",
     "jsonwebtoken": "^9.0.3",
     "node-cron": "^4.6.0",
+    "nodemailer": "^9.0.3",
     "sqlite3": "^6.0.1"
+  },
+  "devDependencies": {
+    "supertest": "^7.2.2",
+    "vitest": "^4.1.10"
   }
 }

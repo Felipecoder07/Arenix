@@ -10,15 +10,19 @@ router.get('/resumo',   verifyToken, resumoPagamentos);
 // Listagem de reservas com dados de pagamento
 router.get('/reservas', verifyToken, listarReservasPagamentos);
 
-// Listar pagamentos de uma reserva específica
+// Listar pagamentos de uma reserva específica (com validação multi-tenant)
 router.get('/reserva/:reserva_id', verifyToken, async (req, res) => {
   try {
-    const pags = await db.allAsync(
-      'SELECT * FROM Pagamentos WHERE reserva_id = ? ORDER BY registrado_em ASC',
-      [req.params.reserva_id]
-    );
+    const pags = await db.allAsync(`
+      SELECT p.* FROM Pagamentos p
+      JOIN Reservas r ON p.reserva_id = r.id
+      WHERE p.reserva_id = ? AND r.tenant_id = ?
+      ORDER BY p.registrado_em ASC
+    `, [req.params.reserva_id, req.user.tenant_id]);
     res.json(pags);
-  } catch(e) { res.status(500).json({ error: 'Erro ao listar pagamentos.' }); }
+  } catch(e) { 
+    res.status(500).json({ error: 'Erro ao listar pagamentos.' }); 
+  }
 });
 
 // Registrar novo pagamento

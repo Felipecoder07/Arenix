@@ -68,42 +68,52 @@
 }
 
 .admin-reservas-page .gt-slot.s-available {
-  background: var(--cream-surface);
-  border: 1px dashed var(--border-passive);
-  color: var(--muted);
+  background: rgba(28, 26, 24, 0.035);
+  border: 1px dashed rgba(28, 26, 24, 0.35);
+  color: var(--charcoal);
+  transition: all 0.15s ease;
 }
 
 .admin-reservas-page .gt-slot.s-available:hover {
-  background: var(--charcoal-04);
-  border-color: var(--border-active);
-  color: var(--charcoal);
+  background: rgba(28, 26, 24, 0.08);
+  border-color: rgba(28, 26, 24, 0.55);
+  transform: scale(1.01);
 }
 
 .admin-reservas-page .gt-slot.s-paid {
   background: var(--paid-bg);
   color: var(--paid);
+  border-left: 4px solid var(--paid-border);
 }
 
 .admin-reservas-page .gt-slot.s-pending {
   background: var(--pending-bg);
   color: var(--pending);
+  border-left: 4px solid var(--pending-border);
 }
 
 .admin-reservas-page .gt-slot.s-partial {
   background: var(--partial-bg);
   color: var(--partial);
+  border-left: 4px solid var(--partial-border);
 }
 
 .admin-reservas-page .gt-slot.s-blocked {
   background: var(--blocked-bg);
   color: var(--blocked);
+  border-left: 4px solid var(--blocked-border);
   cursor: default;
 }
 
 .admin-reservas-page .gt-slot.s-past-empty {
-  background: rgba(0, 0, 0, 0.08);
-  border: 1px dashed rgba(0, 0, 0, 0.05);
-  opacity: 0.75;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(28, 26, 24, 0.03),
+    rgba(28, 26, 24, 0.03) 4px,
+    rgba(28, 26, 24, 0.07) 4px,
+    rgba(28, 26, 24, 0.07) 8px
+  );
+  border: 1px solid rgba(28, 26, 24, 0.15);
   pointer-events: none;
   cursor: default;
 }

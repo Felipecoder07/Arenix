@@ -1,5 +1,6 @@
 const db = require('../config/database');
 const logAuditEvent = require('../utils/auditLogger');
+const { getTodayString, getLocalTimeString } = require('../utils/dateUtils');
 
 // Listar grade de quadras e horários ocupados
 const listarGrade = async (req, res) => {
@@ -17,7 +18,8 @@ const listarGrade = async (req, res) => {
 
     // Pegar reservas confirmadas/pendentes/parciais do intervalo
     const reservas = await db.allAsync(`
-      SELECT r.*, c.nome as cliente_nome 
+      SELECT r.*, c.nome as cliente_nome,
+             COALESCE((SELECT SUM(valor) FROM Pagamentos WHERE reserva_id = r.id), 0) as valor_pago
       FROM Reservas r 
       LEFT JOIN Clientes c ON r.cliente_id = c.id
       WHERE r.data_reserva >= ? AND r.data_reserva <= ? AND r.status != 'Cancelada' AND r.tenant_id = ?
@@ -47,11 +49,8 @@ const criarReserva = async (req, res) => {
       return res.status(400).json({ error: 'Todos os campos (cliente_id, quadra_id, data_reserva, hora_inicio, hora_fim) são obrigatórios.' });
     }
 
-    const now = new Date();
-    const tzOffset = now.getTimezoneOffset() * 60000;
-    const localISOTime = new Date(Date.now() - tzOffset).toISOString();
-    const todayStr = localISOTime.split('T')[0];
-    const currentTimeStr = localISOTime.split('T')[1].substring(0, 5);
+    const todayStr = getTodayString();
+    const currentTimeStr = getLocalTimeString();
 
     if (data_reserva < todayStr) {
       return res.status(400).json({ error: 'Não é permitido criar agendamentos em datas passadas.' });
@@ -105,6 +104,39 @@ const criarReserva = async (req, res) => {
     `, [tenant_id, cliente_id, quadra_id, data_reserva, hora_inicio, hora_fim, valor_total || 0, usuario_id]);
 
     logAuditEvent(usuario_id, 'Criação de reserva', `Reserva ID: ${insert.lastID}, Quadra: ${quadra_id}, Data: ${data_reserva} ${hora_inicio}`, ip);
+
+    // Dispara e-mail de confirmação em background (defensivo)
+    (async () => {
+      try {
+        const client = await db.getAsync('SELECT nome, email FROM Clientes WHERE id = ?', [cliente_id]);
+        const arena = await db.getAsync('SELECT nome FROM Arenas WHERE id = ?', [tenant_id]);
+        const quadraObj = await db.getAsync('SELECT nome FROM Quadras WHERE id = ?', [quadra_id]);
+        
+        if (client && client.email) {
+          const { sendEmail } = require('../services/emailService');
+          const subject = `Reserva Confirmada - ${arena ? arena.nome : 'Arenix'}`;
+          const html = `
+            <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; line-height: 1.6;">
+              <h2 style="color: #2F855A;">Olá, ${client.nome}! 🎉</h2>
+              <p>Temos uma ótima notícia! Sua reserva foi agendada e confirmada com sucesso.</p>
+              <div style="background-color: #F7FAFC; border: 1px solid #E2E8F0; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                <strong>Detalhes do agendamento:</strong><br />
+                📅 <strong>Data:</strong> ${data_reserva.split('-').reverse().join('/')}<br />
+                🕒 <strong>Horário:</strong> ${hora_inicio} às ${hora_fim}<br />
+                🎾 <strong>Quadra:</strong> ${quadraObj ? quadraObj.nome : 'Quadra Principal'}<br />
+                💰 <strong>Valor Total:</strong> R$ ${valor_total.toFixed(2).replace('.', ',')}
+              </div>
+              <p>Agradecemos a preferência! Nos vemos na quadra.</p>
+              <hr style="border: 0; border-top: 1px solid #E2E8F0; margin: 20px 0;" />
+              <p style="font-size: 0.8em; color: #A0AEC0;">Esta é uma mensagem automática enviada por Arenix CourtManager em nome de ${arena ? arena.nome : 'sua Arena'}.</p>
+            </div>
+          `;
+          await sendEmail(client.email, subject, html);
+        }
+      } catch (e) {
+        console.error('[SMTP] Erro ao disparar e-mail de confirmação:', e.message);
+      }
+    })();
 
     res.status(201).json({
       message: 'Reserva criada com sucesso.',
@@ -176,6 +208,39 @@ const cancelarReserva = async (req, res) => {
     );
 
     logAuditEvent(req.user.id, 'Cancelamento de reserva', `Reserva ID: ${id}, Motivo: ${motivoTexto}`, req.ip);
+
+    // Dispara e-mail de cancelamento em background (defensivo)
+    (async () => {
+      try {
+        const client = await db.getAsync('SELECT nome, email FROM Clientes WHERE id = ?', [reserva.cliente_id]);
+        const arena = await db.getAsync('SELECT nome FROM Arenas WHERE id = ?', [tenant_id]);
+        const quadraObj = await db.getAsync('SELECT nome FROM Quadras WHERE id = ?', [reserva.quadra_id]);
+        
+        if (client && client.email) {
+          const { sendEmail } = require('../services/emailService');
+          const subject = `Reserva Cancelada - ${arena ? arena.nome : 'Arenix'}`;
+          const html = `
+            <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; line-height: 1.6;">
+              <h2 style="color: #C53030;">Reserva Cancelada 🚫</h2>
+              <p>Olá, ${client.nome}. Informamos que a sua reserva foi cancelada no sistema.</p>
+              <div style="background-color: #FFF5F5; border: 1px solid #FEB2B2; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                <strong>Detalhes do agendamento cancelado:</strong><br />
+                📅 <strong>Data:</strong> ${reserva.data_reserva.split('-').reverse().join('/')}<br />
+                🕒 <strong>Horário:</strong> ${reserva.hora_inicio} às ${reserva.hora_fim}<br />
+                🎾 <strong>Quadra:</strong> ${quadraObj ? quadraObj.nome : 'Quadra Principal'}<br />
+                ❌ <strong>Motivo do Cancelamento:</strong> ${motivoTexto}
+              </div>
+              <p>Se você tiver dúvidas ou precisar reagendar, entre em contato diretamente com a equipe da arena.</p>
+              <hr style="border: 0; border-top: 1px solid #E2E8F0; margin: 20px 0;" />
+              <p style="font-size: 0.8em; color: #A0AEC0;">Esta é uma mensagem automática enviada por Arenix CourtManager em nome de ${arena ? arena.nome : 'sua Arena'}.</p>
+            </div>
+          `;
+          await sendEmail(client.email, subject, html);
+        }
+      } catch (e) {
+        console.error('[SMTP] Erro ao disparar e-mail de cancelamento:', e.message);
+      }
+    })();
 
     res.json({ message: 'Reserva cancelada com sucesso.' });
   } catch (error) {

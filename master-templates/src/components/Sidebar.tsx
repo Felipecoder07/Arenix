@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Building2, FileText, Wallet, Users, Megaphone, ShieldCheck, Settings, LogOut, ChevronRight, type LucideIcon } from 'lucide-react';
 
 export interface NavItem {
@@ -21,6 +21,27 @@ export const NAV_ITEMS: NavItem[] = [
 
 export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const location = useLocation();
+  const navigate = useNavigate();
+
+  const handleLogout = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    try {
+      const token = localStorage.getItem('courtmanager_token');
+      if (token) {
+        await fetch('http://localhost:3000/api/auth/logout', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+      }
+    } catch (err) {
+      console.error('Erro no logout do backend:', err);
+    }
+    localStorage.removeItem('courtmanager_token');
+    localStorage.removeItem('courtmanager_user');
+    navigate('/master-login');
+  };
 
   return (
     <aside className={`${collapsed ? 'w-[68px]' : 'w-[248px]'} shrink-0 h-screen sticky top-0 bg-charcoal text-off-white flex flex-col transition-[width] duration-200 ease-out z-20`}>
@@ -76,9 +97,9 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
           {!collapsed && (
             <div className="min-w-0 flex-1">
               <div className="text-xs font-medium truncate">master@courtmanager</div>
-              <Link to="/" onClick={() => localStorage.removeItem('courtmanager_token')} className="text-[11px] text-off-white/50 flex items-center gap-1 hover:text-white transition-colors cursor-pointer">
+              <button onClick={handleLogout} className="text-[11px] text-off-white/50 flex items-center gap-1 hover:text-white transition-colors cursor-pointer bg-transparent border-none p-0">
                 <LogOut size={11} /> Sair
-              </Link>
+              </button>
             </div>
           )}
         </div>
