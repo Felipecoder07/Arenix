@@ -12,8 +12,8 @@ app.use(express.json());
 // Isso garante que o express-rate-limit bloqueie o IP real (RNF-009)
 app.set('trust proxy', 1);
 
-// Servir arquivos estáticos do frontend (Landing Page, Login, Dashboard)
-app.use(express.static(path.join(__dirname, '../../frontend')));
+// Servir arquivos estáticos do frontend React (Build de Produção)
+app.use(express.static(path.join(__dirname, '../../master-templates/dist')));
 
 // Rotas API
 app.use('/api/auth', require('./routes/authRoutes'));
