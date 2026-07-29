@@ -30,7 +30,14 @@ const verifyToken = (req, res, next) => {
         );
 
         const arena = await db.getAsync('SELECT status FROM Arenas WHERE id = ?', [req.user.tenant_id]);
-        if (arena && arena.status === 0 && !isWhitelistedRoute) {
+        if (!arena || arena.status === -1) {
+          return res.status(403).json({ 
+            error: 'Esta arena foi removida da plataforma. O acesso foi revogado.',
+            deleted: true 
+          });
+        }
+
+        if (arena.status === 0 && !isWhitelistedRoute) {
           return res.status(403).json({ 
             error: 'Acesso suspenso por pendência financeira. Acesse a aba Assinatura para regularizar.',
             blocked: true 

@@ -28,7 +28,8 @@ const atualizarMinhaArena = async (req, res) => {
     nome, endereco, telefone, email, fuso_horario,
     notif_reserva_email, notif_reserva_whatsapp,
     notif_cancelamento_email, notif_pagamento_email,
-    alerta_pagamento_minutos
+    alerta_pagamento_minutos,
+    chave_pix, titular_pix, cidade_pix
   } = req.body;
 
   if (!nome) {
@@ -41,7 +42,8 @@ const atualizarMinhaArena = async (req, res) => {
        SET nome = ?, endereco = ?, telefone = ?, email = ?, fuso_horario = ?,
            notif_reserva_email = ?, notif_reserva_whatsapp = ?,
            notif_cancelamento_email = ?, notif_pagamento_email = ?,
-           alerta_pagamento_minutos = ?
+           alerta_pagamento_minutos = ?,
+           chave_pix = ?, titular_pix = ?, cidade_pix = ?
        WHERE id = ?`,
       [
         nome, endereco, telefone, email, fuso_horario || 'America/Sao_Paulo',
@@ -50,6 +52,9 @@ const atualizarMinhaArena = async (req, res) => {
         notif_cancelamento_email !== undefined ? (notif_cancelamento_email ? 1 : 0) : 1,
         notif_pagamento_email !== undefined ? (notif_pagamento_email ? 1 : 0) : 1,
         alerta_pagamento_minutos || 30,
+        chave_pix || null,
+        titular_pix || null,
+        cidade_pix || null,
         tenant_id
       ]
     );

@@ -237,7 +237,10 @@ router.get('/oauth/url', verifyToken, async (req, res) => {
   try {
     const tenantId = req.user.tenant_id;
     const { clientId } = await getSaaSGatewayCredentials();
-    const redirectUri = process.env.MERCADO_PAGO_REDIRECT_URI || 'https://arenix.com.br/api/pagamentos/gateway/oauth/callback';
+    const host = req.headers.host || 'localhost:3000';
+    const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+    const defaultRedirect = `${protocol}://${host}/api/pagamentos/gateway/oauth/callback`;
+    const redirectUri = process.env.MERCADO_PAGO_REDIRECT_URI || defaultRedirect;
 
     if (!clientId || clientId.trim() === '') {
       return res.status(400).json({ 
@@ -265,7 +268,10 @@ router.get('/oauth/callback', async (req, res) => {
 
     const tenantId = state;
     const { clientId, clientSecret } = await getSaaSGatewayCredentials();
-    const redirectUri = process.env.MERCADO_PAGO_REDIRECT_URI || 'https://arenix.com.br/api/pagamentos/gateway/oauth/callback';
+    const host = req.headers.host || 'localhost:3000';
+    const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+    const defaultRedirect = `${protocol}://${host}/api/pagamentos/gateway/oauth/callback`;
+    const redirectUri = process.env.MERCADO_PAGO_REDIRECT_URI || defaultRedirect;
 
     if (clientId && clientSecret) {
       const mpRes = await fetch('https://api.mercadopago.com/oauth/token', {
@@ -316,7 +322,10 @@ router.post('/oauth/exchange', async (req, res) => {
 
     const tenantId = state;
     const { clientId, clientSecret } = await getSaaSGatewayCredentials();
-    const redirectUri = process.env.MERCADO_PAGO_REDIRECT_URI || 'https://arenix.com.br/api/pagamentos/gateway/oauth/callback';
+    const host = req.headers.host || 'localhost:3000';
+    const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+    const defaultRedirect = `${protocol}://${host}/api/pagamentos/gateway/oauth/callback`;
+    const redirectUri = process.env.MERCADO_PAGO_REDIRECT_URI || defaultRedirect;
 
     if (!clientId || !clientSecret) {
       return res.status(400).json({ error: 'Credenciais da plataforma não configuradas no backend.' });

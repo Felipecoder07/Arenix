@@ -40,7 +40,7 @@ router.get('/manutencao', async (req, res) => {
 router.get('/me', verifyToken, async (req, res) => {
   try {
     const user = await db.getAsync(`
-      SELECT u.id, u.nome, u.email, u.perfil, u.tenant_id, u.cliente_id, a.nome as arena_nome
+      SELECT u.id, u.nome, u.email, u.perfil, u.tenant_id, u.cliente_id, a.nome as arena_nome, a.slug as arena_slug
       FROM Usuarios u
       LEFT JOIN Arenas a ON u.tenant_id = a.id
       WHERE u.id = ?
@@ -59,7 +59,8 @@ router.get('/me', verifyToken, async (req, res) => {
         perfil: user.perfil,
         tenant_id: user.tenant_id,
         cliente_id: user.cliente_id,
-        arena_nome: user.arena_nome
+        arena_nome: user.arena_nome,
+        arena_slug: user.arena_slug
       }
     });
   } catch (err) {

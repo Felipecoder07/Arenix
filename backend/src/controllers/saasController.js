@@ -9,7 +9,8 @@ const getArenas = async (req, res) => {
       SELECT 
         a.id, 
         a.nome, 
-        a.email, 
+        a.slug,
+        COALESCE(a.email, (SELECT email FROM Usuarios WHERE tenant_id = a.id AND perfil = 'Administrador' LIMIT 1)) AS email, 
         a.status,
         a.criado_em,
         a.plano_id,
@@ -175,10 +176,17 @@ const createArena = async (req, res) => {
       ? new Date(Date.now() + diasTrialFinal * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
       : null;
 
+    const cleanSlug = (nome || '')
+      .toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    const finalSlug = cleanSlug || `arena-${Date.now()}`;
+
     const resArena = await db.runAsync(`
-      INSERT INTO Arenas (nome, telefone, endereco, plano_id, dia_vencimento, trial_expira_em, status)
-      VALUES (?, ?, ?, ?, ?, ?, 1)
-    `, [nome.trim(), telefone || null, endereco || null, planoIdFinal, diaVencimentoFinal, trialExpiraEm]);
+      INSERT INTO Arenas (nome, slug, telefone, endereco, plano_id, dia_vencimento, trial_expira_em, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+    `, [nome.trim(), finalSlug, telefone || null, endereco || null, planoIdFinal, diaVencimentoFinal, trialExpiraEm]);
 
     const tenantId = resArena.lastID;
 
@@ -334,8 +342,10 @@ const deleteArena = async (req, res) => {
     if (!isValid) return res.status(401).json({ error: 'Senha incorreta. Exclusão negada.' });
 
     await db.runAsync('UPDATE Arenas SET status = -1 WHERE id = ?', [id]);
+    await db.runAsync('DELETE FROM SessoesAtivas WHERE tenant_id = ?', [id]);
+    await db.runAsync("UPDATE Usuarios SET ativo = 0, email = email || '__deleted_' || strftime('%s','now') WHERE tenant_id = ? AND email NOT LIKE '%__deleted_%'", [id]);
     
-    logAuditEvent(req.user.id, 'SaaS: Arena Excluída (Soft Delete)', `Arena ID: ${id}`, req.ip);
+    logAuditEvent(req.user.id, 'SaaS: Arena Excluída (Soft Delete, Liberação de E-mail e Limpeza de Sessões)', `Arena ID: ${id}`, req.ip);
 
     res.json({ message: 'Arena excluída (soft-delete) com sucesso.' });
   } catch (err) {
@@ -870,6 +880,7 @@ const getConfiguracoesSaaS = async (req, res) => {
 
     res.json({
       dias_trial: configMap['dias_trial'] || '14',
+      trial_ativo: configMap['trial_ativo'] !== undefined ? configMap['trial_ativo'] : '1',
       manutencao_ativa: configMap['manutencao_ativa'] || '0',
       manutencao_mensagem: configMap['manutencao_mensagem'] || '',
       mp_client_id: dbClientId,
@@ -886,12 +897,23 @@ const getConfiguracoesSaaS = async (req, res) => {
 };
 
 const updateConfiguracoesSaaS = async (req, res) => {
-  const { dias_trial, manutencao_ativa, manutencao_mensagem, reasons, mp_client_id, mp_client_secret, mp_master_access_token } = req.body;
+  const { dias_trial, trial_ativo, dias_abandono_cadastro, manutencao_ativa, manutencao_mensagem, reasons, mp_client_id, mp_client_secret, mp_master_access_token } = req.body;
   try {
     const envUpdates = {};
 
+    if (trial_ativo !== undefined) {
+      await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['trial_ativo', trial_ativo === '1' || trial_ativo === true ? '1' : '0']);
+    }
     if (dias_trial !== undefined) {
-      await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['dias_trial', String(dias_trial)]);
+      const trialNum = parseInt(dias_trial, 10);
+      if (isNaN(trialNum) || trialNum < 0) {
+        return res.status(400).json({ error: 'O período de trial não pode ser um valor negativo.' });
+      }
+      await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['dias_trial', String(trialNum)]);
+    }
+    if (dias_abandono_cadastro !== undefined) {
+      const diasNum = Math.max(1, parseInt(dias_abandono_cadastro, 10) || 7);
+      await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['dias_abandono_cadastro', String(diasNum)]);
     }
     if (manutencao_ativa !== undefined) {
       await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['manutencao_ativa', String(manutencao_ativa)]);

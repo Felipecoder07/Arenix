@@ -13,10 +13,11 @@ app.use(express.json());
 app.set('trust proxy', 1);
 
 // Servir arquivos estáticos do frontend React (Build de Produção)
-app.use(express.static(path.join(__dirname, '../../master-templates/dist')));
+app.use(express.static(path.join(__dirname, '../../frontend/dist')));
 
 // Rotas API
 app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/public', require('./routes/publicRoutes'));
 app.use('/api/reservas', require('./routes/reservasRoutes'));
 app.use('/api/quadras', require('./routes/quadrasRoutes'));
 app.use('/api/pagamentos', require('./routes/pagamentosRoutes'));

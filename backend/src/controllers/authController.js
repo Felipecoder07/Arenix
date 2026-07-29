@@ -16,7 +16,7 @@ const login = (req, res) => {
   }
 
   db.get(
-    `SELECT u.*, a.nome as arena_nome, a.status as arena_status
+    `SELECT u.*, a.nome as arena_nome, a.slug as arena_slug, a.status as arena_status
      FROM Usuarios u 
      LEFT JOIN Arenas a ON u.tenant_id = a.id 
      WHERE u.email = ?`, 
@@ -38,10 +38,10 @@ const login = (req, res) => {
       return res.status(401).json({ error: 'E-mail ou senha inválidos.' });
     }
 
-    // Se a arena está excluída (status = -1), bloqueia qualquer login
-    if (user.perfil !== 'SuperAdmin' && user.arena_status === -1) {
-      logAuditEvent(user.id, 'Tentativa de login falha', `Motivo: Arena excluída`, ip);
-      return res.status(403).json({ error: 'Esta arena foi removida do sistema. Entre em contato com o suporte.' });
+    // Se o usuário está desativado (ativo = 0) ou a arena está excluída (status = -1), bloqueia o login
+    if (user.perfil !== 'SuperAdmin' && (user.ativo === 0 || user.arena_status === -1)) {
+      logAuditEvent(user.id, 'Tentativa de login falha', `Motivo: Conta desativada ou arena excluída`, ip);
+      return res.status(403).json({ error: 'Esta conta foi desativada ou a arena foi removida da plataforma.' });
     }
 
     // Se a arena está suspensa por inadimplência (status = 0):
@@ -77,6 +77,7 @@ const login = (req, res) => {
         email: user.email,
         perfil: user.perfil,
         arena_nome: user.arena_nome,
+        arena_slug: user.arena_slug,
         arena_status: user.arena_status
       }
     });
@@ -153,27 +154,64 @@ const register = async (req, res) => {
         }
       }
 
-      // Buscar dias_trial configurados no SaaS (default 14 dias)
+      // Buscar configurações de trial no SaaS (dias_trial e trial_ativo)
       const trialRow = await db.getAsync("SELECT valor FROM ConfiguracoesSaaS WHERE chave = 'dias_trial'");
+      const trialAtivoRow = await db.getAsync("SELECT valor FROM ConfiguracoesSaaS WHERE chave = 'trial_ativo'");
+
+      const isTrialAtivo = trialAtivoRow ? trialAtivoRow.valor === '1' : true;
       const diasTrial = parseInt(trialRow?.valor || '14', 10);
-      const trialExpiraEm = new Date(Date.now() + diasTrial * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      let trialExpiraEm = null;
+      let arenaStatus = 1;
+
+      if (isTrialAtivo && diasTrial > 0) {
+        trialExpiraEm = new Date(Date.now() + diasTrial * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        arenaStatus = 1; // Ativa durante o trial grátis
+      } else {
+        trialExpiraEm = null;
+        arenaStatus = 0; // Suspenso / Pendente de pagamento imediato
+      }
+
+      const cleanSlug = (arenaNomeFinal || '')
+        .toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      const finalSlug = cleanSlug || `arena-${Date.now()}`;
 
       db.run(
-        'INSERT INTO Arenas (nome, telefone, endereco, plano_id, trial_expira_em, status) VALUES (?, ?, ?, ?, ?, 1)', 
-        [arenaNomeFinal, telefone || null, arena_cidade || null, planoIdFinal, trialExpiraEm], 
-        function(err) {
+        'INSERT INTO Arenas (nome, slug, email, telefone, endereco, plano_id, trial_expira_em, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', 
+        [arenaNomeFinal, finalSlug, email.trim().toLowerCase(), telefone || null, arena_cidade || null, planoIdFinal, trialExpiraEm, arenaStatus], 
+        async function(err) {
           if (err) {
             console.error('Erro ao criar arena no register:', err);
             return res.status(500).json({ error: 'Erro ao criar arena.' });
           }
           const tenant_id = this.lastID;
+
+          // Se cadastrada como pendente (sem trial), gerar fatura imediata para o primeiro pagamento
+          if (arenaStatus === 0) {
+            try {
+              const planoInfo = await db.getAsync('SELECT valor_mensal FROM PlanosSaaS WHERE id = ?', [planoIdFinal]);
+              const valorFatura = planoInfo ? planoInfo.valor_mensal : 0;
+              const todayStr = new Date().toISOString().split('T')[0];
+
+              await db.runAsync(`
+                INSERT INTO FaturasSaaS (tenant_id, plano_id, valor, data_vencimento, status)
+                VALUES (?, ?, ?, ?, 'Pendente')
+              `, [tenant_id, planoIdFinal, valorFatura, todayStr]);
+            } catch (fatErr) {
+              console.error('Erro ao gerar fatura inicial para arena sem trial:', fatErr);
+            }
+          }
+
           db.run('INSERT INTO Usuarios (nome, email, senha_hash, perfil, tenant_id) VALUES (?, ?, ?, ?, ?)', 
             [nome, email, senha_hash, perfil, tenant_id], function(err) {
               if (err) {
                 if (err.message.includes('UNIQUE')) return res.status(400).json({ error: 'E-mail já cadastrado.' });
                 return res.status(500).json({ error: 'Erro ao criar usuário administrador.' });
               }
-              logAuditEvent(this.lastID, 'Cadastro Administrador', `E-mail: ${email}, Arena: ${arenaNomeFinal}, Plano ID: ${planoIdFinal}`, ip);
+              logAuditEvent(this.lastID, 'Cadastro Administrador', `E-mail: ${email}, Arena: ${arenaNomeFinal}, Status: ${arenaStatus === 1 ? 'Trial' : 'Pendente'}`, ip);
               res.status(201).json({ message: 'Cadastro de arena realizado com sucesso!' });
           });
       });

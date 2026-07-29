@@ -15,10 +15,18 @@ const initDb = () => {
         notif_cancelamento_email INTEGER DEFAULT 1,
         notif_pagamento_email INTEGER DEFAULT 1,
         alerta_pagamento_minutos INTEGER DEFAULT 30,
+        horario_abertura TEXT DEFAULT '06:00',
+        horario_fechamento TEXT DEFAULT '23:00',
         status INTEGER DEFAULT 1,
         criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    db.run("ALTER TABLE Arenas ADD COLUMN horario_abertura TEXT DEFAULT '06:00'", () => {});
+    db.run("ALTER TABLE Arenas ADD COLUMN horario_fechamento TEXT DEFAULT '23:00'", () => {});
+    db.run("ALTER TABLE Arenas ADD COLUMN chave_pix TEXT", () => {});
+    db.run("ALTER TABLE Arenas ADD COLUMN titular_pix TEXT", () => {});
+    db.run("ALTER TABLE Arenas ADD COLUMN cidade_pix TEXT DEFAULT 'SAO PAULO'", () => {});
 
     // Tabela Usuarios (Admin, Gerente, Recepcionista)
     db.run(`
@@ -290,6 +298,13 @@ const initDb = () => {
       }
     });
 
+    // Dias de tolerância antes de limpar cadastros fantasma (nunca pagaram)
+    db.get("SELECT COUNT(*) as count FROM ConfiguracoesSaaS WHERE chave = 'dias_abandono_cadastro'", (err, row) => {
+      if (row && row.count === 0) {
+        db.run("INSERT INTO ConfiguracoesSaaS (chave, valor) VALUES ('dias_abandono_cadastro', '7')");
+      }
+    });
+
     // Seed de Motivos de Cancelamento Globais (tenant_id = 0)
     db.get("SELECT COUNT(*) as count FROM MotivosCancelamento WHERE tenant_id = 0", (err, row) => {
       if (row && row.count === 0) {
@@ -311,6 +326,23 @@ const initDb = () => {
     db.run("ALTER TABLE Arenas ADD COLUMN gateway_device_id TEXT", (err) => { /* ignora se já existir */ });
     db.run("ALTER TABLE Arenas ADD COLUMN gateway_access_token TEXT", (err) => { /* ignora se já existir */ });
     db.run("ALTER TABLE Arenas ADD COLUMN gateway_public_key TEXT", (err) => { /* ignora se já existir */ });
+    
+    // Migração da Coluna Slug Único para Links Públicos
+    db.run("ALTER TABLE Arenas ADD COLUMN slug TEXT", () => {
+      db.all("SELECT id, nome FROM Arenas WHERE slug IS NULL OR slug = ''", (err, rows) => {
+        if (rows && rows.length > 0) {
+          rows.forEach(r => {
+            const clean = (r.nome || '')
+              .toLowerCase()
+              .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+              .replace(/[^a-z0-9]+/g, '-')
+              .replace(/^-+|-+$/g, '');
+            const slug = clean || `arena-${r.id}`;
+            db.run("UPDATE Arenas SET slug = ? WHERE id = ?", [slug, r.id]);
+          });
+        }
+      });
+    });
     db.run("ALTER TABLE Arenas ADD COLUMN fuso_horario TEXT DEFAULT 'America/Sao_Paulo'", (err) => { /* ignora se já existir */ });
     // trial_expira_em: data em que o período de trial da arena encerra.
     // NULL = arena nunca teve trial ou trial foi encerrado manualmente.

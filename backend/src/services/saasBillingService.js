@@ -71,8 +71,11 @@ const gerarPixFaturaSaaS = async (faturaId) => {
     const agora = new Date();
     const expiracao = new Date(fatura.qr_expira_em);
     if (agora < expiracao) {
+      const fallbackQr = fatura.copia_cola 
+        ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(fatura.copia_cola)}` 
+        : null;
       return {
-        qr_code: null,
+        qr_code: fallbackQr,
         copia_cola: fatura.copia_cola,
         gateway_ref: fatura.gateway_ref,
         expira_em: fatura.qr_expira_em,

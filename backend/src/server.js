@@ -23,8 +23,10 @@ const arenasRoutes = require('./routes/arenasRoutes');
 const motivosRoutes = require('./routes/motivosRoutes');
 
 const tenantAssinaturaRoutes = require('./routes/tenantAssinaturaRoutes');
+const publicRoutes = require('./routes/publicRoutes');
 
 app.use('/api/auth', authRoutes);
+app.use('/api/public', publicRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/quadras', quadrasRoutes);
 app.use('/api/reservas', reservasRoutes);

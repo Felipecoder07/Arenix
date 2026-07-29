@@ -6,7 +6,10 @@ const logAuditEvent = require('../utils/auditLogger');
 const listarUsuarios = async (req, res) => {
   try {
     const usuarios = await db.allAsync(
-      `SELECT id, nome, email, perfil, criado_em, cliente_id FROM Usuarios WHERE tenant_id = ? ORDER BY nome ASC`,
+      `SELECT id, nome, email, perfil, criado_em, cliente_id 
+       FROM Usuarios 
+       WHERE tenant_id = ? AND (perfil IS NULL OR (perfil != 'Cliente' AND perfil != 'cliente')) 
+       ORDER BY nome ASC`,
       [req.user.tenant_id]
     );
     res.json(usuarios);

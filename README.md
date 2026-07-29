@@ -13,7 +13,7 @@ Volei System/
 │   ├── database.sqlite         # Banco de Dados
 │   └── package.json
 │
-├── 📁 master-templates/        # Aplicação React + Vite + TypeScript (Frontend Oficial)
+├── 📁 frontend/                # Aplicação React + Vite + TypeScript (Frontend Oficial)
 │   ├── src/                    # Screens (Public, Tenant Admin, Master Admin), Layouts, Assets
 │   └── package.json
 │
@@ -42,7 +42,7 @@ npm run dev
 
 ### 2. Inicializar o Frontend (React + Vite)
 ```bash
-cd master-templates
+cd frontend
 npm install
 npm run dev
 ```

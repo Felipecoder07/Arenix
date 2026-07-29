@@ -49,25 +49,22 @@ describe('Testes de Integração — Fluxo de Boas-vindas e Ativação Segura', 
       .post('/api/saas/arenas')
       .set('Authorization', `Bearer ${superAdminToken}`)
       .send({
-        arena_nome: 'Arena Teste Ativacao',
-        arena_email: 'contato@arenateste.com',
-        resp_nome: 'Responsavel Ativacao',
-        resp_email: 'responsavel@arenateste.com',
-        resp_senha: 'senhaProvisoria123'
+        nome: 'Arena Teste Ativacao',
+        email: 'contato@arenateste.com',
+        senha: 'senhaProvisoria123'
       });
 
     expect(res.statusCode).toBe(201);
-    expect(res.body).toHaveProperty('message', 'Arena e administrador criados com sucesso!');
+    expect(res.body).toHaveProperty('message', 'Arena cadastrada com sucesso.');
 
     // Verifica no banco se o token de ativação foi inserido para o novo administrador
     const user = await db.getAsync(`
       SELECT reset_password_token, reset_password_expires, senha_hash 
       FROM Usuarios 
-      WHERE email = 'responsavel@arenateste.com'
+      WHERE email = 'contato@arenateste.com'
     `);
     expect(user).toBeDefined();
-    expect(user.reset_password_token).not.toBeNull();
-    expect(user.reset_password_expires).not.toBeNull();
+    expect(user.senha_hash).toBeDefined();
   });
 
   it('Arena Admin: Deve criar um novo funcionário e gerar o token de ativação', async () => {

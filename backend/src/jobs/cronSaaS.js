@@ -45,6 +45,10 @@ const processSaaS = async () => {
     // 3. Executar Job de Bloqueio por Inadimplência (RN-13)
     await executarBloqueioInadimplencia();
 
+    // 4. Executar Job de Limpeza de Cadastros Fantasma (abandonos sem nenhum pagamento)
+    const { executarLimpezaFantasmas } = require('./limpezaFantasmas');
+    await executarLimpezaFantasmas();
+
     console.log('[SaaS CRON] Processamento financeiro finalizado com sucesso.');
   } catch (err) {
     console.error('[SaaS CRON Error] Falha ao processar billing:', err);

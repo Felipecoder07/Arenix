@@ -1,12 +1,40 @@
 const rateLimit = require('express-rate-limit');
 
 // Bloqueio de IP após 10 tentativas de login falhas consecutivas em 5 minutos
-// Regra de Negócio: RN-015 (Flexibilizada para UX SaaS)
 const loginLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000, // 5 minutos de bloqueio
-  max: 10, // Limite de 10 tentativas erradas por IP na janela
+  windowMs: 5 * 60 * 1000,
+  max: 10,
   message: { error: 'Muitas tentativas de login. Tente novamente em 5 minutos.' },
-  skipSuccessfulRequests: true // Conta apenas as falhas
+  skipSuccessfulRequests: true
 });
 
-module.exports = { loginLimiter };
+// Limite para consultas públicas gerais (DDoS Protection: max 100 requisições/min por IP)
+const publicApiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 100,
+  message: { error: 'Muitas requisições. Por favor, aguarde um minuto antes de tentar novamente.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// Limite para rotas sensíveis de autenticação pública (Brute Force Protection: max 10 tentativas a cada 15 min por IP)
+const publicAuthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Muitas tentativas de acesso. Por segurança, aguarde 15 minutos.' },
+  skipSuccessfulRequests: true
+});
+
+// Limite para criação de reservas públicas (Bot Spam Protection: max 15 agendamentos a cada 10 min por IP)
+const publicBookingLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 15,
+  message: { error: 'Limite de agendamentos atingido. Aguarde alguns minutos antes de realizar uma nova reserva.' }
+});
+
+module.exports = {
+  loginLimiter,
+  publicApiLimiter,
+  publicAuthLimiter,
+  publicBookingLimiter
+};
