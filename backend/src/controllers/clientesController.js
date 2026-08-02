@@ -3,9 +3,11 @@ const db = require('../config/database');
 const listarClientes = async (req, res) => {
   try {
     const tenant_id = req.user.tenant_id;
+    // Suporta ?ativo=0 para arquivados, ?ativo=1 ou sem param para ativos
+    const ativo = req.query.ativo !== undefined ? parseInt(req.query.ativo) : 1;
     const clientes = await db.allAsync(
-      'SELECT id, nome, email, telefone, criado_em FROM Clientes WHERE tenant_id = ? ORDER BY nome ASC',
-      [tenant_id]
+      'SELECT id, nome, email, telefone, ativo, criado_em FROM Clientes WHERE tenant_id = ? AND ativo = ? ORDER BY nome ASC',
+      [tenant_id, ativo]
     );
     res.json(clientes);
   } catch (error) {
@@ -13,6 +15,7 @@ const listarClientes = async (req, res) => {
     res.status(500).json({ error: 'Erro interno ao listar clientes.' });
   }
 };
+
 const criarCliente = async (req, res) => {
   try {
     const { nome, email, telefone } = req.body;
@@ -43,11 +46,11 @@ const criarCliente = async (req, res) => {
     }
 
     const result = await db.runAsync(
-      'INSERT INTO Clientes (tenant_id, nome, email, telefone) VALUES (?, ?, ?, ?)',
+      'INSERT INTO Clientes (tenant_id, nome, email, telefone, ativo) VALUES (?, ?, ?, ?, 1)',
       [tenant_id, nome, email || null, telefone]
     );
 
-    res.status(201).json({ id: result.lastID, nome, email, telefone });
+    res.status(201).json({ id: result.lastID, nome, email, telefone, ativo: 1 });
   } catch (error) {
     console.error('Erro ao criar cliente:', error);
     res.status(500).json({ error: 'Erro interno ao criar cliente.' });
@@ -60,19 +63,15 @@ const obterCliente = async (req, res) => {
     const { id } = req.params;
 
     const cliente = await db.getAsync(
-      'SELECT id, nome, email, telefone, criado_em FROM Clientes WHERE id = ? AND tenant_id = ?',
+      'SELECT id, nome, email, telefone, ativo, criado_em FROM Clientes WHERE id = ? AND tenant_id = ?',
       [id, tenant_id]
     );
 
     if (!cliente) return res.status(404).json({ error: 'Cliente não encontrado.' });
 
-    // Quantidade de reservas (ignora as canceladas para não travar a exclusão)
     const countRes = await db.getAsync('SELECT COUNT(*) as count FROM Reservas WHERE cliente_id = ? AND tenant_id = ? AND status != "Cancelada"', [id, tenant_id]);
-    
-    // Saldo devedor
     const saldo = await db.getAsync('SELECT SUM(valor_total) as total FROM Reservas WHERE cliente_id = ? AND tenant_id = ? AND status_pagamento = "Pendente" AND status != "Cancelada"', [id, tenant_id]);
 
-    // Últimas reservas
     const reservas = await db.allAsync(`
       SELECT r.id, r.data_reserva, r.hora_inicio, r.status, r.status_pagamento, q.nome as quadra_nome 
       FROM Reservas r 
@@ -137,21 +136,57 @@ const atualizarCliente = async (req, res) => {
   }
 };
 
+// Arquivar cliente (soft delete) — nunca apaga o histórico financeiro
+const arquivarCliente = async (req, res) => {
+  try {
+    const tenant_id = req.user.tenant_id;
+    const { id } = req.params;
+
+    const result = await db.runAsync(
+      'UPDATE Clientes SET ativo = 0 WHERE id = ? AND tenant_id = ?',
+      [id, tenant_id]
+    );
+
+    if (result.changes === 0) return res.status(404).json({ error: 'Cliente não encontrado.' });
+
+    res.json({ message: 'Cliente arquivado com sucesso. O histórico de reservas e pagamentos foi preservado.' });
+  } catch (error) {
+    console.error('Erro ao arquivar cliente:', error);
+    res.status(500).json({ error: 'Erro interno ao arquivar cliente.' });
+  }
+};
+
+// Desarquivar cliente — reativa na lista principal
+const desarquivarCliente = async (req, res) => {
+  try {
+    const tenant_id = req.user.tenant_id;
+    const { id } = req.params;
+
+    const result = await db.runAsync(
+      'UPDATE Clientes SET ativo = 1 WHERE id = ? AND tenant_id = ?',
+      [id, tenant_id]
+    );
+
+    if (result.changes === 0) return res.status(404).json({ error: 'Cliente não encontrado.' });
+
+    res.json({ message: 'Cliente reativado com sucesso!' });
+  } catch (error) {
+    console.error('Erro ao desarquivar cliente:', error);
+    res.status(500).json({ error: 'Erro interno ao desarquivar cliente.' });
+  }
+};
+
 const excluirCliente = async (req, res) => {
   try {
     const tenant_id = req.user.tenant_id;
     const { id } = req.params;
 
-    // Verificar se tem reservas válidas (ignora as canceladas)
     const reservasCount = await db.getAsync('SELECT COUNT(*) as count FROM Reservas WHERE cliente_id = ? AND tenant_id = ? AND status != "Cancelada"', [id, tenant_id]);
     if (reservasCount && reservasCount.count > 0) {
-      return res.status(400).json({ error: 'Não é possível excluir um cliente que possui histórico de reservas válidas.' });
+      return res.status(400).json({ error: 'Não é possível excluir um cliente com histórico de reservas. Use "Arquivar" para escondê-lo da lista.' });
     }
 
-    // Excluir as reservas canceladas residuais do cliente (para limpar o banco de dados)
     await db.runAsync('DELETE FROM Reservas WHERE cliente_id = ? AND tenant_id = ? AND status = "Cancelada"', [id, tenant_id]);
-
-    // Excluir o cliente
     const result = await db.runAsync('DELETE FROM Clientes WHERE id = ? AND tenant_id = ?', [id, tenant_id]);
     
     if (result.changes === 0) return res.status(404).json({ error: 'Cliente não encontrado.' });
@@ -163,4 +198,5 @@ const excluirCliente = async (req, res) => {
   }
 };
 
-module.exports = { listarClientes, criarCliente, obterCliente, atualizarCliente, excluirCliente };
+module.exports = { listarClientes, criarCliente, obterCliente, atualizarCliente, excluirCliente, arquivarCliente, desarquivarCliente };
+

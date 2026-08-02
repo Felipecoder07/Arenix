@@ -16,8 +16,11 @@ const {
   getMinhasReservasAtleta,
   solicitarRecuperacaoSenhaAtleta,
   redefinirSenhaAtleta,
-  obterPixReservaPendente
+  obterPixReservaPendente,
+  cancelarReservaAtleta,
+  excluirContaAtleta
 } = require('../controllers/publicController');
+
 
 const {
   publicApiLimiter,
@@ -40,14 +43,19 @@ router.post('/tenant/:slug/cadastro', publicAuthLimiter, cadastrarAtletaPublico)
 router.post('/tenant/:slug/google', publicAuthLimiter, googleAuthAtletaPublico);
 router.post('/tenant/:slug/esqueci-senha', publicAuthLimiter, solicitarRecuperacaoSenhaAtleta);
 router.post('/tenant/:slug/redefinir-senha', publicAuthLimiter, redefinirSenhaAtleta);
+router.post('/tenant/:slug/cancelar-reserva/:id', publicBookingLimiter, cancelarReservaAtleta);
+router.post('/tenant/:slug/excluir-conta', publicAuthLimiter, excluirContaAtleta);
+
 
 // Rota de criação de reserva com limite de agendamento por IP
 router.post('/tenant/:slug/agendar', publicBookingLimiter, agendarReservaPublica);
-router.post('/tenant/:slug/simular-pagamento', publicBookingLimiter, simularPagamentoPublico);
+
+// Rota de cancelamento de reservas expiradas/pendentes não pagas
 router.post('/tenant/:slug/cancelar-pendente', publicApiLimiter, cancelarPendentePublico);
 
-// Rotas públicas com autenticação de sessão do Atleta
+// Rota de alteração de perfil e simulação de pagamento
 router.get('/tenant/:slug/meu-perfil', publicApiLimiter, getPerfilAtleta);
 router.put('/tenant/:slug/meu-perfil', publicApiLimiter, atualizarPerfilAtleta);
+router.post('/tenant/:slug/simular-pagamento', publicApiLimiter, simularPagamentoPublico);
 
 module.exports = router;

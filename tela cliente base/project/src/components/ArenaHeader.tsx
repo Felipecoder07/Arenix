@@ -74,16 +74,23 @@ export default function ArenaHeader({ arena, athlete, onMyReservations, onMyProf
           <Clock size={18} className="text-available-text shrink-0" />
           <span className="font-medium text-charcoal">{arena.hoursToday}</span>
         </div>
-        <a
-          href={`https://wa.me/${arena.whatsapp.replace(/\D/g, '')}`}
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center gap-2.5 text-sm text-available-text font-medium active:opacity-70"
-        >
-          <MessageCircle size={18} className="shrink-0" />
-          {arena.whatsapp} · Falar no WhatsApp
-        </a>
+        {(() => {
+          const rawWa = arena.whatsapp.replace(/\D/g, '');
+          const waNumber = rawWa.length > 0 && rawWa.length <= 11 ? `55${rawWa}` : rawWa;
+          return (
+            <a
+              href={`https://wa.me/${waNumber}`}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-2.5 text-sm text-available-text font-medium active:opacity-70"
+            >
+              <MessageCircle size={18} className="shrink-0" />
+              {arena.whatsapp} · Falar no WhatsApp
+            </a>
+          );
+        })()}
       </div>
     </header>
+
   );
 }

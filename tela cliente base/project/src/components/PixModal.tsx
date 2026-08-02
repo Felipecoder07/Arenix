@@ -18,10 +18,9 @@ interface Props {
   onCancelPending?: () => void;
 }
 
-const BACKEND_URL = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
-  ? `http://${window.location.hostname}:3000`
-  : 'http://localhost:3000';
+import { BACKEND_URL } from '../lib/backendUrl';
 const PIX_DURATION = 15 * 60;
+
 
 function buildPixCodeFallback(data: ReservationInput): string {
   const id = `${data.courtId}${data.dateISO.replace(/-/g, '')}${data.start.replace(':', '')}`;

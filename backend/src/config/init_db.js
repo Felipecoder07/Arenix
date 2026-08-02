@@ -69,19 +69,25 @@ const initDb = () => {
     db.run("ALTER TABLE Usuarios ADD COLUMN reset_password_token TEXT", (err) => {});
     db.run("ALTER TABLE Usuarios ADD COLUMN reset_password_expires DATETIME", (err) => {});
 
-    // Tabela Clientes
+    // Tabela Clientes (sem restrição UNIQUE global no e-mail/cpf para suporte multiarena)
     db.run(`
       CREATE TABLE IF NOT EXISTS Clientes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tenant_id INTEGER NOT NULL DEFAULT 1,
         nome TEXT NOT NULL,
         telefone TEXT,
-        email TEXT UNIQUE,
-        cpf TEXT UNIQUE,
+        email TEXT,
+        cpf TEXT,
+        ativo INTEGER DEFAULT 1,
         criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (tenant_id) REFERENCES Arenas (id)
       )
     `);
+
+    // Migração automática: adiciona colunas em Clientes se não existirem
+    db.run("ALTER TABLE Clientes ADD COLUMN ativo INTEGER DEFAULT 1", () => {});
+    db.run("ALTER TABLE Clientes ADD COLUMN avatar_url TEXT", () => {});
+
 
     // Tabela Quadras
     db.run(`
@@ -120,6 +126,8 @@ const initDb = () => {
         FOREIGN KEY (criado_por) REFERENCES Usuarios (id)
       )
     `);
+
+    db.run("ALTER TABLE Reservas ADD COLUMN codigo_validacao_cancelamento TEXT", () => {});
 
     // Tabela Pagamentos
     db.run(`

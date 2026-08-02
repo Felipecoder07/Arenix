@@ -3,10 +3,9 @@ import { Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, ArrowRight, X, Phone, Us
 import type { ArenaInfo } from '../types';
 import { maskPhone } from '../lib/format';
 
-const BACKEND_URL = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
-  ? `http://${window.location.hostname}:3000`
-  : 'http://localhost:3000';
+import { BACKEND_URL } from '../lib/backendUrl';
 const GOOGLE_CLIENT_ID = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string) || '';
+
 
 interface Props {
   arena: ArenaInfo;
@@ -195,7 +194,7 @@ export default function LoginScreen({ arena, slug, onAuthed, onClose }: Props) {
       return;
     }
 
-    const endpoint = mode === 'signup' 
+    const endpoint = mode === 'signup'
       ? `${BACKEND_URL}/api/public/tenant/${slug}/cadastro`
       : `${BACKEND_URL}/api/public/tenant/${slug}/login`;
 
@@ -223,12 +222,14 @@ export default function LoginScreen({ arena, slug, onAuthed, onClose }: Props) {
       } else {
         setError(data.error || 'Erro ao realizar operação. Tente novamente.');
       }
-    } catch {
-      setError('Falha de conexão com o servidor. Verifique se o backend está rodando.');
+    } catch (err: any) {
+      console.error('[LoginScreen Error]', err);
+      setError(`Falha de conexão (${err?.message || 'erro de rede'}). Verifique o servidor.`);
     } finally {
       setLoading(null);
     }
   };
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal/60 backdrop-blur-sm animate-fadeIn">
@@ -237,7 +238,7 @@ export default function LoginScreen({ arena, slug, onAuthed, onClose }: Props) {
         <div className="relative h-36 w-full overflow-hidden shrink-0">
           <img src={arena.cover} alt={arena.name} className="absolute inset-0 h-full w-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-b from-charcoal/30 to-charcoal/80" />
-          
+
           {onClose && (
             <button
               onClick={onClose}

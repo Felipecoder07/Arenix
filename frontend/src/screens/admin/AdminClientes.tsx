@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import '../../assets/css/pagamentos.css';
+
 
 interface Reserva {
   id: number;
@@ -14,6 +16,7 @@ interface Cliente {
   nome: string;
   email: string | null;
   telefone: string;
+  ativo: number;
   criado_em: string;
   reservasCount?: number;
   saldoDevedor?: number;
@@ -28,6 +31,7 @@ export function AdminClientes() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [busca, setBusca] = useState('');
   const [loading, setLoading] = useState(true);
+  const [abaAtiva, setAbaAtiva] = useState<'ativos' | 'arquivados'>('ativos');
 
   // Modais
   const [activeModal, setActiveModal] = useState<'novo-cliente' | 'detalhe-cliente' | null>(null);
@@ -53,12 +57,14 @@ export function AdminClientes() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Carregar Clientes da API
-  const carregarClientes = async () => {
+  // Carregar Clientes da API (filtra por aba ativa)
+  const carregarClientes = async (aba?: 'ativos' | 'arquivados') => {
     if (!token) return;
     setLoading(true);
+    const abaParaCarregar = aba ?? abaAtiva;
+    const ativo = abaParaCarregar === 'ativos' ? 1 : 0;
     try {
-      const res = await fetch('http://localhost:3000/api/clientes', {
+      const res = await fetch(`http://localhost:3000/api/clientes?ativo=${ativo}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -74,8 +80,8 @@ export function AdminClientes() {
   };
 
   useEffect(() => {
-    carregarClientes();
-  }, [token]);
+    carregarClientes(abaAtiva);
+  }, [token, abaAtiva]);
 
   // Carregar Detalhes do Cliente
   useEffect(() => {
@@ -190,16 +196,55 @@ export function AdminClientes() {
     }
   };
 
-  // Excluir Cliente
+  // Arquivar Cliente (soft delete)
+  const handleArquivarCliente = async () => {
+    if (!clienteDetalhe || !token) return;
+    if (!window.confirm(`Arquivar "${clienteDetalhe.nome}"? O cliente ficará oculto da lista principal, mas o histórico de reservas será preservado.`)) return;
+    try {
+      const res = await fetch(`http://localhost:3000/api/clientes/${clienteDetalhe.id}/arquivar`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao arquivar');
+      showToast('Cliente arquivado. Histórico preservado.', 'success');
+      setActiveModal(null);
+      setSelectedClienteId(null);
+      carregarClientes();
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  // Desarquivar Cliente
+  const handleDesarquivarCliente = async () => {
+    if (!clienteDetalhe || !token) return;
+    try {
+      const res = await fetch(`http://localhost:3000/api/clientes/${clienteDetalhe.id}/desarquivar`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao reativar');
+      showToast('Cliente reativado com sucesso!', 'success');
+      setActiveModal(null);
+      setSelectedClienteId(null);
+      carregarClientes();
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  // Excluir Cliente (apenas sem histórico)
   const handleExcluirCliente = async () => {
     if (!clienteDetalhe || !token) return;
     
     if (clienteDetalhe.reservasCount && clienteDetalhe.reservasCount > 0) {
-      showToast('Não é possível excluir cliente com histórico de reservas.', 'warning');
+      showToast('Cliente com histórico não pode ser excluído. Use "Arquivar".', 'warning');
       return;
     }
 
-    if (window.confirm(`Tem certeza que deseja excluir o cliente ${clienteDetalhe.nome}?`)) {
+    if (window.confirm(`Tem certeza que deseja excluir permanentemente o cliente ${clienteDetalhe.nome}?`)) {
       try {
         const res = await fetch(`http://localhost:3000/api/clientes/${clienteDetalhe.id}`, {
           method: 'DELETE',
@@ -264,28 +309,46 @@ export function AdminClientes() {
         </div>
       )}
 
+      {/* Tabs de Aba */}
+      <div className="tab-bar" role="tablist">
+        <button
+          className={`tab-btn ${abaAtiva === 'ativos' ? 'active' : ''}`}
+          onClick={() => setAbaAtiva('ativos')}
+        >
+          Ativos
+        </button>
+        <button
+          className={`tab-btn ${abaAtiva === 'arquivados' ? 'active' : ''}`}
+          onClick={() => setAbaAtiva('arquivados')}
+        >
+          Arquivados
+        </button>
+      </div>
+
       {/* Toolbar / Busca */}
       <div className="page-toolbar mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="filter-bar">
-          <input 
-            type="text" 
-            className="search-input" 
-            placeholder="Buscar por nome, e-mail ou telefone..." 
+          <input
+            type="text"
+            className="search-input"
+            placeholder="Buscar por nome, e-mail ou telefone..."
             style={{ width: '300px' }}
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
           />
         </div>
 
-        <button 
-          className="btn-primary" 
-          onClick={() => {
-            resetForm();
-            setActiveModal('novo-cliente');
-          }}
-        >
-          + Novo Cliente
-        </button>
+        {abaAtiva === 'ativos' && (
+          <button
+            className="btn-primary"
+            onClick={() => {
+              resetForm();
+              setActiveModal('novo-cliente');
+            }}
+          >
+            + Novo Cliente
+          </button>
+        )}
       </div>
 
       {/* Tabela de Clientes */}
@@ -492,14 +555,41 @@ export function AdminClientes() {
                 </div>
               </div>
               <div className="modal-footer" style={{ justifyContent: 'space-between' }}>
-                <div>
-                  <button className="btn-ghost" type="button" style={{ color: 'var(--danger)' }} onClick={handleExcluirCliente}>
-                    Excluir
-                  </button>
+                <div style={{ display: 'flex', gap: 'var(--s-2)' }}>
+                  {clienteDetalhe.ativo === 1 ? (
+                    <button
+                      className="btn-ghost"
+                      type="button"
+                      onClick={handleArquivarCliente}
+                      title="Ocultar da lista principal preservando o histórico"
+                    >
+                      Arquivar
+                    </button>
+                  ) : (
+                    <button
+                      className="btn-ghost"
+                      type="button"
+                      onClick={handleDesarquivarCliente}
+                    >
+                      Reativar
+                    </button>
+                  )}
+                  {(!clienteDetalhe.reservasCount || clienteDetalhe.reservasCount === 0) && (
+                    <button
+                      className="btn-ghost"
+                      type="button"
+                      style={{ color: 'var(--danger)' }}
+                      onClick={handleExcluirCliente}
+                    >
+                      Excluir
+                    </button>
+                  )}
                 </div>
                 <div className="flex gap-2">
                   <button className="btn-ghost" type="button" onClick={() => { setActiveModal(null); setSelectedClienteId(null); }}>Fechar</button>
-                  <button className="btn-primary" type="button" onClick={abrirEdicao}>Editar</button>
+                  {clienteDetalhe.ativo === 1 && (
+                    <button className="btn-primary" type="button" onClick={abrirEdicao}>Editar</button>
+                  )}
                 </div>
               </div>
             </>

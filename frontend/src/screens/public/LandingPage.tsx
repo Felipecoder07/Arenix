@@ -28,7 +28,7 @@ export function LandingPage() {
     return val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
-  const handlePeriodChange = (p) => {
+  const handlePeriodChange = (p: string) => {
     if (p === period) return;
     setAnimating(true);
     setTimeout(() => {

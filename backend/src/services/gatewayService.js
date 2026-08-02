@@ -325,9 +325,52 @@ const criarCobrancaMaquineta = async (reserva_id, valor, tenant_id) => {
   }
 };
 
+const estornarPagamentoPix = async (reserva_id, tenant_id) => {
+  const token = await obterTokenGatewayArena(tenant_id);
+  if (!token) return { success: false, reason: 'no_gateway_token' };
+
+  const tx = await db.getAsync(`
+    SELECT gateway_ref, status FROM TransacoesGateway
+    WHERE reserva_id = ? AND (status = 'Aprovado' OR status = 'Pago')
+    ORDER BY id DESC LIMIT 1
+  `, [reserva_id]);
+
+  if (!tx || !tx.gateway_ref) {
+    return { success: false, reason: 'no_approved_transaction' };
+  }
+
+  try {
+    const response = await fetch(`https://api.mercadopago.com/v1/payments/${tx.gateway_ref}/refunds`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (response.ok) {
+      await db.runAsync(`
+        UPDATE TransacoesGateway SET status = 'Estornado', atualizado_em = CURRENT_TIMESTAMP
+        WHERE gateway_ref = ?
+      `, [tx.gateway_ref]);
+
+      return { success: true, gateway_ref: tx.gateway_ref };
+    } else {
+      const errData = await response.json();
+      console.error('[Mercado Pago Refund Error]', errData);
+      return { success: false, reason: 'api_error', details: errData };
+    }
+  } catch (err) {
+    console.error('[Mercado Pago Refund Exception]', err);
+    return { success: false, reason: 'exception', error: err.message };
+  }
+};
+
 module.exports = {
   criarCobrancaPix,
   criarCobrancaCartao,
   criarCobrancaMaquineta,
-  processarLiquidacao
+  processarLiquidacao,
+  estornarPagamentoPix
 };
+

@@ -18,6 +18,7 @@ export default function CheckoutDrawer({ open, slots, court, initialName = '', i
   const [phone, setPhone] = useState(initialPhone);
   const [cpf, setCpf] = useState('');
   const [touched, setTouched] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const [translateY, setTranslateY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -58,6 +59,7 @@ export default function CheckoutDrawer({ open, slots, court, initialName = '', i
   useEffect(() => {
     if (open) {
       setTouched(false);
+      setSubmitting(false);
       setTranslateY(0);
       if (initialName) setName(initialName);
       if (initialPhone) setPhone(initialPhone);
@@ -71,17 +73,22 @@ export default function CheckoutDrawer({ open, slots, court, initialName = '', i
   const nameValid = name.trim().length >= 3;
   const phoneValid = phone.replace(/\D/g, '').length === 11;
   const cpfValid = cpf.trim() === '' || cpf.replace(/\D/g, '').length === 11;
-  const canSubmit = nameValid && phoneValid && cpfValid;
+  const canSubmit = nameValid && phoneValid && cpfValid && !submitting;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setTouched(true);
-    if (!canSubmit) return;
-    onConfirm({
-      slots,
-      name: name.trim(),
-      phone,
-      cpf,
-    });
+    if (!canSubmit || submitting) return;
+    setSubmitting(true);
+    try {
+      await onConfirm({
+        slots,
+        name: name.trim(),
+        phone,
+        cpf,
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -186,14 +193,21 @@ export default function CheckoutDrawer({ open, slots, court, initialName = '', i
         <div className="shrink-0 px-5 pt-3 pb-5 safe-bottom border-t border-edge bg-card rounded-b-3xl">
           <button
             onClick={handleSubmit}
-            className={`tap w-full flex items-center justify-center gap-2 rounded-2xl text-base font-bold transition active:scale-[0.98] ${
+            disabled={!canSubmit}
+            className={`tap w-full flex items-center justify-center gap-2 rounded-2xl text-base font-bold transition active:scale-[0.98] h-13 ${
               canSubmit
                 ? 'bg-available-text text-white shadow-soft'
-                : 'bg-available-text/40 text-white'
+                : 'bg-available-text/40 text-white cursor-not-allowed opacity-60'
             }`}
           >
-            Pagar Pix ({brl(totalPrice)})
-            <ArrowRight size={18} />
+            {submitting ? (
+              <span className="flex items-center gap-2">Gerando Pix...</span>
+            ) : (
+              <>
+                Pagar Pix ({brl(totalPrice)})
+                <ArrowRight size={18} />
+              </>
+            )}
           </button>
           <p className="mt-2 text-center text-[11px] text-muted flex items-center justify-center gap-1">
             <Check size={12} className="text-available-text" /> Reserva segura · cancelamento grátis em 24h
@@ -203,6 +217,7 @@ export default function CheckoutDrawer({ open, slots, court, initialName = '', i
     </div>
   );
 }
+
 
 function Field({
   icon,

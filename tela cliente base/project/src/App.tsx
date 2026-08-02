@@ -13,9 +13,8 @@ import MyProfileModal from './components/MyProfileModal';
 import { ArrowRight, ShoppingBag, ShieldCheck } from 'lucide-react';
 import { brl, getLocalDateISO } from './lib/format';
 
-const BACKEND_URL = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
-  ? `http://${window.location.hostname}:3000`
-  : 'http://localhost:3000';
+import { BACKEND_URL } from './lib/backendUrl';
+
 
 export default function App() {
   // 1. Extrair o Slug da URL (ex: /arena/felp-arena ou /felp-arena)
@@ -23,7 +22,9 @@ export default function App() {
     const path = window.location.pathname.replace(/^\/+/g, '');
     const parts = path.split('/');
     if (parts[0] === 'arena' && parts[1]) return parts[1];
-    if (parts[0] && parts[0] !== 'index.html') return parts[0];
+    if (parts[0] && parts[0] !== 'index.html' && parts[0] !== 'favicon.ico' && parts[0].trim() !== '') {
+      return parts[0].trim();
+    }
     return 'felp-arena'; // Slug padrão para testes
   };
 
@@ -33,7 +34,7 @@ export default function App() {
   const [courtId, setCourtId] = useState<string>('');
   const [dateISO, setDateISO] = useState<string>(() => getLocalDateISO());
   const [slots, setSlots] = useState<Slot[]>([]);
-  
+
   // Status da API
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -50,42 +51,78 @@ export default function App() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [pixOpen, setPixOpen] = useState(false);
   const [reservation, setReservation] = useState<ReservationInput | null>(null);
-  const [pixPayload, setPixPayload] = useState<{ copia_cola: string; qr_code?: string | null; reserva_id?: number } | null>(null);
+  const [pixPayload, setPixPayload] = useState<{ copia_cola: string; qr_code?: string | null; reserva_id?: number; reservas_ids?: number[]; valor_total?: number; expira_em_minutos?: number; expira_em_segundos?: number } | null>(null);
   const [myResOpen, setMyResOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
   // 2. Carregar Dados Públicos do Tenant por Slug
   useEffect(() => {
-    setLoading(true);
-    fetch(`${BACKEND_URL}/api/public/tenant/${slug}`)
-      .then(async (res) => {
-        const data = await res.json();
-        if (res.status === 404) {
-          setNotFound(true);
-          return;
-        }
-        if (res.status === 403 && data.blocked) {
-          setBlockedMsg(data.error || 'Agendamentos suspensos nesta arena.');
-          return;
-        }
-        if (res.ok && data.arena) {
-          const a = data.arena;
-          setArena({
-            name: a.nome,
-            cover: 'https://images.unsplash.com/photo-1540497077202-7c8a3999166f?auto=format&fit=crop&q=80&w=800',
-            address: a.endereco || 'Endereço não informado',
-            whatsapp: a.telefone || '',
-            hoursToday: a.horario_abertura && a.horario_fechamento ? `${a.horario_abertura} às ${a.horario_fechamento}` : '06:00 às 23:00',
-            rating: 4.9,
-            reviews: 128
-          });
-        } else {
-          setNotFound(true);
-        }
-      })
-      .catch(() => setNotFound(true))
-      .finally(() => setLoading(false));
+    let attempts = 0;
+    const fetchArena = () => {
+      setLoading(true);
+      fetch(`${BACKEND_URL}/api/public/tenant/${slug}`)
+        .then(async (res) => {
+          const data = await res.json();
+          if (res.status === 404) {
+            // Se o backend explicitamente disser 404, tentar com o slug padrao felp-arena como fallback
+            if (slug !== 'felp-arena') {
+              fetch(`${BACKEND_URL}/api/public/tenant/felp-arena`)
+                .then(r => r.json())
+                .then(d => {
+                  if (d.arena) {
+                    setArena({
+                      name: d.arena.nome,
+                      cover: 'https://images.unsplash.com/photo-1540497077202-7c8a3999166f?auto=format&fit=crop&q=80&w=800',
+                      address: d.arena.endereco || 'Endereço não informado',
+                      whatsapp: d.arena.telefone || '',
+                      hoursToday: d.arena.horario_abertura && d.arena.horario_fechamento ? `${d.arena.horario_abertura} às ${d.arena.horario_fechamento}` : '06:00 às 23:00',
+                      rating: 4.9,
+                      reviews: 128
+                    });
+                  } else {
+                    setNotFound(true);
+                  }
+                })
+                .catch(() => setNotFound(true))
+                .finally(() => setLoading(false));
+              return;
+            }
+            setNotFound(true);
+            return;
+          }
+          if (res.status === 403 && data.blocked) {
+            setBlockedMsg(data.error || 'Agendamentos suspensos nesta arena.');
+            return;
+          }
+          if (res.ok && data.arena) {
+            const a = data.arena;
+            setArena({
+              name: a.nome,
+              cover: 'https://images.unsplash.com/photo-1540497077202-7c8a3999166f?auto=format&fit=crop&q=80&w=800',
+              address: a.endereco || 'Endereço não informado',
+              whatsapp: a.telefone || '',
+              hoursToday: a.horario_abertura && a.horario_fechamento ? `${a.horario_abertura} às ${a.horario_fechamento}` : '06:00 às 23:00',
+              rating: 4.9,
+              reviews: 128
+            });
+          } else {
+            setNotFound(true);
+          }
+        })
+        .catch(() => {
+          if (attempts < 2) {
+            attempts++;
+            setTimeout(fetchArena, 1000);
+          } else {
+            setNotFound(true);
+          }
+        })
+        .finally(() => setLoading(false));
+    };
+
+    fetchArena();
   }, [slug]);
+
 
   // 3. Carregar Quadras Ativas da Arena
   useEffect(() => {
@@ -249,7 +286,7 @@ export default function App() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ reserva_id: pixPayload.reserva_id })
         });
-      } catch {}
+      } catch { }
     }
   };
 
@@ -449,3 +486,4 @@ export default function App() {
     </div>
   );
 }
+

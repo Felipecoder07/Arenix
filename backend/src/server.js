@@ -39,6 +39,7 @@ app.use('/api/arenas', arenasRoutes);
 app.use('/api/motivos', motivosRoutes);
 app.use('/api/tenant/assinatura', tenantAssinaturaRoutes);
 
-app.listen(PORT, () => {
-  console.log(`Servidor iniciado na porta ${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Servidor iniciado na porta ${PORT} (0.0.0.0)`);
 });
+

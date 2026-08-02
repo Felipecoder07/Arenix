@@ -67,20 +67,20 @@ const getTenantBySlug = async (req, res) => {
       [arena.id]
     );
 
-    const horaAberturaFinal = (quadrasHours && quadrasHours.min_abertura) 
-      ? quadrasHours.min_abertura 
+    const horaAberturaFinal = (quadrasHours && quadrasHours.min_abertura)
+      ? quadrasHours.min_abertura
       : (arena.horario_abertura || '06:00');
 
-    const horaFechamentoFinal = (quadrasHours && quadrasHours.max_fechamento) 
-      ? quadrasHours.max_fechamento 
+    const horaFechamentoFinal = (quadrasHours && quadrasHours.max_fechamento)
+      ? quadrasHours.max_fechamento
       : (arena.horario_fechamento || '23:00');
 
-    res.json({ 
+    res.json({
       arena: {
         ...arena,
         horario_abertura: horaAberturaFinal,
         horario_fechamento: horaFechamentoFinal
-      } 
+      }
     });
   } catch (err) {
     console.error('[Public Controller Error] getTenantBySlug:', err);
@@ -141,7 +141,7 @@ const getDisponibilidadeBySlug = async (req, res) => {
     const reservasOcupadas = await db.allAsync(
       `SELECT quadra_id, hora_inicio, hora_fim
        FROM Reservas
-       WHERE tenant_id = ? AND data_reserva = ? AND status IN ('Confirmada', 'Pago', 'Pendente')`,
+       WHERE tenant_id = ? AND data_reserva = ? AND status IN ('Confirmada', 'Pago') AND status_pagamento != 'Desistência'`,
       [arena.id, dataFiltro]
     );
 
@@ -418,9 +418,42 @@ const agendarReservaPublica = async (req, res) => {
       }
     }
 
-    // 4c. Inserir Reservas e calcular valor total somado
+    // 4c-1. Trava Idempotente: Se a exata mesma reserva foi criada para este cliente nos últimos 15 segundos, reutiliza-a ao invés de duplicar
+    const itemPrimeiro = listaItens[0];
+    const reservaRecente = await db.getAsync(
+      `SELECT id, valor_total FROM Reservas
+       WHERE cliente_id = ? AND quadra_id = ? AND data_reserva = ? AND hora_inicio = ? AND status != 'Cancelada'
+         AND datetime(criado_em, '+15 seconds') >= datetime('now')`,
+      [cliente.id, itemPrimeiro.quadra_id, itemPrimeiro.data_reserva, itemPrimeiro.hora_inicio]
+    );
+
+    if (reservaRecente) {
+      const primeiraReservaId = reservaRecente.id;
+      const chavePixArena = arena.chave_pix || arena.email || arena.telefone || 'financeiro@felparena.com.br';
+      const titularArena = arena.titular_pix || arena.nome || 'Felp Arena';
+      const cidadeArena = arena.cidade_pix || 'SAO PAULO';
+      const copiaCola = gerarPixEMV({
+        chave: chavePixArena,
+        nome: titularArena,
+        cidade: cidadeArena,
+        valor: reservaRecente.valor_total,
+        txid: `RESERVA${primeiraReservaId}`
+      });
+
+      return res.json({
+        reserva_id: primeiraReservaId,
+        reservas_ids: [primeiraReservaId],
+        valor_total: reservaRecente.valor_total,
+        copia_cola: copiaCola,
+        qr_code: `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(copiaCola)}`,
+        gateway_ref: `PIX_MULTI_${primeiraReservaId}`
+      });
+    }
+
+    // 4c-2. Inserir Reservas e calcular valor total somado
     let valorTotalGeral = 0;
     const reservasCriadasIds = [];
+
 
     for (const item of listaItens) {
       let precoItem = item.preco;
@@ -512,9 +545,65 @@ const cadastrarAtletaPublico = async (req, res) => {
     const JWT_SECRET = process.env.JWT_SECRET || 'secret-jwt-courtmanager-2026';
 
     // Checa se o e-mail já existe na base global de usuários
-    const existente = await db.getAsync('SELECT id FROM Usuarios WHERE email = ?', [email.trim().toLowerCase()]);
+    const existente = await db.getAsync(
+      'SELECT id, nome, email, senha_hash, ativo FROM Usuarios WHERE LOWER(email) = ?',
+      [email.trim().toLowerCase()]
+    );
+
     if (existente) {
-      return res.status(400).json({ error: 'Este e-mail já está cadastrado em nossa plataforma. Faça login com sua senha.' });
+      if (existente.ativo === 0) {
+        return res.status(403).json({ error: 'Sua conta de usuário está desativada. Entre em contato com a arena.' });
+      }
+
+      const senhaValida = await bcrypt.compare(senha, existente.senha_hash);
+      if (!senhaValida) {
+        return res.status(400).json({ error: 'Este e-mail já está cadastrado em nossa plataforma. Verifique a senha ou faça login.' });
+      }
+
+      // Garante vínculo na tabela Clientes para esta arena específica
+      let clienteExistente = await db.getAsync(
+        'SELECT id, telefone FROM Clientes WHERE tenant_id = ? AND LOWER(email) = ?',
+        [tenantId, email.trim().toLowerCase()]
+      );
+
+      if (!clienteExistente) {
+        try {
+          await db.runAsync(
+            'INSERT INTO Clientes (tenant_id, nome, email, telefone) VALUES (?, ?, ?, ?)',
+            [tenantId, existente.nome, email.trim().toLowerCase(), telefone ? telefone.trim() : null]
+          );
+        } catch (eCl) {
+          /* ignora colisão de constraint se o cliente já existia */
+        }
+        clienteExistente = await db.getAsync(
+          'SELECT id, telefone FROM Clientes WHERE tenant_id = ? AND LOWER(email) = ?',
+          [tenantId, email.trim().toLowerCase()]
+        );
+      }
+
+      const token = jwt.sign(
+        { id: existente.id, perfil: 'cliente', email: existente.email },
+        JWT_SECRET,
+        { expiresIn: '30d' }
+      );
+
+      logAuditEvent(
+        existente.id,
+        'Acesso Atleta Publico Multiarena',
+        `Atleta '${existente.nome}' conectou-se à arena '${arena.nome}' usando sua conta universal.`,
+        req.ip
+      );
+
+      return res.status(200).json({
+        message: 'Bem-vindo de volta! Sua conta universal foi conectada a esta arena com sucesso.',
+        token,
+        usuario: {
+          id: existente.id,
+          nome: existente.nome,
+          email: existente.email,
+          telefone: clienteExistente ? (clienteExistente.telefone || (telefone ? telefone.trim() : '')) : ''
+        }
+      });
     }
 
     // Checa se o telefone já está cadastrado para outro cliente nesta arena
@@ -531,31 +620,35 @@ const cadastrarAtletaPublico = async (req, res) => {
     // Criptografa a senha com bcrypt (10 rounds)
     const senhaHash = await bcrypt.hash(senha, 10);
 
-    // Insere o Usuário com perfil 'Cliente'
+    // Insere o Usuário com perfil 'Cliente' (Conta Universal)
     const rUser = await db.runAsync(
-      `INSERT INTO Usuarios (tenant_id, nome, email, senha_hash, perfil, ativo)
-       VALUES (?, ?, ?, ?, 'Cliente', 1)`,
-      [tenantId, nome.trim(), email.trim().toLowerCase(), senhaHash]
+      `INSERT INTO Usuarios (nome, email, senha_hash, perfil, ativo)
+       VALUES (?, ?, ?, 'Cliente', 1)`,
+      [nome.trim(), email.trim().toLowerCase(), senhaHash]
     );
 
     const userId = rUser.lastID;
 
-    // Garante criação/vínculo no cadastro de Clientes
+    // Garante criação/vínculo no cadastro de Clientes da arena atual
     let cliente = await db.getAsync(
       'SELECT id FROM Clientes WHERE tenant_id = ? AND (email = ? OR (telefone IS NOT NULL AND telefone = ?))',
       [tenantId, email.trim().toLowerCase(), telefone ? telefone.trim() : '']
     );
 
     if (!cliente) {
-      await db.runAsync(
-        'INSERT INTO Clientes (tenant_id, nome, email, telefone) VALUES (?, ?, ?, ?)',
-        [tenantId, nome.trim(), email.trim().toLowerCase(), telefone ? telefone.trim() : null]
-      );
+      try {
+        await db.runAsync(
+          'INSERT INTO Clientes (tenant_id, nome, email, telefone) VALUES (?, ?, ?, ?)',
+          [tenantId, nome.trim(), email.trim().toLowerCase(), telefone ? telefone.trim() : null]
+        );
+      } catch (eCl) {
+        /* ignora colisão de constraint se já existir */
+      }
     }
 
-    // Gera o Token JWT para o atleta
+    // Gera o Token JWT para o atleta (Conta Universal)
     const token = jwt.sign(
-      { id: userId, tenant_id: tenantId, perfil: 'cliente', email: email.trim().toLowerCase() },
+      { id: userId, perfil: 'cliente', email: email.trim().toLowerCase() },
       JWT_SECRET,
       { expiresIn: '30d' }
     );
@@ -621,11 +714,11 @@ const loginAtletaPublico = async (req, res) => {
       return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
     }
 
-    // Busca o telefone do cliente correspondente se existir
-    const cliente = await db.getAsync('SELECT telefone FROM Clientes WHERE tenant_id = ? AND email = ?', [tenantId, email.trim().toLowerCase()]);
+    // Busca o telefone e avatar do cliente correspondente se existir
+    const cliente = await db.getAsync('SELECT telefone, avatar_url FROM Clientes WHERE tenant_id = ? AND LOWER(email) = LOWER(?)', [tenantId, email.trim()]);
 
     const token = jwt.sign(
-      { id: usuario.id, tenant_id: tenantId, perfil: usuario.perfil, email: usuario.email },
+      { id: usuario.id, perfil: usuario.perfil, email: usuario.email },
       JWT_SECRET,
       { expiresIn: '30d' }
     );
@@ -644,7 +737,8 @@ const loginAtletaPublico = async (req, res) => {
         id: usuario.id,
         nome: usuario.nome,
         email: usuario.email,
-        telefone: cliente ? cliente.telefone : ''
+        telefone: cliente ? (cliente.telefone || '') : '',
+        avatar_url: cliente ? (cliente.avatar_url || '') : ''
       }
     });
   } catch (err) {
@@ -699,9 +793,9 @@ const googleAuthAtletaPublico = async (req, res) => {
       // Se não existir, realiza o cadastro automático via Google
       const senhaHashMock = await bcrypt.hash(`GOOGLE_OAUTH_${Date.now()}_${Math.random()}`, 10);
       const rUser = await db.runAsync(
-        `INSERT INTO Usuarios (tenant_id, nome, email, senha_hash, perfil, ativo)
-         VALUES (?, ?, ?, ?, 'Cliente', 1)`,
-        [tenantId, nome, email, senhaHashMock]
+        `INSERT INTO Usuarios (nome, email, senha_hash, perfil, ativo)
+         VALUES (?, ?, ?, 'Cliente', 1)`,
+        [nome, email, senhaHashMock]
       );
       usuario = {
         id: rUser.lastID,
@@ -718,17 +812,21 @@ const googleAuthAtletaPublico = async (req, res) => {
     }
 
     // Garante presença na tabela Clientes
-    let cliente = await db.getAsync('SELECT id, telefone FROM Clientes WHERE tenant_id = ? AND email = ?', [tenantId, email]);
+    let cliente = await db.getAsync('SELECT id, telefone, avatar_url FROM Clientes WHERE tenant_id = ? AND LOWER(email) = LOWER(?)', [tenantId, email]);
     if (!cliente) {
-      await db.runAsync(
-        'INSERT INTO Clientes (tenant_id, nome, email, telefone) VALUES (?, ?, ?, ?)',
-        [tenantId, nome, email, bodyTelefone ? bodyTelefone.trim() : null]
-      );
-      cliente = { id: 0, telefone: bodyTelefone ? bodyTelefone.trim() : '' };
+      try {
+        await db.runAsync(
+          'INSERT INTO Clientes (tenant_id, nome, email, telefone) VALUES (?, ?, ?, ?)',
+          [tenantId, nome, email, bodyTelefone ? bodyTelefone.trim() : null]
+        );
+      } catch (eCl) {
+        /* ignora colisão de constraint se o cliente já existia */
+      }
+      cliente = await db.getAsync('SELECT id, telefone, avatar_url FROM Clientes WHERE tenant_id = ? AND LOWER(email) = LOWER(?)', [tenantId, email]);
     }
 
     const token = jwt.sign(
-      { id: usuario.id, tenant_id: tenantId, perfil: usuario.perfil, email: usuario.email },
+      { id: usuario.id, perfil: usuario.perfil, email: usuario.email },
       JWT_SECRET,
       { expiresIn: '30d' }
     );
@@ -747,7 +845,8 @@ const googleAuthAtletaPublico = async (req, res) => {
         id: usuario.id,
         nome: usuario.nome,
         email: usuario.email,
-        telefone: cliente ? cliente.telefone : ''
+        telefone: cliente ? (cliente.telefone || '') : '',
+        avatar_url: cliente ? (cliente.avatar_url || '') : ''
       }
     });
   } catch (err) {
@@ -780,7 +879,7 @@ const getPerfilAtleta = async (req, res) => {
       return res.status(404).json({ error: 'Usuário não encontrado.' });
     }
 
-    const cliente = await db.getAsync('SELECT id, telefone, cpf FROM Clientes WHERE email = ? AND tenant_id = ?', [usuario.email, arena.id]);
+    const cliente = await db.getAsync('SELECT id, telefone, cpf, avatar_url FROM Clientes WHERE LOWER(email) = LOWER(?) AND tenant_id = ?', [usuario.email, arena.id]);
 
     res.json({
       perfil: {
@@ -788,7 +887,8 @@ const getPerfilAtleta = async (req, res) => {
         nome: usuario.nome,
         email: usuario.email,
         telefone: cliente ? (cliente.telefone || '') : '',
-        cpf: cliente ? (cliente.cpf || '') : ''
+        cpf: cliente ? (cliente.cpf || '') : '',
+        avatar_url: cliente ? (cliente.avatar_url || '') : ''
       }
     });
   } catch (err) {
@@ -810,7 +910,7 @@ const atualizarPerfilAtleta = async (req, res) => {
   const bcrypt = require('bcrypt');
   const JWT_SECRET = process.env.JWT_SECRET || 'secret-jwt-courtmanager-2026';
 
-  const { nome, telefone, cpf, nova_senha } = req.body;
+  const { nome, telefone, cpf, nova_senha, avatar_url } = req.body;
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
@@ -855,17 +955,20 @@ const atualizarPerfilAtleta = async (req, res) => {
       }
     }
 
-    // 9b. Atualiza tabela Clientes (telefone e cpf)
-    let cliente = await db.getAsync('SELECT id FROM Clientes WHERE email = ? AND tenant_id = ?', [usuario.email, arena.id]);
+    // 9b. Atualiza tabela Clientes (telefone, cpf e avatar_url)
+    const avatarToSave = (avatar_url && typeof avatar_url === 'string' && avatar_url.trim().length > 0) ? avatar_url.trim() : null;
+
+    let cliente = await db.getAsync('SELECT id, avatar_url FROM Clientes WHERE LOWER(email) = LOWER(?) AND tenant_id = ?', [usuario.email, arena.id]);
     if (cliente) {
+      const finalAvatar = avatarToSave || cliente.avatar_url || null;
       await db.runAsync(
-        'UPDATE Clientes SET nome = ?, telefone = ?, cpf = ? WHERE id = ?',
-        [nome ? nome.trim() : usuario.nome, telefone ? telefone.trim() : null, cpf ? cpf.trim() : null, cliente.id]
+        'UPDATE Clientes SET nome = ?, telefone = ?, cpf = ?, avatar_url = ? WHERE id = ?',
+        [nome ? nome.trim() : usuario.nome, telefone ? telefone.trim() : null, cpf ? cpf.trim() : null, finalAvatar, cliente.id]
       );
     } else {
       await db.runAsync(
-        'INSERT INTO Clientes (tenant_id, nome, email, telefone, cpf) VALUES (?, ?, ?, ?, ?)',
-        [arena.id, nome ? nome.trim() : usuario.nome, usuario.email, telefone ? telefone.trim() : null, cpf ? cpf.trim() : null]
+        'INSERT INTO Clientes (tenant_id, nome, email, telefone, cpf, avatar_url) VALUES (?, ?, ?, ?, ?, ?)',
+        [arena.id, nome ? nome.trim() : usuario.nome, usuario.email, telefone ? telefone.trim() : null, cpf ? cpf.trim() : null, avatarToSave]
       );
     }
 
@@ -876,6 +979,8 @@ const atualizarPerfilAtleta = async (req, res) => {
       req.ip
     );
 
+    const clienteAtualizado = await db.getAsync('SELECT avatar_url FROM Clientes WHERE LOWER(email) = LOWER(?) AND tenant_id = ?', [usuario.email, arena.id]);
+
     res.json({
       message: 'Perfil atualizado com sucesso!',
       usuario: {
@@ -883,9 +988,11 @@ const atualizarPerfilAtleta = async (req, res) => {
         nome: nome ? nome.trim() : usuario.nome,
         email: usuario.email,
         telefone: telefone ? telefone.trim() : '',
-        cpf: cpf ? cpf.trim() : ''
+        cpf: cpf ? cpf.trim() : '',
+        avatar_url: clienteAtualizado ? (clienteAtualizado.avatar_url || '') : ''
       }
     });
+
   } catch (err) {
     console.error('[Public Controller Error] atualizarPerfilAtleta:', err);
     res.status(500).json({ error: 'Erro ao atualizar perfil do atleta.' });
@@ -1072,7 +1179,7 @@ const getMinhasReservasAtleta = async (req, res) => {
             }
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     if (telefone && telefone.trim() && telefone.trim() !== '(00) 00000-0000') {
@@ -1109,23 +1216,44 @@ const getMinhasReservasAtleta = async (req, res) => {
       return res.json([]);
     }
 
-    // Busca todas as reservas desse atleta no tenant
+    // Busca todas as reservas desse atleta no tenant com detalhes para o comprovante
+    const arenaInfo = await db.getAsync('SELECT id, nome, endereco, telefone, email, chave_pix, titular_pix FROM Arenas WHERE id = ?', [arena.id]);
+
     const reservas = await db.allAsync(
       `SELECT r.id, r.quadra_id, q.nome as quadra_nome, r.data_reserva, r.hora_inicio, r.hora_fim, 
-              r.valor_total, r.status, r.status_pagamento, r.criado_em
+              r.valor_total, r.status, r.status_pagamento, r.criado_em, r.codigo_validacao_cancelamento,
+              c.nome as cliente_nome, c.email as cliente_email, c.telefone as cliente_telefone, c.cpf as cliente_cpf,
+              tg.gateway_ref, tg.metodo as metodo_gateway, tg.status as status_gateway, tg.atualizado_em as data_gateway,
+              p.metodo as metodo_pagamento, p.registrado_em as data_pagamento
        FROM Reservas r
        JOIN Quadras q ON r.quadra_id = q.id
+       JOIN Clientes c ON r.cliente_id = c.id
+       LEFT JOIN TransacoesGateway tg ON r.id = tg.reserva_id
+       LEFT JOIN Pagamentos p ON r.id = p.reserva_id
        WHERE r.tenant_id = ? AND r.cliente_id IN (${clientIds.map(() => '?').join(',')})
+       GROUP BY r.id
        ORDER BY CASE WHEN (r.status = 'Pendente' OR r.status_pagamento = 'Pendente') AND r.status != 'Cancelada' THEN 0 ELSE 1 END, r.data_reserva DESC, r.hora_inicio DESC`,
       [arena.id, ...clientIds]
     );
 
-    res.json(reservas);
+    const result = reservas.map(r => ({
+      ...r,
+      arena: {
+        nome: arenaInfo?.nome || 'Arena',
+        endereco: arenaInfo?.endereco || '',
+        telefone: arenaInfo?.telefone || '',
+        email: arenaInfo?.email || '',
+        titular_pix: arenaInfo?.titular_pix || arenaInfo?.nome || ''
+      }
+    }));
+
+    res.json(result);
   } catch (err) {
     console.error('[Public Controller Error] getMinhasReservasAtleta:', err);
     res.status(500).json({ error: 'Erro ao buscar reservas do atleta.' });
   }
 };
+
 
 // 14. Solicitar Recuperação de Senha do Atleta
 const solicitarRecuperacaoSenhaAtleta = async (req, res) => {
@@ -1361,6 +1489,177 @@ const obterPixReservaPendente = async (req, res) => {
   }
 };
 
+const cancelarReservaAtleta = async (req, res) => {
+  const { slug, id } = req.params;
+  const reservaId = parseInt(id, 10);
+
+  if (!reservaId || isNaN(reservaId)) {
+    return res.status(400).json({ error: 'ID de reserva inválido.' });
+  }
+
+  try {
+    const arena = await db.getAsync('SELECT id, nome, telefone, email FROM Arenas WHERE slug = ? AND status = 1', [slug]);
+    if (!arena) {
+      return res.status(404).json({ error: 'Arena não encontrada.' });
+    }
+
+    const reserva = await db.getAsync(
+      `SELECT r.*, q.nome as quadra_nome, c.nome as cliente_nome, c.email as cliente_email, c.telefone as cliente_telefone, c.cpf as cliente_cpf
+       FROM Reservas r
+       JOIN Quadras q ON r.quadra_id = q.id
+       JOIN Clientes c ON r.cliente_id = c.id
+       WHERE r.id = ? AND r.tenant_id = ?`,
+      [reservaId, arena.id]
+    );
+
+    if (!reserva) {
+      return res.status(404).json({ error: 'Reserva não encontrada.' });
+    }
+
+    if (reserva.status === 'Cancelada') {
+      return res.status(400).json({ error: 'Esta reserva já se encontra cancelada.' });
+    }
+
+    const todayStr = getTodayString();
+    const currentTimeStr = getLocalTimeString();
+
+    if (reserva.data_reserva < todayStr || (reserva.data_reserva === todayStr && reserva.hora_inicio <= currentTimeStr)) {
+      return res.status(400).json({ error: 'Não é possível cancelar uma reserva de data ou horário que já passou.' });
+    }
+
+
+    const crypto = require('crypto');
+    const codigoValidacao = 'VAL-' + crypto.randomBytes(3).toString('hex').toUpperCase();
+
+    let estornoStatus = 'none';
+    let mensagemDevolucao = 'Reserva cancelada com sucesso.';
+
+    if (reserva.status_pagamento === 'Pago') {
+      const { estornarPagamentoPix } = require('../services/gatewayService');
+      const estornoMp = await estornarPagamentoPix(reserva.id, arena.id);
+
+      if (estornoMp && estornoMp.success) {
+        estornoStatus = 'automatic';
+        mensagemDevolucao = 'Reserva cancelada e valor estornado automaticamente via Pix pelo Mercado Pago!';
+        await db.runAsync(
+          `UPDATE Reservas 
+           SET status = 'Cancelada', status_pagamento = 'Estornado', 
+               codigo_validacao_cancelamento = ?, observacoes_cancelamento = 'Cancelado pelo cliente (Estorno MP Automático)'
+           WHERE id = ?`,
+          [codigoValidacao, reserva.id]
+        );
+      } else {
+        estornoStatus = 'manual';
+        mensagemDevolucao = 'Reserva cancelada. Entre em contato com a arena via WhatsApp para realizar o estorno do Pix.';
+        await db.runAsync(
+          `UPDATE Reservas 
+           SET status = 'Cancelada', status_pagamento = 'Cancelado (Pendente Estorno)', 
+               codigo_validacao_cancelamento = ?, observacoes_cancelamento = 'Cancelado pelo cliente (Pendente Estorno Manual)'
+           WHERE id = ?`,
+          [codigoValidacao, reserva.id]
+        );
+      }
+    } else {
+      await db.runAsync(
+        `UPDATE Reservas 
+         SET status = 'Cancelada', codigo_validacao_cancelamento = ?, observacoes_cancelamento = 'Cancelado pelo cliente'
+         WHERE id = ?`,
+        [codigoValidacao, reserva.id]
+      );
+    }
+
+    res.json({
+      success: true,
+      status: 'Cancelada',
+      refund_status: estornoStatus,
+      message: mensagemDevolucao,
+      codigo_validacao: codigoValidacao,
+      arena: {
+        nome: arena.nome,
+        telefone: arena.telefone || ''
+      },
+      reserva: {
+
+        id: reserva.id,
+        quadra_nome: reserva.quadra_nome,
+        data_reserva: reserva.data_reserva,
+        hora_inicio: reserva.hora_inicio,
+        hora_fim: reserva.hora_fim,
+        valor_total: reserva.valor_total,
+        cliente_nome: reserva.cliente_nome,
+        cliente_email: reserva.cliente_email,
+        cliente_telefone: reserva.cliente_telefone,
+        cliente_cpf: reserva.cliente_cpf || 'Não informado'
+      }
+    });
+  } catch (err) {
+    console.error('[Public Controller Error] cancelarReservaAtleta:', err);
+    res.status(500).json({ error: 'Erro ao processar o cancelamento da reserva.' });
+  }
+};
+
+// Exclusão Definitiva de Conta de Atleta (LGPD)
+const excluirContaAtleta = async (req, res) => {
+  const { slug } = req.params;
+  const { cliente_id, phone, email } = req.body;
+
+  try {
+    const arena = await db.getAsync('SELECT id FROM Arenas WHERE slug = ? AND status != -1', [slug]);
+    if (!arena) {
+      return res.status(404).json({ error: 'Arena não encontrada.' });
+    }
+
+    let cliente = null;
+    if (cliente_id) {
+      cliente = await db.getAsync('SELECT id, nome, email, telefone FROM Clientes WHERE id = ?', [cliente_id]);
+    } else if (phone || email) {
+      const cleanPhone = (phone || '').replace(/\D/g, '');
+      cliente = await db.getAsync(
+        `SELECT id, nome, email, telefone FROM Clientes 
+         WHERE (telefone = ? OR (telefone LIKE ? AND length(?) >= 8)) OR (email = ? AND length(?) > 3)`,
+        [phone, `%${cleanPhone.slice(-8)}`, cleanPhone, email, email]
+      );
+    }
+
+    if (!cliente) {
+      return res.status(404).json({ error: 'Conta de atleta não encontrada.' });
+    }
+
+    // 1. Anonimizar Reservas antigas (Manter Faturamento & Relatórios de Caixa da Arena)
+    await db.runAsync(
+      `UPDATE Reservas 
+       SET cliente_nome = 'Cliente Removido (LGPD)',
+           cliente_email = NULL,
+           cliente_telefone = NULL,
+           cliente_cpf = NULL,
+           cliente_id = NULL
+       WHERE cliente_id = ? OR (cliente_telefone = ? AND cliente_telefone IS NOT NULL) OR (cliente_email = ? AND cliente_email IS NOT NULL)`,
+      [cliente.id, cliente.telefone, cliente.email]
+    );
+
+    // 2. Registrar Audit Log
+    try {
+      logAuditEvent('LGPD_EXCLUSAO_CONTA', `Atleta ID ${cliente.id} (${cliente.nome}) solicitou a exclusão definitiva de seus dados sob LGPD.`, {
+        cliente_id: cliente.id,
+        arena_id: arena.id
+      });
+    } catch (e) {
+      console.warn('[LGPD Audit Warning]', e.message);
+    }
+
+    // 3. Excluir conta de atleta permanentemente
+    await db.runAsync('DELETE FROM Clientes WHERE id = ?', [cliente.id]);
+
+    res.json({
+      success: true,
+      message: 'Sua conta e seus dados pessoais foram excluídos permanentemente com sucesso.'
+    });
+  } catch (err) {
+    console.error('[Public Controller Error] excluirContaAtleta:', err);
+    res.status(500).json({ error: 'Erro ao processar a exclusão da conta. Tente novamente.' });
+  }
+};
+
 module.exports = {
   getTenantBySlug,
   getQuadrasBySlug,
@@ -1377,5 +1676,10 @@ module.exports = {
   getMinhasReservasAtleta,
   solicitarRecuperacaoSenhaAtleta,
   redefinirSenhaAtleta,
-  obterPixReservaPendente
+  obterPixReservaPendente,
+  cancelarReservaAtleta,
+  excluirContaAtleta
 };
+
+
+

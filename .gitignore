@@ -1,4 +1,7 @@
 node_modules/
 .env
+*.sqlite
+*.sqlite3
 data/*.sqlite
+cloudflared.exe
 .DS_Store

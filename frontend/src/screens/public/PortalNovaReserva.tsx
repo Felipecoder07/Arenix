@@ -27,7 +27,7 @@ export function PortalNovaReserva() {
   const [quadrasDisponiveis, setQuadrasDisponiveis] = useState<Quadra[]>([]);
   const [loadingQuadras, setLoadingQuadras] = useState(false);
 
-  const [selQuadra, setSelQuadra] = useState<Quadra | null>(null);
+  const [selQuad, setSelQuad] = useState<Quadra | null>(null);
 
   // Payment states
   const [metodoOnline, setMetodoOnline] = useState<'Pix' | 'Cartão' | ''>('');
