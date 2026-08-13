@@ -450,10 +450,10 @@ const agendarReservaPublica = async (req, res) => {
       });
     }
 
-    // 4c-2. Inserir Reservas e calcular valor total somado
+    // 4c-2. Inserir Reservas e calcular valor total somado com grupo_id único
     let valorTotalGeral = 0;
     const reservasCriadasIds = [];
-
+    const grupoId = `GRUPO_${cliente.id}_${Date.now()}`;
 
     for (const item of listaItens) {
       let precoItem = item.preco;
@@ -464,9 +464,9 @@ const agendarReservaPublica = async (req, res) => {
       valorTotalGeral += precoItem;
 
       const rReserva = await db.runAsync(
-        `INSERT INTO Reservas (tenant_id, cliente_id, quadra_id, data_reserva, hora_inicio, hora_fim, valor_total, status, status_pagamento)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'Pendente', 'Pendente')`,
-        [tenantId, cliente.id, item.quadra_id, item.data_reserva, item.hora_inicio, item.hora_fim, precoItem]
+        `INSERT INTO Reservas (tenant_id, cliente_id, quadra_id, data_reserva, hora_inicio, hora_fim, valor_total, status, status_pagamento, grupo_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'Pendente', 'Pendente', ?)`,
+        [tenantId, cliente.id, item.quadra_id, item.data_reserva, item.hora_inicio, item.hora_fim, precoItem, grupoId]
       );
       reservasCriadasIds.push(rReserva.lastID);
     }
@@ -1014,17 +1014,25 @@ const simularPagamentoPublico = async (req, res) => {
       return res.status(404).json({ error: 'Arena não encontrada.' });
     }
 
-    const reserva = await db.getAsync('SELECT id, cliente_id, valor_total FROM Reservas WHERE id = ? AND tenant_id = ?', [reserva_id, arena.id]);
+    const reserva = await db.getAsync('SELECT id, cliente_id, valor_total, grupo_id FROM Reservas WHERE id = ? AND tenant_id = ?', [reserva_id, arena.id]);
     if (!reserva) {
       return res.status(404).json({ error: 'Reserva não encontrada nesta arena.' });
     }
 
-    // 10a. Atualiza status da reserva principal e todas as reservas do mesmo lote para Confirmada e Pago
-    await db.runAsync(
-      `UPDATE Reservas SET status = 'Confirmada', status_pagamento = 'Pago' 
-       WHERE id = ? OR (cliente_id = ? AND tenant_id = ? AND status = 'Pendente' AND abs(strftime('%s', criado_em) - strftime('%s', (SELECT criado_em FROM Reservas WHERE id = ?))) < 60)`,
-      [reserva_id, reserva.cliente_id, arena.id, reserva_id]
-    );
+    // 10a. Atualiza status da reserva principal e todas as reservas do mesmo grupo/lote para Confirmada e Pago
+    if (reserva.grupo_id) {
+      await db.runAsync(
+        `UPDATE Reservas SET status = 'Confirmada', status_pagamento = 'Pago' 
+         WHERE grupo_id = ? AND tenant_id = ?`,
+        [reserva.grupo_id, arena.id]
+      );
+    } else {
+      await db.runAsync(
+        `UPDATE Reservas SET status = 'Confirmada', status_pagamento = 'Pago' 
+         WHERE id = ? OR (cliente_id = ? AND tenant_id = ? AND status = 'Pendente' AND abs(strftime('%s', criado_em) - strftime('%s', (SELECT criado_em FROM Reservas WHERE id = ?))) < 60)`,
+        [reserva_id, reserva.cliente_id, arena.id, reserva_id]
+      );
+    }
 
     // 10b. Insere registro financeiro na tabela Pagamentos se não existir
     const pExistente = await db.getAsync('SELECT id FROM Pagamentos WHERE reserva_id = ?', [reserva_id]);
@@ -1220,8 +1228,12 @@ const getMinhasReservasAtleta = async (req, res) => {
     const arenaInfo = await db.getAsync('SELECT id, nome, endereco, telefone, email, chave_pix, titular_pix FROM Arenas WHERE id = ?', [arena.id]);
 
     const reservas = await db.allAsync(
-      `SELECT r.id, r.quadra_id, q.nome as quadra_nome, r.data_reserva, r.hora_inicio, r.hora_fim, 
-              r.valor_total, r.status, r.status_pagamento, r.criado_em, r.codigo_validacao_cancelamento,
+      `SELECT MIN(r.id) as id, r.grupo_id, r.quadra_id, q.nome as quadra_nome, r.data_reserva, 
+              MIN(r.hora_inicio) as hora_inicio, MAX(r.hora_fim) as hora_fim, 
+              SUM(r.valor_total) as valor_total, COUNT(r.id) as total_horarios,
+              CASE WHEN MAX(CASE WHEN r.status = 'Confirmada' THEN 1 ELSE 0 END) = 1 THEN 'Confirmada' ELSE MIN(r.status) END as status,
+              CASE WHEN MAX(CASE WHEN r.status_pagamento = 'Pago' THEN 1 ELSE 0 END) = 1 THEN 'Pago' ELSE MIN(r.status_pagamento) END as status_pagamento,
+              MAX(r.criado_em) as criado_em, r.codigo_validacao_cancelamento,
               c.nome as cliente_nome, c.email as cliente_email, c.telefone as cliente_telefone, c.cpf as cliente_cpf,
               tg.gateway_ref, tg.metodo as metodo_gateway, tg.status as status_gateway, tg.atualizado_em as data_gateway,
               p.metodo as metodo_pagamento, p.registrado_em as data_pagamento
@@ -1231,8 +1243,17 @@ const getMinhasReservasAtleta = async (req, res) => {
        LEFT JOIN TransacoesGateway tg ON r.id = tg.reserva_id
        LEFT JOIN Pagamentos p ON r.id = p.reserva_id
        WHERE r.tenant_id = ? AND r.cliente_id IN (${clientIds.map(() => '?').join(',')})
-       GROUP BY r.id
-       ORDER BY CASE WHEN (r.status = 'Pendente' OR r.status_pagamento = 'Pendente') AND r.status != 'Cancelada' THEN 0 ELSE 1 END, r.data_reserva DESC, r.hora_inicio DESC`,
+       GROUP BY COALESCE(NULLIF(r.grupo_id, ''), CAST(r.id AS TEXT))
+       ORDER BY CASE 
+                  WHEN (MIN(r.status) = 'Pendente' OR MIN(r.status_pagamento) = 'Pendente') AND MIN(r.status) != 'Cancelada' AND r.data_reserva >= date('now', 'localtime') THEN 0
+                  WHEN MIN(r.status) != 'Cancelada' AND MIN(r.status_pagamento) != 'Estornado' AND r.data_reserva >= date('now', 'localtime') THEN 1
+                  WHEN MIN(r.status) != 'Cancelada' AND MIN(r.status_pagamento) != 'Estornado' THEN 2
+                  ELSE 3 
+                END, 
+                CASE WHEN r.data_reserva >= date('now', 'localtime') THEN r.data_reserva END ASC,
+                CASE WHEN r.data_reserva >= date('now', 'localtime') THEN MIN(r.hora_inicio) END ASC,
+                r.data_reserva DESC, 
+                MIN(r.hora_inicio) DESC`,
       [arena.id, ...clientIds]
     );
 

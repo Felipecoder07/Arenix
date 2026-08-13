@@ -19,6 +19,9 @@ export default function MyProfileModal({ slug, athlete, open, onClose, onUpdate 
   const [phone, setPhone] = useState(athlete.phone);
   const [cpf, setCpf] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string>('');
+  const [avatarSaving, setAvatarSaving] = useState(false);
+  const [avatarSaved, setAvatarSaved] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -73,25 +76,29 @@ export default function MyProfileModal({ slug, athlete, open, onClose, onUpdate 
       .catch(() => { });
   }, [open, slug, athlete]);
 
-  // Redimensionamento e compressão da foto de perfil no cliente via Canvas
+  // Redimensionamento, compressão e AUTO-SAVE da foto de perfil no backend
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (file.size > 5 * 1024 * 1024) {
-      setErrorData('A imagem selecionada é muito grande. Escolha um arquivo de até 5MB.');
+      setAvatarError('A imagem selecionada é muito grande. Escolha um arquivo de até 5MB.');
       return;
     }
 
     if (!file.type.startsWith('image/')) {
-      setErrorData('Por favor, selecione um arquivo de imagem válido (JPG, PNG, WEBP).');
+      setAvatarError('Por favor, selecione um arquivo de imagem válido (JPG, PNG, WEBP).');
       return;
     }
+
+    setAvatarError(null);
+    setAvatarSaved(false);
+    setAvatarSaving(true);
 
     const reader = new FileReader();
     reader.onload = (event) => {
       const img = new Image();
-      img.onload = () => {
+      img.onload = async () => {
         const canvas = document.createElement('canvas');
         const SIZE = 200;
         canvas.width = SIZE;
@@ -104,7 +111,36 @@ export default function MyProfileModal({ slug, athlete, open, onClose, onUpdate 
           const sy = (img.height - minDim) / 2;
           ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, SIZE, SIZE);
           const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
+          
+          // 1. Atualiza preview na tela imediatamente
           setAvatarUrl(compressedBase64);
+
+          // 2. AUTO-SAVE Instantâneo em segundo plano no Backend
+          try {
+            const token = localStorage.getItem('atleta_token');
+            const res = await fetch(`${BACKEND_URL}/api/public/tenant/${slug}/meu-perfil`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`
+              },
+              body: JSON.stringify({ avatar_url: compressedBase64 })
+            });
+
+            if (res.ok) {
+              setAvatarSaved(true);
+              setTimeout(() => setAvatarSaved(false), 3000);
+            } else {
+              const data = await res.json();
+              setAvatarError(data.error || 'Erro ao salvar a foto de perfil.');
+            }
+          } catch {
+            setAvatarError('Erro de conexão ao salvar foto de perfil.');
+          } finally {
+            setAvatarSaving(false);
+          }
+        } else {
+          setAvatarSaving(false);
         }
       };
       img.src = event.target?.result as string;
@@ -271,10 +307,11 @@ export default function MyProfileModal({ slug, athlete, open, onClose, onUpdate 
               className="hidden"
             />
 
-            {/* Avatar Centralizado com Foto ou Inicial + Badge de Câmera */}
-            <div className="relative mb-2.5">
+            {/* Avatar Centralizado com Foto ou Inicial + Badge de Câmera & Auto-Save */}
+            <div className="relative mb-2.5 flex flex-col items-center">
               <button
                 type="button"
+                disabled={avatarSaving}
                 onClick={() => fileInputRef.current?.click()}
                 className="relative group block cursor-pointer outline-none"
                 title="Clique para alterar foto de perfil"
@@ -283,20 +320,44 @@ export default function MyProfileModal({ slug, athlete, open, onClose, onUpdate 
                   <img
                     src={avatarUrl}
                     alt={name || athlete.name}
-                    className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-sm transition group-hover:opacity-90"
+                    className={`w-16 h-16 rounded-full object-cover border-2 shadow-sm transition ${
+                      avatarSaved ? 'border-available-text ring-2 ring-available-text/30' : 'border-white group-hover:opacity-90'
+                    }`}
                   />
                 ) : (
                   <div className="w-16 h-16 rounded-full bg-gradient-to-br from-available-bg to-emerald-100 border-2 border-white text-available-text flex items-center justify-center font-black text-2xl shadow-sm">
                     {userInitial}
                   </div>
                 )}
-                <div
-                  className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-available-text text-white flex items-center justify-center border-2 border-white shadow-xs group-hover:scale-110 transition"
-                  title="Alterar Foto de Perfil"
-                >
-                  <Camera size={11} />
-                </div>
+
+                {/* Overlay de Loading quando está salvando */}
+                {avatarSaving ? (
+                  <div className="absolute inset-0 rounded-full bg-charcoal/60 flex items-center justify-center text-white backdrop-blur-[1px]">
+                    <Loader2 size={20} className="animate-spin" />
+                  </div>
+                ) : (
+                  <div
+                    className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-available-text text-white flex items-center justify-center border-2 border-white shadow-xs group-hover:scale-110 transition"
+                    title="Alterar Foto de Perfil"
+                  >
+                    <Camera size={11} />
+                  </div>
+                )}
               </button>
+
+              {/* Feedback de Auto-Save de Foto */}
+              {avatarSaved && (
+                <div className="mt-1.5 flex items-center gap-1 text-[11px] font-extrabold text-available-text animate-fadeIn">
+                  <CheckCircle size={13} />
+                  <span>Foto atualizada!</span>
+                </div>
+              )}
+              {avatarError && (
+                <div className="mt-1.5 flex items-center gap-1 text-[11px] font-bold text-error-text animate-fadeIn">
+                  <AlertCircle size={13} />
+                  <span>{avatarError}</span>
+                </div>
+              )}
             </div>
 
 

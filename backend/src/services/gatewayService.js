@@ -65,10 +65,18 @@ const processarLiquidacao = async (gateway_ref, payload = {}) => {
     VALUES (?, ?, ?, NULL)
   `, [transacao.reserva_id, transacao.valor, metodoPagamento]);
 
-  // 3. Atualizar status de pagamento e agendamento da reserva
+  // 3. Atualizar status de pagamento e agendamento da reserva (e todo o grupo/lote se existir)
   if (reserva) {
-    if (reserva.status === 'Pendente') {
-      await db.runAsync('UPDATE Reservas SET status = "Confirmada" WHERE id = ?', [transacao.reserva_id]);
+    const resFull = await db.getAsync('SELECT grupo_id FROM Reservas WHERE id = ?', [transacao.reserva_id]);
+    if (resFull && resFull.grupo_id) {
+      await db.runAsync(
+        'UPDATE Reservas SET status = "Confirmada", status_pagamento = "Pago" WHERE grupo_id = ? AND tenant_id = ?',
+        [resFull.grupo_id, reserva.tenant_id]
+      );
+    } else {
+      if (reserva.status === 'Pendente') {
+        await db.runAsync('UPDATE Reservas SET status = "Confirmada" WHERE id = ?', [transacao.reserva_id]);
+      }
     }
 
     const { saldoDevedor, novoStatus } = await atualizarStatusReservaInterna(transacao.reserva_id, reserva.tenant_id);

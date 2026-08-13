@@ -23,6 +23,8 @@ interface ReservaItem {
   hora_inicio: string;
   hora_fim: string;
   valor_total: number;
+  total_horarios?: number;
+  grupo_id?: string;
   status: string;
   status_pagamento: string;
   criado_em: string;
@@ -109,11 +111,40 @@ export default function MyReservations({ slug, athlete, open, onClose, onPayPend
       if (res.ok) {
         const data = await res.json();
         const sorted = Array.isArray(data) ? [...data].sort((a, b) => {
-          const aPending = (a.status === 'Pendente' || a.status_pagamento === 'Pendente') && a.status !== 'Cancelada';
-          const bPending = (b.status === 'Pendente' || b.status_pagamento === 'Pendente') && b.status !== 'Cancelada';
-          if (aPending && !bPending) return -1;
-          if (!aPending && bPending) return 1;
-          return 0;
+          const aCancelada = a.status === 'Cancelada' || a.status_pagamento === 'Estornado' || a.status_pagamento === 'Expirado' || a.status_pagamento === 'Desistência';
+          const bCancelada = b.status === 'Cancelada' || b.status_pagamento === 'Estornado' || b.status_pagamento === 'Expirado' || b.status_pagamento === 'Desistência';
+
+          const aPassada = isReservaPassada(a.data_reserva, a.hora_inicio);
+          const bPassada = isReservaPassada(b.data_reserva, b.hora_inicio);
+
+          const aPending = (a.status === 'Pendente' || a.status_pagamento === 'Pendente') && !aCancelada && !aPassada;
+          const bPending = (b.status === 'Pendente' || b.status_pagamento === 'Pendente') && !bCancelada && !bPassada;
+
+          const aAtiva = !aCancelada && !aPassada;
+          const bAtiva = !bCancelada && !bPassada;
+
+          const getRank = (isPend: boolean, isAtv: boolean, isPas: boolean, isCanc: boolean) => {
+            if (isCanc) return 3;
+            if (isPas) return 2;
+            if (isPend) return 0;
+            if (isAtv) return 1;
+            return 2;
+          };
+
+          const rankA = getRank(aPending, aAtiva, aPassada, aCancelada);
+          const rankB = getRank(bPending, bAtiva, bPassada, bCancelada);
+
+          if (rankA !== rankB) return rankA - rankB;
+
+          // Para ativas/futuras (ranks 0 e 1): ordena por data mais próxima primeiro (ASC)
+          if (rankA <= 1) {
+            if (a.data_reserva !== b.data_reserva) return a.data_reserva.localeCompare(b.data_reserva);
+            return a.hora_inicio.localeCompare(b.hora_inicio);
+          }
+
+          // Para passadas/canceladas (ranks 2 e 3): ordena por data mais recente primeiro (DESC)
+          if (a.data_reserva !== b.data_reserva) return b.data_reserva.localeCompare(a.data_reserva);
+          return b.hora_inicio.localeCompare(a.hora_inicio);
         }) : [];
         setReservas(sorted);
         setSearched(true);
@@ -262,9 +293,9 @@ ${moneyEmoji} *Valor Pago:* R$ ${data.reserva.valor_total.toFixed(2)}`;
 
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-5">
       <div className="absolute inset-0 bg-charcoal/50 animate-fadeIn" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-card rounded-3xl shadow-sheet animate-scaleIn max-h-[90vh] flex flex-col overflow-hidden">
+      <div className="relative w-full max-w-[395px] bg-card rounded-3xl shadow-sheet animate-scaleIn max-h-[80vh] flex flex-col overflow-hidden">
         
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-4 pb-3 shrink-0 border-b border-edge">
@@ -332,12 +363,19 @@ ${moneyEmoji} *Valor Pago:* R$ ${data.reserva.valor_total.toFixed(2)}`;
           {!loading && searched && reservas.length > 0 && (
             <div className="space-y-3 animate-fadeIn">
               {reservas.map((r) => {
-                const isCancelada = r.status === 'Cancelada' || r.status_pagamento === 'Estornado';
+                const isCancelada = r.status === 'Cancelada' || r.status_pagamento === 'Estornado' || r.status_pagamento === 'Expirado' || r.status_pagamento === 'Desistência';
                 const isPassada = isReservaPassada(r.data_reserva, r.hora_inicio);
+                const isPago = r.status_pagamento === 'Pago' || r.status === 'Confirmada';
                 const canCancel = !isCancelada && !isPassada;
 
+                const borderLeftColor = isCancelada
+                  ? 'border-l-[5px] border-l-rose-500'
+                  : isPago
+                  ? 'border-l-[5px] border-l-emerald-500'
+                  : 'border-l-[5px] border-l-amber-500';
+
                 return (
-                  <div key={r.id} className={`rounded-2xl border p-4 transition ${isCancelada || isPassada ? 'border-edge/50 bg-neutral-50/60 opacity-80' : 'border-edge bg-surface'}`}>
+                  <div key={r.id} className={`rounded-2xl border ${borderLeftColor} p-4 transition ${isCancelada || isPassada ? 'border-edge/50 bg-neutral-50/60 opacity-90' : 'border-edge bg-surface'}`}>
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <CalendarCheck size={16} className="text-muted" />
@@ -352,6 +390,11 @@ ${moneyEmoji} *Valor Pago:* R$ ${data.reserva.valor_total.toFixed(2)}`;
                       </p>
                       <p className="flex items-center gap-2">
                         <Clock size={14} /> {r.hora_inicio} às {r.hora_fim}
+                        {r.total_horarios && r.total_horarios > 1 && (
+                          <span className="text-[10px] font-bold text-available-text bg-available-bg px-2 py-0.5 rounded-md border border-available-border">
+                            {r.total_horarios} horários
+                          </span>
+                        )}
                       </p>
                       <p className="flex items-center justify-between mt-2.5 pt-2.5 border-t border-edge/60">
                         <button

@@ -128,6 +128,7 @@ const initDb = () => {
     `);
 
     db.run("ALTER TABLE Reservas ADD COLUMN codigo_validacao_cancelamento TEXT", () => {});
+    db.run("ALTER TABLE Reservas ADD COLUMN grupo_id TEXT", () => {});
 
     // Tabela Pagamentos
     db.run(`
