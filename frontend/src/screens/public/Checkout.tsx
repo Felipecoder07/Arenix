@@ -31,7 +31,7 @@ export function Checkout() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    fetch('http://localhost:3000/api/auth/planos')
+    fetch('/api/auth/planos')
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {
@@ -104,7 +104,7 @@ export function Checkout() {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch('http://localhost:3000/api/auth/register', {
+      const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -123,7 +123,7 @@ export function Checkout() {
       const data = await response.json();
 
       if (response.ok) {
-        const loginResponse = await fetch('http://localhost:3000/api/auth/login', {
+        const loginResponse = await fetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: formData.resp_email, senha: formData.resp_senha })

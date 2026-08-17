@@ -39,7 +39,7 @@ export function PortalCliente() {
     if (!token) return;
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:3000/api/reservas/minhas', {
+      const response = await fetch('/api/reservas/minhas', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
@@ -68,7 +68,7 @@ export function PortalCliente() {
     let intervalId: any;
     const checkStatus = async () => {
       try {
-        const res = await fetch(`http://localhost:3000/api/pagamentos/gateway/status/${pagandoReserva.id}`, {
+        const res = await fetch(`/api/pagamentos/gateway/status/${pagandoReserva.id}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
@@ -102,7 +102,7 @@ export function PortalCliente() {
     setPagandoReserva(reserva);
     setLoadingGateway(true);
     try {
-      const res = await fetch('http://localhost:3000/api/pagamentos/gateway/cobranca', {
+      const res = await fetch('/api/pagamentos/gateway/cobranca', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -131,7 +131,7 @@ export function PortalCliente() {
   const simularPagamento = async () => {
     if (!gatewayRef) return;
     try {
-      const res = await fetch('http://localhost:3000/api/pagamentos/gateway/simular-pagamento', {
+      const res = await fetch('/api/pagamentos/gateway/simular-pagamento', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

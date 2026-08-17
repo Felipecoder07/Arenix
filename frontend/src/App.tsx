@@ -46,7 +46,7 @@ function AdminGuard({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        const res = await fetch('http://localhost:3000/api/auth/me', {
+        const res = await fetch('/api/auth/me', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
 
@@ -197,7 +197,7 @@ function MasterGuard({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        const res = await fetch('http://localhost:3000/api/auth/me', {
+        const res = await fetch('/api/auth/me', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
 
@@ -250,7 +250,7 @@ function ClientGuard({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        const res = await fetch('http://localhost:3000/api/auth/me', {
+        const res = await fetch('/api/auth/me', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
 

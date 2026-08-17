@@ -32,8 +32,8 @@ export function MasterComunicacao() {
       const headers = { 'Authorization': `Bearer ${token}` };
 
       const [arenasRes, BannersRes] = await Promise.all([
-        fetch('http://localhost:3000/api/saas/arenas', { headers }).then(r => r.json()),
-        fetch('http://localhost:3000/api/saas/comunicados', { headers }).then(r => r.json())
+        fetch('/api/saas/arenas', { headers }).then(r => r.json()),
+        fetch('/api/saas/comunicados', { headers }).then(r => r.json())
       ]);
 
       setArenas(Array.isArray(arenasRes) ? arenasRes : []);
@@ -59,7 +59,7 @@ export function MasterComunicacao() {
     setSent(false);
     try {
       const token = localStorage.getItem('courtmanager_token');
-      const res = await fetch('http://localhost:3000/api/saas/comunicados', {
+      const res = await fetch('/api/saas/comunicados', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -100,7 +100,7 @@ export function MasterComunicacao() {
         expiresAt = new Date(new Date(broadcastAt).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
       }
 
-      const res = await fetch('http://localhost:3000/api/saas/comunicados', {
+      const res = await fetch('/api/saas/comunicados', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -134,7 +134,7 @@ export function MasterComunicacao() {
     if (!removeBanner) return;
     try {
       const token = localStorage.getItem('courtmanager_token');
-      const res = await fetch(`http://localhost:3000/api/saas/comunicados/${removeBanner}`, {
+      const res = await fetch(`/api/saas/comunicados/${removeBanner}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });

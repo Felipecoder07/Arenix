@@ -9,5 +9,6 @@ router.use(requireRole(['Administrador', 'Gerente']));
 
 router.get('/minha', arenasController.getMinhaArena);
 router.put('/minha', arenasController.atualizarMinhaArena);
+router.post('/upload-capa', arenasController.uploadFotoCapa);
 
 module.exports = router;

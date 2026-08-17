@@ -89,7 +89,7 @@ export function AdminPagamentos() {
   const carregarKPIs = async () => {
     if (!token) return;
     try {
-      const res = await fetch('http://localhost:3000/api/pagamentos/resumo', {
+      const res = await fetch('/api/pagamentos/resumo', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -117,7 +117,7 @@ export function AdminPagamentos() {
         params.append('data', dataFiltro);
       }
 
-      const res = await fetch(`http://localhost:3000/api/pagamentos/reservas?${params.toString()}`, {
+      const res = await fetch(`/api/pagamentos/reservas?${params.toString()}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -172,7 +172,7 @@ export function AdminPagamentos() {
     if (!token) return;
     setLoadingHistorico(true);
     try {
-      const res = await fetch(`http://localhost:3000/api/pagamentos/reserva/${reservaId}`, {
+      const res = await fetch(`/api/pagamentos/reserva/${reservaId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -203,7 +203,7 @@ export function AdminPagamentos() {
     let intervalId: any;
     const checkStatus = async () => {
       try {
-        const res = await fetch(`http://localhost:3000/api/pagamentos/gateway/status/${reservaAtual.id}`, {
+        const res = await fetch(`/api/pagamentos/gateway/status/${reservaAtual.id}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
@@ -242,7 +242,7 @@ export function AdminPagamentos() {
         payload.valor_pago = parseCurrencyToFloat(rpValor);
       }
 
-      const res = await fetch('http://localhost:3000/api/pagamentos/gateway/simular-pagamento', {
+      const res = await fetch('/api/pagamentos/gateway/simular-pagamento', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -302,7 +302,7 @@ export function AdminPagamentos() {
       setLoadingGateway(true);
       setShowPixCobranca(true);
       try {
-        const res = await fetch('http://localhost:3000/api/pagamentos/gateway/cobranca', {
+        const res = await fetch('/api/pagamentos/gateway/cobranca', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -333,7 +333,7 @@ export function AdminPagamentos() {
       setLoadingGateway(true);
       setShowPixCobranca(true);
       try {
-        const res = await fetch('http://localhost:3000/api/pagamentos/gateway/cobranca', {
+        const res = await fetch('/api/pagamentos/gateway/cobranca', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -360,7 +360,7 @@ export function AdminPagamentos() {
     }
 
     try {
-      const res = await fetch('http://localhost:3000/api/pagamentos', {
+      const res = await fetch('/api/pagamentos', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -394,7 +394,7 @@ export function AdminPagamentos() {
     }
 
     try {
-      const res = await fetch('http://localhost:3000/api/pagamentos/estorno', {
+      const res = await fetch('/api/pagamentos/estorno', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

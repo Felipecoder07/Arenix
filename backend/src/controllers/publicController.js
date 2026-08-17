@@ -42,7 +42,7 @@ const getTenantBySlug = async (req, res) => {
 
   try {
     const arena = await db.getAsync(
-      `SELECT id, nome, endereco, telefone, email, fuso_horario, horario_abertura, horario_fechamento, status, slug, criado_em
+      `SELECT id, nome, endereco, telefone, email, fuso_horario, horario_abertura, horario_fechamento, status, slug, foto_capa, criado_em
        FROM Arenas 
        WHERE slug = ? AND status != -1`,
       [slug]
@@ -999,68 +999,6 @@ const atualizarPerfilAtleta = async (req, res) => {
   }
 };
 
-// 10. Simular Confirmação de Pix Público (Para Testes e Demonstrações)
-const simularPagamentoPublico = async (req, res) => {
-  const { slug } = req.params;
-  const { reserva_id } = req.body;
-
-  if (!reserva_id) {
-    return res.status(400).json({ error: 'reserva_id é obrigatório.' });
-  }
-
-  try {
-    const arena = await db.getAsync('SELECT id, nome FROM Arenas WHERE slug = ? AND status = 1', [slug]);
-    if (!arena) {
-      return res.status(404).json({ error: 'Arena não encontrada.' });
-    }
-
-    const reserva = await db.getAsync('SELECT id, cliente_id, valor_total, grupo_id FROM Reservas WHERE id = ? AND tenant_id = ?', [reserva_id, arena.id]);
-    if (!reserva) {
-      return res.status(404).json({ error: 'Reserva não encontrada nesta arena.' });
-    }
-
-    // 10a. Atualiza status da reserva principal e todas as reservas do mesmo grupo/lote para Confirmada e Pago
-    if (reserva.grupo_id) {
-      await db.runAsync(
-        `UPDATE Reservas SET status = 'Confirmada', status_pagamento = 'Pago' 
-         WHERE grupo_id = ? AND tenant_id = ?`,
-        [reserva.grupo_id, arena.id]
-      );
-    } else {
-      await db.runAsync(
-        `UPDATE Reservas SET status = 'Confirmada', status_pagamento = 'Pago' 
-         WHERE id = ? OR (cliente_id = ? AND tenant_id = ? AND status = 'Pendente' AND abs(strftime('%s', criado_em) - strftime('%s', (SELECT criado_em FROM Reservas WHERE id = ?))) < 60)`,
-        [reserva_id, reserva.cliente_id, arena.id, reserva_id]
-      );
-    }
-
-    // 10b. Insere registro financeiro na tabela Pagamentos se não existir
-    const pExistente = await db.getAsync('SELECT id FROM Pagamentos WHERE reserva_id = ?', [reserva_id]);
-    if (!pExistente) {
-      await db.runAsync(
-        "INSERT INTO Pagamentos (reserva_id, valor, metodo, registrado_por) VALUES (?, ?, 'Pix Online', NULL)",
-        [reserva_id, reserva.valor_total]
-      );
-    }
-
-    logAuditEvent(
-      0,
-      'Pagamento Pix Confirmado',
-      `Pagamento Pix da reserva #${reserva_id} (R$ ${reserva.valor_total.toFixed(2)}) foi confirmado na arena '${arena.nome}'.`,
-      req.ip
-    );
-
-    res.json({
-      message: 'Pagamento Pix confirmado com sucesso! Sua reserva está garantida.',
-      status_pagamento: 'Pago',
-      status_reserva: 'Confirmada'
-    });
-  } catch (err) {
-    console.error('[Public Controller Error] simularPagamentoPublico:', err);
-    res.status(500).json({ error: 'Erro ao confirmar pagamento Pix.' });
-  }
-};
-
 // 11. Consultar Status do Pagamento da Reserva para Polling do Pix
 const getStatusReservaPublica = async (req, res) => {
   const { slug, reserva_id } = req.params;
@@ -1231,8 +1169,16 @@ const getMinhasReservasAtleta = async (req, res) => {
       `SELECT MIN(r.id) as id, r.grupo_id, r.quadra_id, q.nome as quadra_nome, r.data_reserva, 
               MIN(r.hora_inicio) as hora_inicio, MAX(r.hora_fim) as hora_fim, 
               SUM(r.valor_total) as valor_total, COUNT(r.id) as total_horarios,
-              CASE WHEN MAX(CASE WHEN r.status = 'Confirmada' THEN 1 ELSE 0 END) = 1 THEN 'Confirmada' ELSE MIN(r.status) END as status,
-              CASE WHEN MAX(CASE WHEN r.status_pagamento = 'Pago' THEN 1 ELSE 0 END) = 1 THEN 'Pago' ELSE MIN(r.status_pagamento) END as status_pagamento,
+              CASE 
+                WHEN MAX(CASE WHEN r.status != 'Cancelada' THEN 1 ELSE 0 END) = 0 THEN 'Cancelada'
+                WHEN MAX(CASE WHEN r.status = 'Confirmada' THEN 1 ELSE 0 END) = 1 THEN 'Confirmada'
+                ELSE 'Pendente'
+              END as status,
+              CASE 
+                WHEN MAX(CASE WHEN r.status_pagamento NOT IN ('Estornado', 'Expirado', 'Cancelado (Pendente Estorno)') THEN 1 ELSE 0 END) = 0 THEN MAX(r.status_pagamento)
+                WHEN MAX(CASE WHEN r.status_pagamento = 'Pago' THEN 1 ELSE 0 END) = 1 THEN 'Pago'
+                ELSE 'Pendente'
+              END as status_pagamento,
               MAX(r.criado_em) as criado_em, r.codigo_validacao_cancelamento,
               c.nome as cliente_nome, c.email as cliente_email, c.telefone as cliente_telefone, c.cpf as cliente_cpf,
               tg.gateway_ref, tg.metodo as metodo_gateway, tg.status as status_gateway, tg.atualizado_em as data_gateway,
@@ -1245,10 +1191,10 @@ const getMinhasReservasAtleta = async (req, res) => {
        WHERE r.tenant_id = ? AND r.cliente_id IN (${clientIds.map(() => '?').join(',')})
        GROUP BY COALESCE(NULLIF(r.grupo_id, ''), CAST(r.id AS TEXT))
        ORDER BY CASE 
-                  WHEN (MIN(r.status) = 'Pendente' OR MIN(r.status_pagamento) = 'Pendente') AND MIN(r.status) != 'Cancelada' AND r.data_reserva >= date('now', 'localtime') THEN 0
-                  WHEN MIN(r.status) != 'Cancelada' AND MIN(r.status_pagamento) != 'Estornado' AND r.data_reserva >= date('now', 'localtime') THEN 1
-                  WHEN MIN(r.status) != 'Cancelada' AND MIN(r.status_pagamento) != 'Estornado' THEN 2
-                  ELSE 3 
+                  WHEN MAX(CASE WHEN r.status != 'Cancelada' THEN 1 ELSE 0 END) = 0 THEN 3
+                  WHEN (MIN(r.status) = 'Pendente' OR MIN(r.status_pagamento) = 'Pendente') AND r.data_reserva >= date('now', 'localtime') THEN 0
+                  WHEN r.data_reserva >= date('now', 'localtime') THEN 1
+                  ELSE 2 
                 END, 
                 CASE WHEN r.data_reserva >= date('now', 'localtime') THEN r.data_reserva END ASC,
                 CASE WHEN r.data_reserva >= date('now', 'localtime') THEN MIN(r.hora_inicio) END ASC,
@@ -1518,10 +1464,32 @@ const cancelarReservaAtleta = async (req, res) => {
     return res.status(400).json({ error: 'ID de reserva inválido.' });
   }
 
+  // 1. Validação estrita do Token JWT do Atleta
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Você precisa estar logado para cancelar uma reserva.' });
+  }
+
+  const token = authHeader.split(' ')[1];
+  const jwt = require('jsonwebtoken');
+  const JWT_SECRET = process.env.JWT_SECRET || 'secret-jwt-courtmanager-2026';
+
+  let decoded;
+  try {
+    decoded = jwt.verify(token, JWT_SECRET);
+  } catch (errJwt) {
+    return res.status(401).json({ error: 'Sessão inválida ou expirada. Faça login novamente para cancelar a reserva.' });
+  }
+
   try {
     const arena = await db.getAsync('SELECT id, nome, telefone, email FROM Arenas WHERE slug = ? AND status = 1', [slug]);
     if (!arena) {
       return res.status(404).json({ error: 'Arena não encontrada.' });
+    }
+
+    const usuario = await db.getAsync('SELECT id, nome, email FROM Usuarios WHERE id = ?', [decoded.id]);
+    if (!usuario) {
+      return res.status(401).json({ error: 'Usuário autenticado não encontrado.' });
     }
 
     const reserva = await db.getAsync(
@@ -1537,8 +1505,52 @@ const cancelarReservaAtleta = async (req, res) => {
       return res.status(404).json({ error: 'Reserva não encontrada.' });
     }
 
-    if (reserva.status === 'Cancelada') {
-      return res.status(400).json({ error: 'Esta reserva já se encontra cancelada.' });
+    // 2. Trava de Segurança IDOR: Garante que o atleta do token é o dono da reserva
+    const emailUsuario = (usuario.email || '').trim().toLowerCase();
+    const emailReserva = (reserva.cliente_email || '').trim().toLowerCase();
+
+    let isOwner = (emailUsuario !== '' && emailReserva !== '' && emailUsuario === emailReserva);
+
+    if (!isOwner) {
+      // Checa se o cliente_id da reserva está associado ao email deste usuário
+      const clienteVinc = await db.getAsync(
+        'SELECT id FROM Clientes WHERE id = ? AND tenant_id = ? AND LOWER(email) = ?',
+        [reserva.cliente_id, arena.id, emailUsuario]
+      );
+      if (clienteVinc) {
+        isOwner = true;
+      }
+    }
+
+    if (!isOwner) {
+      logAuditEvent(
+        usuario.id,
+        'Tentativa IDOR Cancelamento Bloqueada',
+        `Usuário '${usuario.nome}' (ID ${usuario.id}) tentou cancelar a reserva #${reserva.id} pertencente ao cliente '${reserva.cliente_nome}'.`,
+        req.ip
+      );
+      return res.status(403).json({ error: 'Acesso negado. Esta reserva não pertence à sua conta.' });
+    }
+
+    // Se a reserva tem grupo_id (reserva de múltiplos horários), atualiza TODAS as reservas do mesmo grupo
+    let grupoClause = 'WHERE id = ? AND tenant_id = ?';
+    let grupoParams = [reserva.id, arena.id];
+
+    if (reserva.grupo_id && String(reserva.grupo_id).trim() !== '') {
+      grupoClause = 'WHERE grupo_id = ? AND tenant_id = ?';
+      grupoParams = [reserva.grupo_id, arena.id];
+
+      const grupoReservas = await db.allAsync(
+        `SELECT status FROM Reservas WHERE grupo_id = ? AND tenant_id = ?`,
+        [reserva.grupo_id, arena.id]
+      );
+      if (grupoReservas.length > 0 && grupoReservas.every(r => r.status === 'Cancelada')) {
+        return res.status(400).json({ error: 'Esta reserva já se encontra cancelada.' });
+      }
+    } else {
+      if (reserva.status === 'Cancelada') {
+        return res.status(400).json({ error: 'Esta reserva já se encontra cancelada.' });
+      }
     }
 
     const todayStr = getTodayString();
@@ -1566,8 +1578,8 @@ const cancelarReservaAtleta = async (req, res) => {
           `UPDATE Reservas 
            SET status = 'Cancelada', status_pagamento = 'Estornado', 
                codigo_validacao_cancelamento = ?, observacoes_cancelamento = 'Cancelado pelo cliente (Estorno MP Automático)'
-           WHERE id = ?`,
-          [codigoValidacao, reserva.id]
+           ${grupoClause}`,
+          [codigoValidacao, ...grupoParams]
         );
       } else {
         estornoStatus = 'manual';
@@ -1576,16 +1588,16 @@ const cancelarReservaAtleta = async (req, res) => {
           `UPDATE Reservas 
            SET status = 'Cancelada', status_pagamento = 'Cancelado (Pendente Estorno)', 
                codigo_validacao_cancelamento = ?, observacoes_cancelamento = 'Cancelado pelo cliente (Pendente Estorno Manual)'
-           WHERE id = ?`,
-          [codigoValidacao, reserva.id]
+           ${grupoClause}`,
+          [codigoValidacao, ...grupoParams]
         );
       }
     } else {
       await db.runAsync(
         `UPDATE Reservas 
          SET status = 'Cancelada', codigo_validacao_cancelamento = ?, observacoes_cancelamento = 'Cancelado pelo cliente'
-         WHERE id = ?`,
-        [codigoValidacao, reserva.id]
+         ${grupoClause}`,
+        [codigoValidacao, ...grupoParams]
       );
     }
 
@@ -1619,57 +1631,84 @@ const cancelarReservaAtleta = async (req, res) => {
   }
 };
 
-// Exclusão Definitiva de Conta de Atleta (LGPD)
+// Exclusão Definitiva de Conta de Atleta (LGPD) — Requer Autenticação Estrita JWT
 const excluirContaAtleta = async (req, res) => {
   const { slug } = req.params;
-  const { cliente_id, phone, email } = req.body;
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Você precisa estar autenticado para solicitar a exclusão da sua conta.' });
+  }
+
+  const token = authHeader.split(' ')[1];
+  const jwt = require('jsonwebtoken');
+  const JWT_SECRET = process.env.JWT_SECRET || 'secret-jwt-courtmanager-2026';
+
+  let decoded;
+  try {
+    decoded = jwt.verify(token, JWT_SECRET);
+  } catch (errJwt) {
+    return res.status(401).json({ error: 'Sessão inválida ou expirada. Faça login novamente para prosseguir com a exclusão.' });
+  }
 
   try {
-    const arena = await db.getAsync('SELECT id FROM Arenas WHERE slug = ? AND status != -1', [slug]);
+    const arena = await db.getAsync('SELECT id, nome FROM Arenas WHERE slug = ? AND status != -1', [slug]);
     if (!arena) {
       return res.status(404).json({ error: 'Arena não encontrada.' });
     }
 
-    let cliente = null;
-    if (cliente_id) {
-      cliente = await db.getAsync('SELECT id, nome, email, telefone FROM Clientes WHERE id = ?', [cliente_id]);
-    } else if (phone || email) {
-      const cleanPhone = (phone || '').replace(/\D/g, '');
+    const usuario = await db.getAsync('SELECT id, nome, email, telefone FROM Usuarios WHERE id = ?', [decoded.id]);
+    if (!usuario) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+
+    const emailUsuario = (usuario.email || '').trim().toLowerCase();
+
+    // Localiza o cliente vinculado nesta arena
+    let cliente = await db.getAsync(
+      'SELECT id, nome, email, telefone FROM Clientes WHERE tenant_id = ? AND LOWER(email) = ?',
+      [arena.id, emailUsuario]
+    );
+
+    if (!cliente && usuario.telefone) {
+      const cleanPhone = usuario.telefone.replace(/\D/g, '');
       cliente = await db.getAsync(
-        `SELECT id, nome, email, telefone FROM Clientes 
-         WHERE (telefone = ? OR (telefone LIKE ? AND length(?) >= 8)) OR (email = ? AND length(?) > 3)`,
-        [phone, `%${cleanPhone.slice(-8)}`, cleanPhone, email, email]
+        'SELECT id, nome, email, telefone FROM Clientes WHERE tenant_id = ? AND (telefone = ? OR (telefone LIKE ? AND length(?) >= 8))',
+        [arena.id, usuario.telefone, `%${cleanPhone.slice(-8)}`, cleanPhone]
       );
     }
 
-    if (!cliente) {
-      return res.status(404).json({ error: 'Conta de atleta não encontrada.' });
+    if (cliente) {
+      // 1. Anonimizar Reservas antigas (Manter Faturamento & Relatórios de Caixa da Arena)
+      await db.runAsync(
+        `UPDATE Reservas 
+         SET cliente_nome = 'Cliente Removido (LGPD)',
+             cliente_email = NULL,
+             cliente_telefone = NULL,
+             cliente_cpf = NULL,
+             cliente_id = NULL
+         WHERE tenant_id = ? AND (cliente_id = ? OR (cliente_email IS NOT NULL AND LOWER(cliente_email) = ?))`,
+        [arena.id, cliente.id, emailUsuario]
+      );
+
+      // 2. Excluir vínculo de cliente nesta arena
+      await db.runAsync('DELETE FROM Clientes WHERE id = ?', [cliente.id]);
     }
 
-    // 1. Anonimizar Reservas antigas (Manter Faturamento & Relatórios de Caixa da Arena)
-    await db.runAsync(
-      `UPDATE Reservas 
-       SET cliente_nome = 'Cliente Removido (LGPD)',
-           cliente_email = NULL,
-           cliente_telefone = NULL,
-           cliente_cpf = NULL,
-           cliente_id = NULL
-       WHERE cliente_id = ? OR (cliente_telefone = ? AND cliente_telefone IS NOT NULL) OR (cliente_email = ? AND cliente_email IS NOT NULL)`,
-      [cliente.id, cliente.telefone, cliente.email]
-    );
+    // 3. Desativar a conta do usuário global
+    await db.runAsync('UPDATE Usuarios SET ativo = 0, nome = \'Conta Excluída\', email = ? WHERE id = ?', [`deleted_${usuario.id}_${Date.now()}@anon.local`, usuario.id]);
 
-    // 2. Registrar Audit Log
+    // 4. Registrar Audit Log
     try {
-      logAuditEvent('LGPD_EXCLUSAO_CONTA', `Atleta ID ${cliente.id} (${cliente.nome}) solicitou a exclusão definitiva de seus dados sob LGPD.`, {
-        cliente_id: cliente.id,
-        arena_id: arena.id
-      });
+      logAuditEvent(
+        usuario.id,
+        'LGPD_EXCLUSAO_CONTA',
+        `Atleta ID ${usuario.id} (${usuario.nome} / ${usuario.email}) excluiu definitivamente seus dados sob LGPD na arena '${arena.nome}'.`,
+        req.ip
+      );
     } catch (e) {
       console.warn('[LGPD Audit Warning]', e.message);
     }
-
-    // 3. Excluir conta de atleta permanentemente
-    await db.runAsync('DELETE FROM Clientes WHERE id = ?', [cliente.id]);
 
     res.json({
       success: true,
@@ -1691,7 +1730,6 @@ module.exports = {
   googleAuthAtletaPublico,
   getPerfilAtleta,
   atualizarPerfilAtleta,
-  simularPagamentoPublico,
   getStatusReservaPublica,
   cancelarPendentePublico,
   getMinhasReservasAtleta,

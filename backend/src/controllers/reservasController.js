@@ -202,9 +202,17 @@ const cancelarReserva = async (req, res) => {
       }
     }
 
+    let grupoClause = 'WHERE id = ? AND tenant_id = ?';
+    let grupoParams = [id, tenant_id];
+
+    if (reserva.grupo_id && String(reserva.grupo_id).trim() !== '') {
+      grupoClause = 'WHERE grupo_id = ? AND tenant_id = ?';
+      grupoParams = [reserva.grupo_id, tenant_id];
+    }
+
     await db.runAsync(
-      'UPDATE Reservas SET status = "Cancelada", status_pagamento = ?, motivo_cancelamento_id = ?, observacoes_cancelamento = ? WHERE id = ?',
-      [novoStatusPagamento, motivo || null, observacoes || null, id]
+      `UPDATE Reservas SET status = "Cancelada", status_pagamento = ?, motivo_cancelamento_id = ?, observacoes_cancelamento = ? ${grupoClause}`,
+      [novoStatusPagamento, motivo || null, observacoes || null, ...grupoParams]
     );
 
     logAuditEvent(req.user.id, 'Cancelamento de reserva', `Reserva ID: ${id}, Motivo: ${motivoTexto}`, req.ip);

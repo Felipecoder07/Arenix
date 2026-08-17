@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { User, Phone, Lock, Eye, EyeOff, Loader2, AlertCircle, CheckCircle, X, Shield, CreditCard, Trash2, KeyRound, Camera, Sparkles, BadgeCheck } from 'lucide-react';
+import { User, Phone, Lock, Eye, EyeOff, Loader2, AlertCircle, CheckCircle, X, Shield, CreditCard, Trash2, KeyRound, Camera, Sparkles, BadgeCheck, LogOut } from 'lucide-react';
 import { maskPhone, maskCPF } from '../lib/format';
 
 
@@ -12,9 +12,10 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onUpdate: (updated: { name: string; phone: string }) => void;
+  onLogout?: () => void;
 }
 
-export default function MyProfileModal({ slug, athlete, open, onClose, onUpdate }: Props) {
+export default function MyProfileModal({ slug, athlete, open, onClose, onUpdate, onLogout }: Props) {
   const [name, setName] = useState(athlete.name);
   const [phone, setPhone] = useState(athlete.phone);
   const [cpf, setCpf] = useState('');
@@ -247,12 +248,17 @@ export default function MyProfileModal({ slug, athlete, open, onClose, onUpdate 
     setDeletingLoading(true);
     setDeleteError(null);
     try {
-      const token = localStorage.getItem('atleta_token');
+      const token = localStorage.getItem('courtmanager_athlete_token') || localStorage.getItem('atleta_token');
+      if (!token) {
+        setDeleteError('Você precisa estar autenticado para excluir sua conta.');
+        setDeletingLoading(false);
+        return;
+      }
       const res = await fetch(`${BACKEND_URL}/api/public/tenant/${slug}/excluir-conta`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           phone: athlete.phone,
@@ -522,6 +528,23 @@ export default function MyProfileModal({ slug, athlete, open, onClose, onUpdate 
                 </button>
               </form>
             </section>
+
+            {/* SEÇÃO: Ações de Sessão */}
+            {onLogout && (
+              <section className="pt-1 pb-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onLogout();
+                    onClose();
+                  }}
+                  className="w-full flex items-center justify-center gap-2 rounded-2xl bg-white border border-edge text-charcoal/80 hover:text-charcoal hover:bg-surface font-bold text-xs h-11 active:scale-[0.98] transition shadow-xs"
+                >
+                  <LogOut size={15} className="text-muted" />
+                  Sair da Minha Conta
+                </button>
+              </section>
+            )}
 
             {/* SEÇÃO 3: Privacidade & LGPD (Zona de Perigo) */}
             <section className="bg-rose-50/70 p-4 rounded-2xl border border-rose-200/80 space-y-3">

@@ -58,7 +58,7 @@ export function AdminAuditoria() {
     }
 
     try {
-      const url = new URL('http://localhost:3000/api/auditoria');
+      const url = new URL('/api/auditoria');
       url.searchParams.append('data_inicio', dataInicio);
       url.searchParams.append('data_fim', dataFim);
       url.searchParams.append('pagina', String(targetPage));
@@ -120,7 +120,7 @@ export function AdminAuditoria() {
     setExporting(true);
 
     try {
-      const url = new URL('http://localhost:3000/api/auditoria');
+      const url = new URL('/api/auditoria');
       url.searchParams.append('data_inicio', dataInicio);
       url.searchParams.append('data_fim', dataFim);
       url.searchParams.append('exportar', 'true');

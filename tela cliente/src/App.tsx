@@ -40,8 +40,20 @@ export default function App() {
   const [notFound, setNotFound] = useState(false);
   const [blockedMsg, setBlockedMsg] = useState<string | null>(null);
 
+  // Helper para restaurar sessão prévia do atleta do localStorage (sem delay de UI)
+  const getInitialAthlete = () => {
+    try {
+      const saved = localStorage.getItem('atleta_session');
+      const token = localStorage.getItem('courtmanager_athlete_token') || localStorage.getItem('atleta_token');
+      if (saved && token) {
+        return JSON.parse(saved);
+      }
+    } catch {}
+    return null;
+  };
+
   // Atleta Logado (Sessão do Atleta)
-  const [athlete, setAthlete] = useState<{ name: string; email: string; phone: string } | null>(null);
+  const [athlete, setAthlete] = useState<{ name: string; email: string; phone: string } | null>(getInitialAthlete);
 
   // Carrinho de Múltiplos Horários
   const [selectedSlots, setSelectedSlots] = useState<Slot[]>([]);
@@ -55,9 +67,55 @@ export default function App() {
   const [myResOpen, setMyResOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
+  // 1.1 Validar Token e Sincronizar Perfil do Atleta em Background
+  useEffect(() => {
+    const token = localStorage.getItem('courtmanager_athlete_token') || localStorage.getItem('atleta_token');
+    if (!token) {
+      setAthlete(null);
+      localStorage.removeItem('atleta_session');
+      return;
+    }
+
+    fetch(`${BACKEND_URL}/api/public/tenant/${slug}/meu-perfil`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(async (res) => {
+        if (res.ok) {
+          const data = await res.json();
+          if (data.perfil) {
+            const userObj = {
+              name: data.perfil.nome || '',
+              email: data.perfil.email || '',
+              phone: data.perfil.telefone || ''
+            };
+            setAthlete(userObj);
+            localStorage.setItem('atleta_session', JSON.stringify(userObj));
+          }
+        } else if (res.status === 401 || res.status === 403) {
+          // Token expirado ou inválido: desloga com segurança
+          setAthlete(null);
+          localStorage.removeItem('atleta_token');
+          localStorage.removeItem('courtmanager_athlete_token');
+          localStorage.removeItem('atleta_session');
+        }
+      })
+      .catch(() => {
+        // Falha de rede: mantém sessão local para não deslogar offline/intermitência
+      });
+  }, [slug]);
+
   // 2. Carregar Dados Públicos do Tenant por Slug
   useEffect(() => {
     let attempts = 0;
+    const resolveCoverUrl = (rawCover?: string): string => {
+      const fallback = 'https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?auto=format&fit=crop&q=80&w=1200';
+      if (!rawCover) return fallback;
+      if (rawCover.startsWith('http://') || rawCover.startsWith('https://') || rawCover.startsWith('data:')) {
+        return rawCover;
+      }
+      return `${BACKEND_URL}${rawCover}`;
+    };
+
     const fetchArena = () => {
       setLoading(true);
       fetch(`${BACKEND_URL}/api/public/tenant/${slug}`)
@@ -72,7 +130,7 @@ export default function App() {
                   if (d.arena) {
                     setArena({
                       name: d.arena.nome,
-                      cover: 'https://images.unsplash.com/photo-1540497077202-7c8a3999166f?auto=format&fit=crop&q=80&w=800',
+                      cover: resolveCoverUrl(d.arena.foto_capa),
                       address: d.arena.endereco || 'Endereço não informado',
                       whatsapp: d.arena.telefone || '',
                       hoursToday: d.arena.horario_abertura && d.arena.horario_fechamento ? `${d.arena.horario_abertura} às ${d.arena.horario_fechamento}` : '06:00 às 23:00',
@@ -98,7 +156,7 @@ export default function App() {
             const a = data.arena;
             setArena({
               name: a.nome,
-              cover: 'https://images.unsplash.com/photo-1540497077202-7c8a3999166f?auto=format&fit=crop&q=80&w=800',
+              cover: resolveCoverUrl(a.foto_capa),
               address: a.endereco || 'Endereço não informado',
               whatsapp: a.telefone || '',
               hoursToday: a.horario_abertura && a.horario_fechamento ? `${a.horario_abertura} às ${a.horario_fechamento}` : '06:00 às 23:00',
@@ -218,9 +276,22 @@ export default function App() {
     }
   };
 
-  const handleAuthed = (user: { name: string; email: string; phone: string }) => {
-    setAthlete(user);
+  const handleAuthed = (user: { name: string; email: string; phone: string; token?: string }) => {
+    const userSession = { name: user.name, email: user.email, phone: user.phone };
+    setAthlete(userSession);
+    localStorage.setItem('atleta_session', JSON.stringify(userSession));
+    if (user.token) {
+      localStorage.setItem('atleta_token', user.token);
+    }
     setLoginOpen(false);
+  };
+
+  const handleLogout = () => {
+    setAthlete(null);
+    localStorage.removeItem('atleta_token');
+    localStorage.removeItem('courtmanager_athlete_token');
+    localStorage.removeItem('atleta_session');
+    setProfileOpen(false);
   };
 
   // Confirmar Agendamento de Múltiplos Horários via Backend Pix
@@ -451,8 +522,14 @@ export default function App() {
           athlete={athlete}
           open={profileOpen}
           onClose={() => setProfileOpen(false)}
+          onLogout={handleLogout}
           onUpdate={(updated) => {
-            setAthlete(prev => prev ? { ...prev, name: updated.name, phone: updated.phone } : prev);
+            setAthlete(prev => {
+              if (!prev) return prev;
+              const next = { ...prev, name: updated.name, phone: updated.phone };
+              localStorage.setItem('atleta_session', JSON.stringify(next));
+              return next;
+            });
           }}
         />
       )}

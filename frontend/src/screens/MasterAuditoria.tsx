@@ -22,8 +22,8 @@ export function MasterAuditoria() {
       const headers = { 'Authorization': `Bearer ${token}` };
       
       const [auditRes, sessionsRes] = await Promise.all([
-        fetch('http://localhost:3000/api/saas/auditoria', { headers }).then(r => r.json()),
-        fetch('http://localhost:3000/api/saas/sessoes', { headers }).then(r => r.json())
+        fetch('/api/saas/auditoria', { headers }).then(r => r.json()),
+        fetch('/api/saas/sessoes', { headers }).then(r => r.json())
       ]);
       
       setAuditLogs(auditRes);
@@ -44,7 +44,7 @@ export function MasterAuditoria() {
     setPwMsg(null);
     try {
       const token = localStorage.getItem('courtmanager_token');
-      const res = await fetch('http://localhost:3000/api/saas/alterar-senha', {
+      const res = await fetch('/api/saas/alterar-senha', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

@@ -15,7 +15,7 @@ export function LandingPage() {
   const [planos, setPlanos] = useState<any[]>(DEFAULT_PLANOS_LANDING);
 
   useEffect(() => {
-    fetch('http://localhost:3000/api/auth/planos')
+    fetch('/api/auth/planos')
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) setPlanos(data);

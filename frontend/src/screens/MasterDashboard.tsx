@@ -32,8 +32,8 @@ export function MasterDashboard({ onNavigate }: Props) {
     const headers = { 'Authorization': `Bearer ${token}` };
 
     Promise.all([
-      fetch('http://localhost:3000/api/saas/metrics', { headers }).then(r => r.json()),
-      fetch('http://localhost:3000/api/saas/arenas', { headers }).then(r => r.json())
+      fetch('/api/saas/metrics', { headers }).then(r => r.json()),
+      fetch('/api/saas/arenas', { headers }).then(r => r.json())
     ]).then(([metricsData, arenasData]) => {
       const overdue = arenasData.filter((a: any) => a.faturas_atrasadas > 0);
       setMetrics({

@@ -50,9 +50,9 @@ export function MasterFinanceiro() {
       const headers = { 'Authorization': `Bearer ${token}` };
       
       const [faturasRes, metricsRes, planosRes] = await Promise.all([
-        fetch('http://localhost:3000/api/saas/faturas', { headers }).then(r => r.json()),
-        fetch('http://localhost:3000/api/saas/metrics', { headers }).then(r => r.json()),
-        fetch('http://localhost:3000/api/saas/planos', { headers }).then(r => r.json())
+        fetch('/api/saas/faturas', { headers }).then(r => r.json()),
+        fetch('/api/saas/metrics', { headers }).then(r => r.json()),
+        fetch('/api/saas/planos', { headers }).then(r => r.json())
       ]);
 
       setFaturas(faturasRes);
@@ -73,7 +73,7 @@ export function MasterFinanceiro() {
     if (!editPlan) return;
     try {
       const token = localStorage.getItem('courtmanager_token');
-      const res = await fetch(`http://localhost:3000/api/saas/planos/${editPlan.id}`, {
+      const res = await fetch(`/api/saas/planos/${editPlan.id}`, {
         method: 'PUT',
         headers: { 
           'Authorization': `Bearer ${token}`,
@@ -108,7 +108,7 @@ export function MasterFinanceiro() {
   const handlePay = async (faturaId: number) => {
     try {
       const token = localStorage.getItem('courtmanager_token');
-      const res = await fetch(`http://localhost:3000/api/saas/faturas/${faturaId}/pagar`, {
+      const res = await fetch(`/api/saas/faturas/${faturaId}/pagar`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });

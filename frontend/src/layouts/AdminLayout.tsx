@@ -11,7 +11,7 @@ export function AdminLayout() {
 
   useEffect(() => {
     // 1. Verifica estado de manutenção global
-    fetch('http://localhost:3000/api/auth/manutencao')
+    fetch('/api/auth/manutencao')
       .then(r => r.json())
       .then(data => {
         if (data && data.ativa) {
@@ -24,7 +24,7 @@ export function AdminLayout() {
     const token = localStorage.getItem('courtmanager_token');
     if (!token) return;
 
-    fetch('http://localhost:3000/api/auth/comunicados/ativos', {
+    fetch('/api/auth/comunicados/ativos', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(r => r.json())

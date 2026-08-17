@@ -29,8 +29,8 @@ export function MasterUsuarios() {
       const headers = { 'Authorization': `Bearer ${token}` };
       
       const [usersRes, arenasRes] = await Promise.all([
-        fetch('http://localhost:3000/api/saas/usuarios', { headers }).then(r => r.json()),
-        fetch('http://localhost:3000/api/saas/arenas', { headers }).then(r => r.json())
+        fetch('/api/saas/usuarios', { headers }).then(r => r.json()),
+        fetch('/api/saas/arenas', { headers }).then(r => r.json())
       ]);
 
       const mappedUsers = (Array.isArray(usersRes) ? usersRes : []).map((u: any) => ({
@@ -63,7 +63,7 @@ export function MasterUsuarios() {
     setAccessLogs([]);
     try {
       const token = localStorage.getItem('courtmanager_token');
-      const res = await fetch(`http://localhost:3000/api/saas/usuarios/${u.id}/acessos`, {
+      const res = await fetch(`/api/saas/usuarios/${u.id}/acessos`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -79,7 +79,7 @@ export function MasterUsuarios() {
     if (!deactivateUser) return;
     try {
       const token = localStorage.getItem('courtmanager_token');
-      const res = await fetch(`http://localhost:3000/api/saas/usuarios/${deactivateUser.id}/status`, {
+      const res = await fetch(`/api/saas/usuarios/${deactivateUser.id}/status`, {
         method: 'PATCH',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -97,7 +97,7 @@ export function MasterUsuarios() {
     if (!resetUser) return;
     try {
       const token = localStorage.getItem('courtmanager_token');
-      const res = await fetch(`http://localhost:3000/api/saas/usuarios/${resetUser.id}/reset-senha`, {
+      const res = await fetch(`/api/saas/usuarios/${resetUser.id}/reset-senha`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });

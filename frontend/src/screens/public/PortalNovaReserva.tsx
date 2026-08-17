@@ -62,7 +62,7 @@ export function PortalNovaReserva() {
   const buscarQuadrasLivres = async () => {
     setLoadingQuadras(true);
     try {
-      const res = await fetch(`http://localhost:3000/api/reservas/grade?data=${selDate}`);
+      const res = await fetch(`/api/reservas/grade?data=${selDate}`);
       const data = await res.json();
 
       if (!res.ok) throw new Error(data.error || 'Erro ao buscar disponibilidade.');
@@ -120,7 +120,7 @@ export function PortalNovaReserva() {
 
     try {
       // 1. Criar Reserva no Banco (Pendente)
-      const resReserva = await fetch('http://localhost:3000/api/reservas', {
+      const resReserva = await fetch('/api/reservas', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -144,7 +144,7 @@ export function PortalNovaReserva() {
       // 2. Chamar o Gateway de Pagamento
       const cardPayload = metodoOnline === 'Cartão' ? { token: 'mock_card_token', payment_method_id: 'visa' } : undefined;
 
-      const resCobranca = await fetch('http://localhost:3000/api/pagamentos/gateway/cobranca', {
+      const resCobranca = await fetch('/api/pagamentos/gateway/cobranca', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -185,7 +185,7 @@ export function PortalNovaReserva() {
     let intervalId: any;
     const checkStatus = async () => {
       try {
-        const res = await fetch(`http://localhost:3000/api/pagamentos/gateway/status/${reservaIdCriada}`, {
+        const res = await fetch(`/api/pagamentos/gateway/status/${reservaIdCriada}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
@@ -208,7 +208,7 @@ export function PortalNovaReserva() {
   const simularPagamentoPix = async () => {
     if (!gatewayRef) return;
     try {
-      const res = await fetch('http://localhost:3000/api/pagamentos/gateway/simular-pagamento', {
+      const res = await fetch('/api/pagamentos/gateway/simular-pagamento', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

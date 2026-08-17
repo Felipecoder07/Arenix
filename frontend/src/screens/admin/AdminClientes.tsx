@@ -64,7 +64,7 @@ export function AdminClientes() {
     const abaParaCarregar = aba ?? abaAtiva;
     const ativo = abaParaCarregar === 'ativos' ? 1 : 0;
     try {
-      const res = await fetch(`http://localhost:3000/api/clientes?ativo=${ativo}`, {
+      const res = await fetch(`/api/clientes?ativo=${ativo}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -93,7 +93,7 @@ export function AdminClientes() {
     const fetchDetalhe = async () => {
       setLoadingDetalhe(true);
       try {
-        const res = await fetch(`http://localhost:3000/api/clientes/${selectedClienteId}`, {
+        const res = await fetch(`/api/clientes/${selectedClienteId}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
@@ -160,8 +160,8 @@ export function AdminClientes() {
     try {
       const method = modoEdicao ? 'PUT' : 'POST';
       const url = modoEdicao 
-        ? `http://localhost:3000/api/clientes/${idEdicao}`
-        : 'http://localhost:3000/api/clientes';
+        ? `/api/clientes/${idEdicao}`
+        : '/api/clientes';
 
       const res = await fetch(url, {
         method,
@@ -201,7 +201,7 @@ export function AdminClientes() {
     if (!clienteDetalhe || !token) return;
     if (!window.confirm(`Arquivar "${clienteDetalhe.nome}"? O cliente ficará oculto da lista principal, mas o histórico de reservas será preservado.`)) return;
     try {
-      const res = await fetch(`http://localhost:3000/api/clientes/${clienteDetalhe.id}/arquivar`, {
+      const res = await fetch(`/api/clientes/${clienteDetalhe.id}/arquivar`, {
         method: 'PATCH',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -220,7 +220,7 @@ export function AdminClientes() {
   const handleDesarquivarCliente = async () => {
     if (!clienteDetalhe || !token) return;
     try {
-      const res = await fetch(`http://localhost:3000/api/clientes/${clienteDetalhe.id}/desarquivar`, {
+      const res = await fetch(`/api/clientes/${clienteDetalhe.id}/desarquivar`, {
         method: 'PATCH',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -246,7 +246,7 @@ export function AdminClientes() {
 
     if (window.confirm(`Tem certeza que deseja excluir permanentemente o cliente ${clienteDetalhe.nome}?`)) {
       try {
-        const res = await fetch(`http://localhost:3000/api/clientes/${clienteDetalhe.id}`, {
+        const res = await fetch(`/api/clientes/${clienteDetalhe.id}`, {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${token}` }
         });

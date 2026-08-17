@@ -31,7 +31,7 @@ export function AdminTopbar({ onToggleSidebar }: AdminTopbarProps) {
     const token = localStorage.getItem('courtmanager_token');
     if (!token) return;
     try {
-      const res = await fetch('http://localhost:3000/api/auth/comunicados/ativos', {
+      const res = await fetch('/api/auth/comunicados/ativos', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {

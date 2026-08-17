@@ -15,7 +15,13 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 // Isso garante que o express-rate-limit bloqueie o IP real (RNF-009)
 app.set('trust proxy', 1);
 
-// Servir arquivos estáticos do frontend React (Build de Produção)
+// Servir arquivos estáticos do frontend React e Uploads de Mídia
+const fs = require('fs');
+const uploadsDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+app.use('/uploads', express.static(uploadsDir));
 app.use(express.static(path.join(__dirname, '../../frontend/dist')));
 
 // Rotas API

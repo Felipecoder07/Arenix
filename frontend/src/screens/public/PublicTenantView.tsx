@@ -80,7 +80,7 @@ export function PublicTenantView() {
   useEffect(() => {
     if (!slug) return;
     setLoading(true);
-    fetch(`http://localhost:3000/api/public/tenant/${slug}`)
+    fetch(`/api/public/tenant/${slug}`)
       .then(async res => {
         const data = await res.json();
         if (res.status === 404) {
@@ -107,7 +107,7 @@ export function PublicTenantView() {
     setLoadingDisponibilidade(true);
     try {
       const quadraParam = selQuadraId !== 'todas' ? `&quadra_id=${selQuadraId}` : '';
-      const res = await fetch(`http://localhost:3000/api/public/tenant/${slug}/disponibilidade?data=${selDate}${quadraParam}`);
+      const res = await fetch(`/api/public/tenant/${slug}/disponibilidade?data=${selDate}${quadraParam}`);
       if (res.ok) {
         const data = await res.json();
         setQuadras(data.quadras || []);
@@ -175,7 +175,7 @@ export function PublicTenantView() {
     setIsSubmitting(true);
 
     try {
-      const res = await fetch(`http://localhost:3000/api/public/tenant/${slug}/agendar`, {
+      const res = await fetch(`/api/public/tenant/${slug}/agendar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -267,7 +267,7 @@ export function PublicTenantView() {
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: 'var(--cream)', color: 'var(--charcoal)', fontFamily: 'var(--font)', paddingBottom: '40px' }}>
-      
+
       {/* Toast Notification */}
       {toast && (
         <div style={{ position: 'fixed', top: '16px', right: '16px', zIndex: 9999, backgroundColor: 'var(--charcoal)', color: '#fff', padding: '12px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 500, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
@@ -409,7 +409,7 @@ export function PublicTenantView() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {quadras.map((q) => (
               <div key={q.quadra_id} style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '16px', border: '1px solid var(--border-passive)', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-                
+
                 {/* Nome da Quadra e Preço */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                   <h3 style={{ fontSize: '16px', fontWeight: 700, margin: 0, color: 'var(--charcoal)' }}>
@@ -468,7 +468,7 @@ export function PublicTenantView() {
       {selectedSlot && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9998, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
           <div style={{ backgroundColor: '#ffffff', borderTopLeftRadius: '24px', borderTopRightRadius: '24px', width: '100%', maxWidth: '600px', padding: '24px 20px 32px 20px', boxShadow: '0 -10px 30px rgba(0,0,0,0.2)', animation: 'slideUp 0.2s ease' }}>
-            
+
             {/* Fechar Drawer */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div>
@@ -570,7 +570,7 @@ export function PublicTenantView() {
       {pixModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
           <div style={{ backgroundColor: '#ffffff', borderRadius: '20px', width: '100%', maxWidth: '440px', padding: '24px', textAlign: 'center', boxShadow: '0 20px 40px rgba(0,0,0,0.25)' }}>
-            
+
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', backgroundColor: 'var(--pending-bg)', color: 'var(--pending)', padding: '6px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 700, marginBottom: '16px' }}>
               <Clock size={14} />
               <span>Expira em {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}</span>

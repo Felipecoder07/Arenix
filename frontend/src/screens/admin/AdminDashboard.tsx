@@ -82,7 +82,7 @@ export function AdminDashboard() {
 
     const fetchDashboard = async () => {
       try {
-        const res = await fetch('http://localhost:3000/api/dashboard/resumo', {
+        const res = await fetch('/api/dashboard/resumo', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         
@@ -101,7 +101,7 @@ export function AdminDashboard() {
       try {
         const tzOffset = new Date().getTimezoneOffset() * 60000;
         const hoje = new Date(Date.now() - tzOffset).toISOString().split('T')[0];
-        const res = await fetch(`http://localhost:3000/api/reservas/grade?data=${hoje}`, {
+        const res = await fetch(`/api/reservas/grade?data=${hoje}`, {
           headers: { 
             'Authorization': `Bearer ${token}`,
             'Cache-Control': 'no-store'

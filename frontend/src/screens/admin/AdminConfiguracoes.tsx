@@ -38,6 +38,7 @@ interface ArenaData {
   chave_pix?: string;
   titular_pix?: string;
   cidade_pix?: string;
+  foto_capa?: string;
 }
 
 export function AdminConfiguracoes() {
@@ -64,13 +65,15 @@ export function AdminConfiguracoes() {
     alerta_pagamento_minutos: 30,
     chave_pix: '',
     titular_pix: '',
-    cidade_pix: ''
+    cidade_pix: '',
+    foto_capa: ''
   });
 
   // Configuração Maquineta
   const [maquinetaId, setMaquinetaId] = useState('');
   const [accessToken, setAccessToken] = useState('');
   const [publicKey, setPublicKey] = useState('');
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   // Loadings
   const [loadingQuadras, setLoadingQuadras] = useState(true);
@@ -160,7 +163,7 @@ export function AdminConfiguracoes() {
   const loadQuadras = async () => {
     setLoadingQuadras(true);
     try {
-      const data = await request('http://localhost:3000/api/quadras');
+      const data = await request('/api/quadras');
       setQuadras(data);
     } catch (e: any) {
       showToast('Erro ao carregar quadras: ' + e.message, 'error');
@@ -172,7 +175,7 @@ export function AdminConfiguracoes() {
   const loadUsuarios = async () => {
     setLoadingUsuarios(true);
     try {
-      const data = await request('http://localhost:3000/api/usuarios');
+      const data = await request('/api/usuarios');
       setUsuarios(data);
     } catch (e: any) {
       showToast('Erro ao carregar usuários: ' + e.message, 'error');
@@ -184,7 +187,7 @@ export function AdminConfiguracoes() {
   const loadMotivos = async () => {
     setLoadingMotivos(true);
     try {
-      const data = await request('http://localhost:3000/api/motivos');
+      const data = await request('/api/motivos');
       setMotivos(data);
     } catch (e: any) {
       showToast('Erro ao carregar motivos: ' + e.message, 'error');
@@ -195,7 +198,7 @@ export function AdminConfiguracoes() {
 
   const loadArena = async () => {
     try {
-      const data = await request('http://localhost:3000/api/arenas/minha');
+      const data = await request('/api/arenas/minha');
       setArena({
         nome: data.nome || '',
         endereco: data.endereco || '',
@@ -209,14 +212,15 @@ export function AdminConfiguracoes() {
         alerta_pagamento_minutos: data.alerta_pagamento_minutos || 30,
         chave_pix: data.chave_pix || '',
         titular_pix: data.titular_pix || '',
-        cidade_pix: data.cidade_pix || ''
+        cidade_pix: data.cidade_pix || '',
+        foto_capa: data.foto_capa || ''
       });
       if (data.nome) {
         localStorage.setItem('arena_nome', data.nome);
         window.dispatchEvent(new Event('arena_nome_changed'));
       }
       
-      const gRes = await request('http://localhost:3000/api/pagamentos/gateway/maquineta');
+      const gRes = await request('/api/pagamentos/gateway/maquineta');
       setMaquinetaId(gRes.gateway_device_id || '');
       setAccessToken(gRes.gateway_access_token || '');
       setPublicKey(gRes.gateway_public_key || '');
@@ -240,7 +244,7 @@ export function AdminConfiguracoes() {
 
     if (code && state) {
       handleTabChange('pagamentos');
-      fetch('http://localhost:3000/api/pagamentos/gateway/oauth/exchange', {
+      fetch('/api/pagamentos/gateway/oauth/exchange', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code, state })
@@ -282,14 +286,14 @@ export function AdminConfiguracoes() {
       if (nqId) {
         // Edit
         const currentQuadra = quadras.find(q => q.id === nqId);
-        await request(`http://localhost:3000/api/quadras/${nqId}`, {
+        await request(`/api/quadras/${nqId}`, {
           method: 'PUT',
           body: JSON.stringify({ ...payload, status: currentQuadra?.status || 'Ativa' })
         });
         showToast('Quadra atualizada com sucesso!', 'success');
       } else {
         // Create
-        await request('http://localhost:3000/api/quadras', {
+        await request('/api/quadras', {
           method: 'POST',
           body: JSON.stringify(payload)
         });
@@ -307,7 +311,7 @@ export function AdminConfiguracoes() {
     if (!confirm(`Deseja alterar o status da quadra para ${nextStatus}?`)) return;
 
     try {
-      await request(`http://localhost:3000/api/quadras/${id}/status`, {
+      await request(`/api/quadras/${id}/status`, {
         method: 'PATCH',
         body: JSON.stringify({ status: nextStatus })
       });
@@ -322,7 +326,7 @@ export function AdminConfiguracoes() {
     if (!confirm(`Tem certeza que deseja excluir DEFINITIVAMENTE a quadra "${nome}"? Esta ação não pode ser desfeita.`)) return;
 
     try {
-      await request(`http://localhost:3000/api/quadras/${id}`, {
+      await request(`/api/quadras/${id}`, {
         method: 'DELETE'
       });
       showToast('Quadra excluída com sucesso!', 'success');
@@ -375,7 +379,7 @@ export function AdminConfiguracoes() {
 
       if (nuId) {
         // Edit
-        await request(`http://localhost:3000/api/usuarios/${nuId}`, {
+        await request(`/api/usuarios/${nuId}`, {
           method: 'PUT',
           body: JSON.stringify(payload)
         });
@@ -394,7 +398,7 @@ export function AdminConfiguracoes() {
         }
       } else {
         // Create
-        await request('http://localhost:3000/api/usuarios', {
+        await request('/api/usuarios', {
           method: 'POST',
           body: JSON.stringify(payload)
         });
@@ -411,7 +415,7 @@ export function AdminConfiguracoes() {
     if (!confirm(`Tem certeza que deseja excluir o usuário "${nome}"? Esta ação não pode ser desfeita.`)) return;
 
     try {
-      await request(`http://localhost:3000/api/usuarios/${id}`, {
+      await request(`/api/usuarios/${id}`, {
         method: 'DELETE'
       });
       showToast('Usuário excluído com sucesso!', 'success');
@@ -443,13 +447,13 @@ export function AdminConfiguracoes() {
   const handleSaveArena = async (e?: React.FormEvent, silent = false) => {
     if (e) e.preventDefault();
     try {
-      await request('http://localhost:3000/api/arenas/minha', {
+      await request('/api/arenas/minha', {
         method: 'PUT',
         body: JSON.stringify(arena)
       });
       
       // Salva o Serial Number e Credenciais da maquineta física
-      await request('http://localhost:3000/api/pagamentos/gateway/maquineta', {
+      await request('/api/pagamentos/gateway/maquineta', {
         method: 'POST',
         body: JSON.stringify({ 
           gateway_device_id: maquinetaId,
@@ -479,7 +483,7 @@ export function AdminConfiguracoes() {
     }
 
     try {
-      await request('http://localhost:3000/api/motivos', {
+      await request('/api/motivos', {
         method: 'POST',
         body: JSON.stringify({ motivo: nmNome.trim() })
       });
@@ -496,7 +500,7 @@ export function AdminConfiguracoes() {
     if (!confirm(`Tem certeza que deseja remover o motivo "${nome}"?`)) return;
 
     try {
-      await request(`http://localhost:3000/api/motivos/${id}`, {
+      await request(`/api/motivos/${id}`, {
         method: 'DELETE'
       });
       showToast('Motivo removido com sucesso!', 'success');
@@ -872,7 +876,7 @@ export function AdminConfiguracoes() {
                   onClick={async () => {
                     try {
                       const authToken = localStorage.getItem('courtmanager_token') || token;
-                      const res = await fetch('http://localhost:3000/api/pagamentos/gateway/oauth/url', {
+                      const res = await fetch('/api/pagamentos/gateway/oauth/url', {
                         headers: { 'Authorization': `Bearer ${authToken}` }
                       });
                       const data = await res.json();
@@ -904,7 +908,7 @@ export function AdminConfiguracoes() {
                     onClick={async () => {
                       try {
                         const authToken = localStorage.getItem('courtmanager_token') || token;
-                        const res = await fetch('http://localhost:3000/api/pagamentos/gateway/oauth/desconectar', {
+                        const res = await fetch('/api/pagamentos/gateway/oauth/desconectar', {
                           method: 'POST',
                           headers: { 'Authorization': `Bearer ${authToken}` }
                         });
@@ -1081,6 +1085,155 @@ export function AdminConfiguracoes() {
               </span>
             </div>
             <div style={{ height: '1px', background: 'var(--border-passive)', margin: 'var(--s-4) 0' }}></div>
+            <h3 style={{ fontSize: '15px', fontWeight: 600, marginBottom: 'var(--s-2)' }}>Foto de Capa da Arena (Aparência para os Clientes)</h3>
+            <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: 'var(--s-4)' }}>
+              Esta imagem será exibida no cabeçalho e na tela de login da sua arena para os atletas.
+            </p>
+
+            {/* Preview da Imagem */}
+            <div style={{ marginBottom: 'var(--s-4)', display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{
+                width: '200px',
+                height: '110px',
+                borderRadius: '10px',
+                overflow: 'hidden',
+                border: '2px solid var(--border-passive)',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                background: '#1e293b',
+                position: 'relative'
+              }}>
+                <img 
+                  src={
+                    !arena.foto_capa 
+                      ? 'https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?auto=format&fit=crop&q=80&w=1200' 
+                      : arena.foto_capa.startsWith('http://') || arena.foto_capa.startsWith('https://') || arena.foto_capa.startsWith('data:')
+                        ? arena.foto_capa 
+                        : `${arena.foto_capa}`
+                  } 
+                  alt="Preview da capa" 
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label 
+                  htmlFor="file-upload-input" 
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '9px 16px',
+                    background: '#3b82f6',
+                    color: '#fff',
+                    borderRadius: '6px',
+                    cursor: uploadingImage ? 'wait' : 'pointer',
+                    fontWeight: 600,
+                    fontSize: '13px',
+                    width: 'fit-content'
+                  }}
+                >
+                  {uploadingImage ? 'Enviando foto...' : 'Escolher Foto do Dispositivo (PC / Celular)'}
+                </label>
+                <input 
+                  type="file" 
+                  id="file-upload-input" 
+                  accept="image/*" 
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+
+                    if (!file.type.startsWith('image/')) {
+                      showToast('Por favor, selecione um arquivo de imagem válido.', 'warning');
+                      return;
+                    }
+
+                    if (file.size > 5 * 1024 * 1024) {
+                      showToast('A foto selecionada é maior que 5MB.', 'warning');
+                      return;
+                    }
+
+                    setUploadingImage(true);
+                    const reader = new FileReader();
+                    reader.onload = async () => {
+                      try {
+                        const base64 = reader.result as string;
+                        const res = await request('/api/arenas/upload-capa', {
+                          method: 'POST',
+                          body: JSON.stringify({ image: base64 })
+                        });
+                        if (res.foto_capa) {
+                          setArena(prev => ({ ...prev, foto_capa: res.foto_capa }));
+                          showToast('✓ Imagem do dispositivo enviada com sucesso!', 'success');
+                        }
+                      } catch (err: any) {
+                        showToast('Erro ao enviar imagem: ' + err.message, 'error');
+                      } finally {
+                        setUploadingImage(false);
+                      }
+                    };
+                    reader.onerror = () => {
+                      showToast('Erro ao ler arquivo da imagem.', 'error');
+                      setUploadingImage(false);
+                    };
+                    reader.readAsDataURL(file);
+                  }} 
+                  style={{ display: 'none' }} 
+                  disabled={uploadingImage}
+                />
+                <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                  Suporta arquivos PNG, JPG, JPEG e WEBP (Máx: 5MB).
+                </span>
+              </div>
+            </div>
+
+            {/* URL Externa */}
+            <div className="form-group" style={{ marginBottom: 'var(--s-4)' }}>
+              <label htmlFor="arena-foto-url">Ou Cole uma URL de Imagem Externa</label>
+              <input 
+                type="text" 
+                id="arena-foto-url" 
+                placeholder="Ex: https://suaarena.com.br/foto-capa.jpg"
+                value={arena.foto_capa || ''}
+                onChange={(e) => setArena({ ...arena, foto_capa: e.target.value })}
+              />
+            </div>
+
+            {/* Preséts Sugeridos */}
+            <div style={{ marginBottom: 'var(--s-4)' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: '8px' }}>
+                Ou escolha uma sugestão pronta de quadra esportiva:
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
+                {[
+                  { title: 'Vôlei / Beach Tennis (Areia)', url: 'https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?auto=format&fit=crop&q=80&w=1200' },
+                  { title: 'Quadra de Areia Tropical', url: 'https://images.unsplash.com/photo-1592656094267-764a45160876?auto=format&fit=crop&q=80&w=1200' },
+                  { title: 'Quadra Esportiva Coberta', url: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&q=80&w=1200' },
+                  { title: 'Futebol Society / Gramado', url: 'https://images.unsplash.com/photo-1529900748604-07564a03e7a6?auto=format&fit=crop&q=80&w=1200' }
+                ].map((preset, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setArena({ ...arena, foto_capa: preset.url })}
+                    style={{
+                      border: arena.foto_capa === preset.url ? '2px solid #3b82f6' : '1px solid var(--border-passive)',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      padding: 0,
+                      background: 'none',
+                      cursor: 'pointer',
+                      textAlign: 'left'
+                    }}
+                  >
+                    <img src={preset.url} alt={preset.title} style={{ width: '100%', height: '65px', objectFit: 'cover', display: 'block' }} />
+                    <span style={{ fontSize: '10px', fontWeight: 600, padding: '4px 6px', display: 'block', color: 'var(--text-main)' }}>
+                      {preset.title}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ height: '1px', background: 'var(--border-passive)', margin: 'var(--s-4) 0' }}></div>
             <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: 'var(--s-3)' }}>Aparência do Sistema</h3>
             <div className="form-group">
               <label htmlFor="arena-intervalo-grade">Intervalo da grade de horários (Reservas)</label>
@@ -1097,7 +1250,12 @@ export function AdminConfiguracoes() {
                 <option value="30">30 em 30 minutos</option>
               </select>
             </div>
-            <button type="submit" className="btn-primary" id="btn-salvar-arena">Salvar</button>
+
+            <div style={{ marginTop: 'var(--s-5)', display: 'flex', justifyContent: 'flex-end' }}>
+              <button type="submit" className="btn-primary" id="btn-salvar-arena" style={{ padding: '12px 28px', fontSize: '14px', fontWeight: 600 }}>
+                Salvar Todas as Configurações da Arena
+              </button>
+            </div>
           </form>
 
         </div>

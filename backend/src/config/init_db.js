@@ -27,6 +27,7 @@ const initDb = () => {
     db.run("ALTER TABLE Arenas ADD COLUMN chave_pix TEXT", () => {});
     db.run("ALTER TABLE Arenas ADD COLUMN titular_pix TEXT", () => {});
     db.run("ALTER TABLE Arenas ADD COLUMN cidade_pix TEXT DEFAULT 'SAO PAULO'", () => {});
+    db.run("ALTER TABLE Arenas ADD COLUMN foto_capa TEXT", () => {});
 
     // Tabela Usuarios (Admin, Gerente, Recepcionista)
     db.run(`

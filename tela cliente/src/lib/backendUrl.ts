@@ -8,7 +8,7 @@ export const getBackendUrl = (): string => {
   const { protocol, hostname } = window.location;
 
   if (hostname.includes('trycloudflare.com')) {
-    return 'https://forecasts-dropped-networks-remedy.trycloudflare.com';
+    return 'https://industry-simpson-universal-dealing.trycloudflare.com';
   }
 
   if (hostname === 'localhost' || hostname === '127.0.0.1') {

@@ -46,7 +46,7 @@ export function AdminRelatorios() {
   useEffect(() => {
     const fetchQuadras = async () => {
       try {
-        const res = await fetch('http://localhost:3000/api/quadras', {
+        const res = await fetch('/api/quadras', {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (res.ok) {
@@ -79,7 +79,7 @@ export function AdminRelatorios() {
     if (filterQuadraId) params.append('quadra_id', String(filterQuadraId));
 
     try {
-      const res = await fetch(`http://localhost:3000/api/relatorios/${currentTab}?${params}`, {
+      const res = await fetch(`/api/relatorios/${currentTab}?${params}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();

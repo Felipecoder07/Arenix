@@ -44,8 +44,8 @@ export function MasterArenaDetalhe({ onNavigate }: Props) {
 
       // 1. Fetch Arena Details & SaaS Plans
       const [resArena, resPlanos] = await Promise.all([
-        fetch(`http://localhost:3000/api/saas/arenas/${arenaId}`, { headers }),
-        fetch(`http://localhost:3000/api/saas/planos`, { headers })
+        fetch(`/api/saas/arenas/${arenaId}`, { headers }),
+        fetch(`/api/saas/planos`, { headers })
       ]);
 
       if (!resArena.ok) throw new Error('Falha ao buscar arena');
@@ -66,7 +66,7 @@ export function MasterArenaDetalhe({ onNavigate }: Props) {
       setDiaVencimento(data.dia_vencimento || 10);
 
       // 2. Fetch Arena Invoices
-      const resFat = await fetch(`http://localhost:3000/api/saas/arenas/${arenaId}/faturas`, { headers });
+      const resFat = await fetch(`/api/saas/arenas/${arenaId}/faturas`, { headers });
       if (resFat.ok) {
         const dataFat = await resFat.json();
         setFaturas(dataFat);
@@ -101,7 +101,7 @@ export function MasterArenaDetalhe({ onNavigate }: Props) {
       const token = localStorage.getItem('courtmanager_token');
       
       // Update details
-      const resUpdate = await fetch(`http://localhost:3000/api/saas/arenas/${arenaId}`, {
+      const resUpdate = await fetch(`/api/saas/arenas/${arenaId}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -124,7 +124,7 @@ export function MasterArenaDetalhe({ onNavigate }: Props) {
 
       // Update plan if changed
       if (planoId !== arena.plano_id) {
-        const resPlan = await fetch(`http://localhost:3000/api/saas/arenas/${arenaId}/plano`, {
+        const resPlan = await fetch(`/api/saas/arenas/${arenaId}/plano`, {
           method: 'PATCH',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -151,7 +151,7 @@ export function MasterArenaDetalhe({ onNavigate }: Props) {
     try {
       const token = localStorage.getItem('courtmanager_token');
       const nextStatus = arena.status === 0 ? 1 : 0;
-      const res = await fetch(`http://localhost:3000/api/saas/arenas/${arenaId}/status`, {
+      const res = await fetch(`/api/saas/arenas/${arenaId}/status`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -175,7 +175,7 @@ export function MasterArenaDetalhe({ onNavigate }: Props) {
   const handleDelete = async (password: string) => {
     try {
       const token = localStorage.getItem('courtmanager_token');
-      const res = await fetch(`http://localhost:3000/api/saas/arenas/${arenaId}`, {
+      const res = await fetch(`/api/saas/arenas/${arenaId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,

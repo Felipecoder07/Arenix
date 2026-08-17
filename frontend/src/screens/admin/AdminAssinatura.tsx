@@ -76,10 +76,10 @@ export function AdminAssinatura() {
     setErro(null);
     try {
       const [resPlano, resFaturas] = await Promise.all([
-        fetch('http://localhost:3000/api/tenant/assinatura/plano', {
+        fetch('/api/tenant/assinatura/plano', {
           headers: { Authorization: `Bearer ${token}` }
         }),
-        fetch('http://localhost:3000/api/tenant/assinatura/faturas', {
+        fetch('/api/tenant/assinatura/faturas', {
           headers: { Authorization: `Bearer ${token}` }
         })
       ]);
@@ -115,7 +115,7 @@ export function AdminAssinatura() {
 
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`http://localhost:3000/api/tenant/assinatura/status-pagamento/${pixData.gateway_ref}`, {
+        const res = await fetch(`/api/tenant/assinatura/status-pagamento/${pixData.gateway_ref}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (res.ok) {
@@ -144,7 +144,7 @@ export function AdminAssinatura() {
     setGerandoPix(true);
 
     try {
-      const res = await fetch(`http://localhost:3000/api/tenant/assinatura/faturas/${fatura.id}/gerar-pix`, {
+      const res = await fetch(`/api/tenant/assinatura/faturas/${fatura.id}/gerar-pix`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -709,7 +709,7 @@ export function AdminAssinatura() {
                       onClick={async () => {
                         try {
                           const refToUse = pixData.gateway_ref || faturaSelecionada?.id;
-                          const res = await fetch(`http://localhost:3000/api/tenant/assinatura/status-pagamento/${refToUse}`, {
+                          const res = await fetch(`/api/tenant/assinatura/status-pagamento/${refToUse}`, {
                             headers: { Authorization: `Bearer ${token}` }
                           });
                           const json = await res.json();
@@ -744,7 +744,7 @@ export function AdminAssinatura() {
                       onClick={async () => {
                         if (!faturaSelecionada) return;
                         try {
-                          const res = await fetch(`http://localhost:3000/api/tenant/assinatura/faturas/${faturaSelecionada.id}/simular-pagamento`, {
+                          const res = await fetch(`/api/tenant/assinatura/faturas/${faturaSelecionada.id}/simular-pagamento`, {
                             method: 'POST',
                             headers: { Authorization: `Bearer ${token}` }
                           });

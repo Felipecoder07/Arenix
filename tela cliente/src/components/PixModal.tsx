@@ -74,7 +74,6 @@ export default function PixModal({ open, slug = 'felp-arena', data, pixPayload, 
   const [remaining, setRemaining] = useState(PIX_DURATION);
   const [copied, setCopied] = useState(false);
   const [status, setStatus] = useState<'pending' | 'confirmed'>('pending');
-  const [simulating, setSimulating] = useState(false);
 
   const pixCode = useMemo(() => {
     if (pixPayload?.copia_cola) return pixPayload.copia_cola;
@@ -180,26 +179,6 @@ export default function PixModal({ open, slug = 'felp-arena', data, pixPayload, 
 
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
-  };
-
-  // Simular confirmação de pagamento Pix (Útil para testes no front)
-  const handleSimularPagamento = async () => {
-    if (pixPayload?.reserva_id) {
-      setSimulating(true);
-      try {
-        const res = await fetch(`${BACKEND_URL}/api/public/tenant/${slug}/simular-pagamento`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reserva_id: pixPayload.reserva_id })
-        });
-        if (res.ok) {
-          setStatus('confirmed');
-        }
-      } catch {}
-      setSimulating(false);
-    } else {
-      setStatus('confirmed');
-    }
   };
 
   const expired = remaining === 0;

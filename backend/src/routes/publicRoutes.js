@@ -10,7 +10,6 @@ const {
   googleAuthAtletaPublico,
   getPerfilAtleta,
   atualizarPerfilAtleta,
-  simularPagamentoPublico,
   getStatusReservaPublica,
   cancelarPendentePublico,
   getMinhasReservasAtleta,
@@ -53,9 +52,8 @@ router.post('/tenant/:slug/agendar', publicBookingLimiter, agendarReservaPublica
 // Rota de cancelamento de reservas expiradas/pendentes não pagas
 router.post('/tenant/:slug/cancelar-pendente', publicApiLimiter, cancelarPendentePublico);
 
-// Rota de alteração de perfil e simulação de pagamento
+// Rota de alteração de perfil
 router.get('/tenant/:slug/meu-perfil', publicApiLimiter, getPerfilAtleta);
 router.put('/tenant/:slug/meu-perfil', publicApiLimiter, atualizarPerfilAtleta);
-router.post('/tenant/:slug/simular-pagamento', publicApiLimiter, simularPagamentoPublico);
 
 module.exports = router;

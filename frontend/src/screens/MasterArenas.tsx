@@ -41,8 +41,8 @@ export function MasterArenas({ onNavigate }: Props) {
       setLoading(true);
       const token = localStorage.getItem('courtmanager_token');
       const [resArenas, resPlanos] = await Promise.all([
-        fetch('http://localhost:3000/api/saas/arenas', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('http://localhost:3000/api/saas/planos', { headers: { 'Authorization': `Bearer ${token}` } })
+        fetch('/api/saas/arenas', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('/api/saas/planos', { headers: { 'Authorization': `Bearer ${token}` } })
       ]);
       const dataArenas = await resArenas.json();
       const dataPlanos = await resPlanos.json();
@@ -70,7 +70,7 @@ export function MasterArenas({ onNavigate }: Props) {
     setCreating(true);
     try {
       const token = localStorage.getItem('courtmanager_token');
-      const res = await fetch('http://localhost:3000/api/saas/arenas', {
+      const res = await fetch('/api/saas/arenas', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -298,7 +298,7 @@ export function MasterArenas({ onNavigate }: Props) {
         onConfirm={async (password) => {
           if (!blockTarget) return;
           const token = localStorage.getItem('courtmanager_token');
-          const res = await fetch(`http://localhost:3000/api/saas/arenas/${blockTarget.id}/status`, {
+          const res = await fetch(`/api/saas/arenas/${blockTarget.id}/status`, {
             method: 'PATCH',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: blockTarget.status === 0 ? 1 : 0, senha: password })
@@ -326,7 +326,7 @@ export function MasterArenas({ onNavigate }: Props) {
         onConfirm={async (password) => {
           if (!deleteTarget) return;
           const token = localStorage.getItem('courtmanager_token');
-          const res = await fetch(`http://localhost:3000/api/saas/arenas/${deleteTarget.id}`, {
+          const res = await fetch(`/api/saas/arenas/${deleteTarget.id}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ senha_master: password })

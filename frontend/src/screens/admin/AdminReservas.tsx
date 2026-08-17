@@ -142,7 +142,7 @@ export function AdminReservas() {
 
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`http://localhost:3000/api/pagamentos/gateway/status/${selectedReserva.id}`, {
+        const res = await fetch(`/api/pagamentos/gateway/status/${selectedReserva.id}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
@@ -208,7 +208,7 @@ export function AdminReservas() {
     }
 
     try {
-      const res = await fetch(`http://localhost:3000/api/reservas/grade?data_inicio=${start}&data_fim=${end}`, {
+      const res = await fetch(`/api/reservas/grade?data_inicio=${start}&data_fim=${end}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -229,7 +229,7 @@ export function AdminReservas() {
     const fetchGerais = async () => {
       try {
         // Clientes
-        const resCl = await fetch('http://localhost:3000/api/clientes', {
+        const resCl = await fetch('/api/clientes', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (resCl.ok) {
@@ -238,7 +238,7 @@ export function AdminReservas() {
         }
 
         // Quadras
-        const resQd = await fetch('http://localhost:3000/api/quadras', {
+        const resQd = await fetch('/api/quadras', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (resQd.ok) {
@@ -270,7 +270,7 @@ export function AdminReservas() {
 
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`http://localhost:3000/api/public/status-reserva/${selectedReserva.id}`);
+        const res = await fetch(`/api/public/status-reserva/${selectedReserva.id}`);
         if (res.ok) {
           const data = await res.json();
           if (data.status_pagamento === 'Pago') {
@@ -301,7 +301,7 @@ export function AdminReservas() {
     
     const fetchPagos = async () => {
       try {
-        const res = await fetch(`http://localhost:3000/api/pagamentos/reserva/${selectedReserva.id}`, {
+        const res = await fetch(`/api/pagamentos/reserva/${selectedReserva.id}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
@@ -513,7 +513,7 @@ export function AdminReservas() {
     }
 
     try {
-      const res = await fetch('http://localhost:3000/api/reservas', {
+      const res = await fetch('/api/reservas', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -550,7 +550,7 @@ export function AdminReservas() {
     }
 
     try {
-      const res = await fetch('http://localhost:3000/api/reservas/bloqueios', {
+      const res = await fetch('/api/reservas/bloqueios', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -585,7 +585,7 @@ export function AdminReservas() {
     }
 
     try {
-      const res = await fetch(`http://localhost:3000/api/reservas/${selectedReserva.id}/cancelar`, {
+      const res = await fetch(`/api/reservas/${selectedReserva.id}/cancelar`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -620,7 +620,7 @@ export function AdminReservas() {
 
     if (pagMetodo === 'Pix Online (Gateway)') {
       try {
-        const res = await fetch('http://localhost:3000/api/pagamentos/gateway/cobranca', {
+        const res = await fetch('/api/pagamentos/gateway/cobranca', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -649,7 +649,7 @@ export function AdminReservas() {
 
     if (pagMetodo === 'Cartão (Maquineta Online)') {
       try {
-        const res = await fetch('http://localhost:3000/api/pagamentos/gateway/cobranca', {
+        const res = await fetch('/api/pagamentos/gateway/cobranca', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -676,7 +676,7 @@ export function AdminReservas() {
     }
 
     try {
-      const res = await fetch('http://localhost:3000/api/pagamentos', {
+      const res = await fetch('/api/pagamentos', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -710,7 +710,7 @@ export function AdminReservas() {
     }
 
     try {
-      const res = await fetch('http://localhost:3000/api/pagamentos/estorno', {
+      const res = await fetch('/api/pagamentos/estorno', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -741,8 +741,8 @@ export function AdminReservas() {
 
     try {
       const url = tudo 
-        ? `http://localhost:3000/api/reservas/bloqueios/${selectedBloqueio.id}`
-        : `http://localhost:3000/api/reservas/bloqueios/${selectedBloqueio.id}/horario?hora=${selectedBloqueioTime}`;
+        ? `/api/reservas/bloqueios/${selectedBloqueio.id}`
+        : `/api/reservas/bloqueios/${selectedBloqueio.id}/horario?hora=${selectedBloqueioTime}`;
 
       const res = await fetch(url, {
         method: 'DELETE',

@@ -49,7 +49,7 @@ export function MasterConfiguracoes() {
   const fetchConfigs = async () => {
     try {
       const token = localStorage.getItem('courtmanager_token');
-      const res = await fetch('http://localhost:3000/api/saas/configuracoes', {
+      const res = await fetch('/api/saas/configuracoes', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -83,7 +83,7 @@ export function MasterConfiguracoes() {
     try {
       const token = localStorage.getItem('courtmanager_token');
       const isMaintActive = updatedMaintenance !== undefined ? updatedMaintenance : maintenance;
-      const res = await fetch('http://localhost:3000/api/saas/configuracoes', {
+      const res = await fetch('/api/saas/configuracoes', {
         method: 'PUT',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
