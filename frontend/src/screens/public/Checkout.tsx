@@ -136,6 +136,9 @@ export function Checkout() {
           if (loginData.usuario.arena_nome) {
             localStorage.setItem('arena_nome', loginData.usuario.arena_nome);
           }
+          if (loginData.usuario.arena_slug) {
+            localStorage.setItem('arena_slug', loginData.usuario.arena_slug);
+          }
           navigate('/admin/dashboard');
         } else {
           navigate('/login');

@@ -105,6 +105,9 @@ const initDb = () => {
       )
     `);
 
+    // Migração automática: adiciona modalidades em Quadras se não existir
+    db.run("ALTER TABLE Quadras ADD COLUMN modalidades TEXT DEFAULT '[\"Beach Tennis\", \"Vôlei de Praia\", \"Futevôlei\"]'", () => {});
+
     // Tabela Reservas
     db.run(`
       CREATE TABLE IF NOT EXISTS Reservas (
@@ -130,6 +133,7 @@ const initDb = () => {
 
     db.run("ALTER TABLE Reservas ADD COLUMN codigo_validacao_cancelamento TEXT", () => {});
     db.run("ALTER TABLE Reservas ADD COLUMN grupo_id TEXT", () => {});
+    db.run("ALTER TABLE Reservas ADD COLUMN esporte TEXT DEFAULT 'Geral'", () => {});
 
     // Tabela Pagamentos
     db.run(`

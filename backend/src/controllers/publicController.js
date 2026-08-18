@@ -99,16 +99,42 @@ const getQuadrasBySlug = async (req, res) => {
     }
 
     const quadras = await db.allAsync(
-      `SELECT id, nome, tipo, preco_base, hora_abertura, hora_fechamento, status
+      `SELECT id, nome, tipo, modalidades, preco_base, hora_abertura, hora_fechamento, status
        FROM Quadras 
        WHERE tenant_id = ? AND status = 'Ativa'`,
       [arena.id]
     );
 
-    res.json({ quadras });
+    const formatted = quadras.map(q => {
+      let modalidades = [];
+      if (q.modalidades) {
+        try {
+          modalidades = typeof q.modalidades === 'string' ? JSON.parse(q.modalidades) : q.modalidades;
+        } catch {
+          modalidades = [{ nome: q.tipo || 'Beach Tennis', preco: q.preco_base || 80 }];
+        }
+      } else if (q.tipo) {
+        modalidades = q.tipo === 'Areia' 
+          ? [
+              { nome: 'Beach Tennis', preco: q.preco_base || 80 },
+              { nome: 'Vôlei de Praia', preco: q.preco_base || 80 },
+              { nome: 'Futevôlei', preco: q.preco_base || 80 }
+            ]
+          : [{ nome: q.tipo, preco: q.preco_base || 80 }];
+      }
+
+      const normalized = (Array.isArray(modalidades) ? modalidades : []).map(m => {
+        if (typeof m === 'string') return { nome: m, preco: q.preco_base || 80 };
+        return { nome: m.nome, preco: Number(m.preco != null ? m.preco : q.preco_base || 80) };
+      });
+
+      return { ...q, modalidades: normalized };
+    });
+
+    res.json({ quadras: formatted });
   } catch (err) {
     console.error('[Public Controller Error] getQuadrasBySlug:', err);
-    res.status(500).json({ error: 'Erro ao buscar quadras da arena.' });
+    res.status(500).json({ error: 'Erro ao buscar quadras.' });
   }
 };
 
@@ -117,6 +143,7 @@ const getDisponibilidadeBySlug = async (req, res) => {
   const { slug } = req.params;
   const dataFiltro = req.query.data || new Date().toISOString().split('T')[0];
   const quadraIdFiltro = req.query.quadra_id ? parseInt(req.query.quadra_id, 10) : null;
+  const esporteFiltro = req.query.esporte || null;
 
   try {
     const arena = await db.getAsync('SELECT id, horario_abertura, horario_fechamento FROM Arenas WHERE slug = ? AND status = 1', [slug]);
@@ -125,7 +152,7 @@ const getDisponibilidadeBySlug = async (req, res) => {
     }
 
     // Busca quadras ativas da arena
-    let queryQuadras = 'SELECT id, nome, preco_base, hora_abertura, hora_fechamento FROM Quadras WHERE tenant_id = ? AND status = \'Ativa\'';
+    let queryQuadras = 'SELECT id, nome, tipo, modalidades, preco_base, hora_abertura, hora_fechamento FROM Quadras WHERE tenant_id = ? AND status = \'Ativa\'';
     const paramsQuadras = [arena.id];
     if (quadraIdFiltro) {
       queryQuadras += ' AND id = ?';
@@ -158,6 +185,38 @@ const getDisponibilidadeBySlug = async (req, res) => {
     const isHoje = dataFiltro === todayStr;
 
     const resultadoPorQuadra = quadras.map(q => {
+      // Normaliza modalidades com seus preços
+      let modalidades = [];
+      if (q.modalidades) {
+        try {
+          modalidades = typeof q.modalidades === 'string' ? JSON.parse(q.modalidades) : q.modalidades;
+        } catch {
+          modalidades = [{ nome: q.tipo || 'Beach Tennis', preco: q.preco_base || 80 }];
+        }
+      } else if (q.tipo) {
+        modalidades = q.tipo === 'Areia'
+          ? [
+              { nome: 'Beach Tennis', preco: q.preco_base || 80 },
+              { nome: 'Vôlei de Praia', preco: q.preco_base || 80 },
+              { nome: 'Futevôlei', preco: q.preco_base || 80 }
+            ]
+          : [{ nome: q.tipo, preco: q.preco_base || 80 }];
+      }
+
+      const normalizedModalidades = (Array.isArray(modalidades) ? modalidades : []).map(m => {
+        if (typeof m === 'string') return { nome: m, preco: q.preco_base || 80 };
+        return { nome: m.nome, preco: Number(m.preco != null ? m.preco : q.preco_base || 80) };
+      });
+
+      // Se o atleta filtrou por esporte, busca o preço específico daquele esporte nesta quadra
+      let precoSlot = q.preco_base || 80;
+      if (esporteFiltro && esporteFiltro !== 'Todos') {
+        const modalidadeEncontrada = normalizedModalidades.find(m => m.nome === esporteFiltro);
+        if (modalidadeEncontrada && modalidadeEncontrada.preco > 0) {
+          precoSlot = modalidadeEncontrada.preco;
+        }
+      }
+
       // Define os horários reais da quadra/arena (Ex: das 06:00 às 23:00)
       const hAbertura = q.hora_abertura || arena.horario_abertura || '06:00';
       const hFechamento = q.hora_fechamento || arena.horario_fechamento || '23:00';
@@ -200,14 +259,16 @@ const getDisponibilidadeBySlug = async (req, res) => {
           hora_inicio: hInicio,
           hora_fim: hFim,
           status: statusSlot,
-          preco: q.preco_base
+          preco: precoSlot
         };
       });
 
       return {
         quadra_id: q.id,
         quadra_nome: q.nome,
-        preco_base: q.preco_base,
+        tipo: q.tipo || 'Areia',
+        modalidades: normalizedModalidades,
+        preco_base: precoSlot,
         hora_abertura: hAbertura,
         hora_fechamento: hFechamento,
         slots
@@ -456,17 +517,29 @@ const agendarReservaPublica = async (req, res) => {
     const grupoId = `GRUPO_${cliente.id}_${Date.now()}`;
 
     for (const item of listaItens) {
-      let precoItem = item.preco;
-      if (!precoItem) {
-        const quadra = await db.getAsync('SELECT preco_base FROM Quadras WHERE id = ? AND tenant_id = ?', [item.quadra_id, tenantId]);
-        precoItem = quadra ? quadra.preco_base : 100.0;
+      // Segurança: busca SEMPRE o preço oficial do esporte/quadra no banco de dados (ignora adulterações do cliente)
+      const quadra = await db.getAsync('SELECT preco_base, modalidades, tipo FROM Quadras WHERE id = ? AND tenant_id = ?', [item.quadra_id, tenantId]);
+      let precoItem = (quadra && typeof quadra.preco_base === 'number' && quadra.preco_base > 0) ? quadra.preco_base : 80.0;
+      
+      const esporteItem = item.esporte || 'Geral';
+      if (quadra && quadra.modalidades) {
+        try {
+          const parsed = typeof quadra.modalidades === 'string' ? JSON.parse(quadra.modalidades) : quadra.modalidades;
+          if (Array.isArray(parsed)) {
+            const match = parsed.find(m => (typeof m === 'object' ? m.nome : m) === esporteItem);
+            if (match && typeof match === 'object' && match.preco != null && Number(match.preco) > 0) {
+              precoItem = Number(match.preco);
+            }
+          }
+        } catch {}
       }
+
       valorTotalGeral += precoItem;
 
       const rReserva = await db.runAsync(
-        `INSERT INTO Reservas (tenant_id, cliente_id, quadra_id, data_reserva, hora_inicio, hora_fim, valor_total, status, status_pagamento, grupo_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'Pendente', 'Pendente', ?)`,
-        [tenantId, cliente.id, item.quadra_id, item.data_reserva, item.hora_inicio, item.hora_fim, precoItem, grupoId]
+        `INSERT INTO Reservas (tenant_id, cliente_id, quadra_id, data_reserva, hora_inicio, hora_fim, valor_total, status, status_pagamento, grupo_id, esporte)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'Pendente', 'Pendente', ?, ?)`,
+        [tenantId, cliente.id, item.quadra_id, item.data_reserva, item.hora_inicio, item.hora_fim, precoItem, grupoId, esporteItem]
       );
       reservasCriadasIds.push(rReserva.lastID);
     }
@@ -763,10 +836,10 @@ const googleAuthAtletaPublico = async (req, res) => {
     const bcrypt = require('bcrypt');
     const JWT_SECRET = process.env.JWT_SECRET || 'secret-jwt-courtmanager-2026';
 
-    let email = bodyEmail;
-    let nome = bodyNome;
+    let email = null;
+    let nome = null;
 
-    // Se vier com o token do Google (credential), decodifica o JWT do Google
+    // Se vier com o token do Google (credential), decodifica e valida o JWT do Google
     if (credential) {
       try {
         const decoded = jwt.decode(credential);
@@ -775,12 +848,18 @@ const googleAuthAtletaPublico = async (req, res) => {
           nome = decoded.name || decoded.given_name || email.split('@')[0];
         }
       } catch {
-        /* ignora falha de decode e usa fallback */
+        return res.status(400).json({ error: 'Token do Google inválido.' });
       }
+    } else if (process.env.NODE_ENV !== 'production' && bodyEmail) {
+      // Apenas em ambiente de desenvolvimento local permite simulação
+      email = bodyEmail;
+      nome = bodyNome || email.split('@')[0];
+    } else {
+      return res.status(400).json({ error: 'Credencial do Google não informada.' });
     }
 
     if (!email) {
-      return res.status(400).json({ error: 'E-mail do Google não informado.' });
+      return res.status(400).json({ error: 'E-mail do Google não identificado.' });
     }
 
     email = email.trim().toLowerCase();
@@ -788,6 +867,10 @@ const googleAuthAtletaPublico = async (req, res) => {
 
     // Busca se o usuário já existe na base
     let usuario = await db.getAsync('SELECT id, tenant_id, nome, email, perfil, ativo FROM Usuarios WHERE email = ?', [email]);
+
+    if (usuario && usuario.perfil !== 'Cliente') {
+      return res.status(403).json({ error: 'Este e-mail pertence a uma conta de gestão. Acesse o painel pelo portal administrativo.' });
+    }
 
     if (!usuario) {
       // Se não existir, realiza o cadastro automático via Google

@@ -54,6 +54,9 @@ export function TenantLogin() {
       if (data.usuario.arena_nome) {
         localStorage.setItem('arena_nome', data.usuario.arena_nome);
       }
+      if (data.usuario.arena_slug) {
+        localStorage.setItem('arena_slug', data.usuario.arena_slug);
+      }
 
       if (data.usuario.arena_status === 0) {
         navigate('/admin/assinatura');

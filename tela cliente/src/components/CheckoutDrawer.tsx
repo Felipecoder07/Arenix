@@ -7,13 +7,25 @@ interface Props {
   open: boolean;
   slots: Slot[];
   court: Court | null;
+  selectedSport?: string;
+  onSportChange?: (sport: string) => void;
   initialName?: string;
   initialPhone?: string;
   onClose: () => void;
-  onConfirm: (data: { slots: Slot[]; name: string; phone: string; cpf: string }) => void;
+  onConfirm: (data: { slots: Slot[]; name: string; phone: string; cpf: string; sport?: string }) => void;
 }
 
-export default function CheckoutDrawer({ open, slots, court, initialName = '', initialPhone = '', onClose, onConfirm }: Props) {
+export default function CheckoutDrawer({ 
+  open, 
+  slots, 
+  court, 
+  selectedSport,
+  onSportChange,
+  initialName = '', 
+  initialPhone = '', 
+  onClose, 
+  onConfirm 
+}: Props) {
   const [name, setName] = useState(initialName);
   const [phone, setPhone] = useState(initialPhone);
   const [cpf, setCpf] = useState('');
@@ -68,6 +80,7 @@ export default function CheckoutDrawer({ open, slots, court, initialName = '', i
 
   if (!open || slots.length === 0 || !court) return null;
 
+  const currentSport = selectedSport || slots[0]?.sport || court.modalities?.[0] || 'Beach Tennis';
   const totalPrice = slots.reduce((acc, s) => acc + s.price, 0);
 
   const nameValid = name.trim().length >= 3;
@@ -85,6 +98,7 @@ export default function CheckoutDrawer({ open, slots, court, initialName = '', i
         name: name.trim(),
         phone,
         cpf,
+        sport: currentSport
       });
     } finally {
       setSubmitting(false);
@@ -122,9 +136,43 @@ export default function CheckoutDrawer({ open, slots, court, initialName = '', i
         </div>
 
         <div className="overflow-y-auto px-5 pt-4 pb-5 flex-1 overscroll-contain">
+          {/* Seletor de Modalidade se a quadra for multi-esporte */}
+          {court.sportPricing && court.sportPricing.length > 1 && onSportChange && (
+            <div className="mb-4">
+              <span className="text-xs font-bold text-charcoal block mb-2">Modalidade do Jogo:</span>
+              <div className="flex flex-wrap gap-2">
+                {court.sportPricing.map((sp) => {
+                  const isSel = currentSport === sp.nome;
+                  return (
+                    <button
+                      key={sp.nome}
+                      type="button"
+                      onClick={() => onSportChange(sp.nome)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all active:scale-95 flex items-center gap-1.5 ${
+                        isSel
+                          ? 'bg-charcoal text-white border-charcoal shadow-sm'
+                          : 'bg-surface text-charcoal/80 border-edge hover:border-charcoal/30'
+                      }`}
+                    >
+                      <span>{sp.nome}</span>
+                      <span className={`text-[11px] font-bold ${isSel ? 'text-white/80' : 'text-available-text'}`}>
+                        ({brl(sp.preco)}/h)
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="rounded-2xl bg-surface border border-edge p-4 mb-5 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted uppercase tracking-wide">Total a Pagar</span>
+              <div>
+                <span className="text-xs font-semibold text-muted uppercase tracking-wide block">Total a Pagar</span>
+                <span className="text-xs font-bold text-charcoal mt-0.5 inline-block bg-card px-2 py-0.5 rounded-md border border-edge">
+                  {currentSport}
+                </span>
+              </div>
               <span className="text-xl font-bold text-available-text">{brl(totalPrice)}</span>
             </div>
 

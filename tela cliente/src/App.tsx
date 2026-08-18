@@ -10,7 +10,7 @@ import MyReservations from './components/MyReservations';
 import StepIndicator from './components/StepIndicator';
 import LoginScreen from './components/LoginScreen';
 import MyProfileModal from './components/MyProfileModal';
-import { ArrowRight, ShoppingBag, ShieldCheck } from 'lucide-react';
+import { ArrowRight, ShoppingBag, ShieldCheck, X } from 'lucide-react';
 import { brl, getLocalDateISO } from './lib/format';
 
 import { BACKEND_URL } from './lib/backendUrl';
@@ -32,6 +32,7 @@ export default function App() {
   const [arena, setArena] = useState<ArenaInfo | null>(null);
   const [courts, setCourts] = useState<Court[]>([]);
   const [courtId, setCourtId] = useState<string>('');
+  const [selectedSport, setSelectedSport] = useState<string>('Todos');
   const [dateISO, setDateISO] = useState<string>(() => getLocalDateISO());
   const [slots, setSlots] = useState<Slot[]>([]);
 
@@ -189,13 +190,24 @@ export default function App() {
       .then(res => res.json())
       .then(data => {
         if (data.quadras && Array.isArray(data.quadras) && data.quadras.length > 0) {
-          const mapped: Court[] = data.quadras.map((q: any) => ({
-            id: String(q.id),
-            name: q.nome,
-            type: q.tipo === 'Areia' ? 'areia' : q.tipo === 'Coletiva' ? 'coberta' : 'society',
-            pricePerHour: q.preco_base,
-            surface: q.tipo || 'Areia'
-          }));
+          const mapped: Court[] = data.quadras.map((q: any) => {
+            const rawModalidades = Array.isArray(q.modalidades) ? q.modalidades : [q.tipo || 'Beach Tennis'];
+            const sportPricing = rawModalidades.map((m: any) => {
+              if (typeof m === 'string') return { nome: m, preco: q.preco_base || 80 };
+              return { nome: m.nome, preco: Number(m.preco != null ? m.preco : q.preco_base || 80) };
+            });
+            const modalities = sportPricing.map((sp: { nome: string; preco: number }) => sp.nome);
+
+            return {
+              id: String(q.id),
+              name: q.nome,
+              type: q.tipo === 'Areia' ? 'areia' : q.tipo === 'Coletiva' ? 'coberta' : 'society',
+              pricePerHour: sportPricing[0]?.preco || q.preco_base || 80,
+              surface: q.tipo || 'Areia',
+              modalities,
+              sportPricing
+            };
+          });
           setCourts(mapped);
           setCourtId(mapped[0].id);
         }
@@ -203,16 +215,53 @@ export default function App() {
       .catch(err => console.error('Erro ao buscar quadras:', err));
   }, [slug, notFound, blockedMsg]);
 
+  // Lista de Esportes Disponíveis
+  const availableSports = useMemo(() => {
+    const set = new Set<string>();
+    courts.forEach(c => {
+      (c.modalities || []).forEach(m => set.add(m));
+    });
+    if (set.size <= 1) return [];
+    return ['Todos', ...Array.from(set)];
+  }, [courts]);
+
+  // Quadras filtradas com preço dinâmico baseado no esporte selecionado
+  const filteredCourts = useMemo(() => {
+    return courts
+      .filter(c => selectedSport === 'Todos' || (c.modalities || []).includes(selectedSport))
+      .map(c => {
+        let price = c.pricePerHour;
+        if (selectedSport !== 'Todos' && c.sportPricing) {
+          const match = c.sportPricing.find(sp => sp.nome === selectedSport);
+          if (match && match.preco > 0) {
+            price = match.preco;
+          }
+        }
+        return { ...c, pricePerHour: price };
+      });
+  }, [courts, selectedSport]);
+
+  // Sincroniza quadra selecionada se ela sair do filtro
+  useEffect(() => {
+    if (filteredCourts.length > 0 && !filteredCourts.some(c => c.id === courtId)) {
+      setCourtId(filteredCourts[0].id);
+    }
+  }, [filteredCourts, courtId]);
+
   const [refreshCount, setRefreshCount] = useState(0);
 
-  // 4. Carregar Matriz de Disponibilidade de Horários
+  // 4. Carregar Matriz de Disponibilidade de Horários com Preço Específico por Esporte
   useEffect(() => {
     if (!courtId || notFound || blockedMsg) return;
-    fetch(`${BACKEND_URL}/api/public/tenant/${slug}/disponibilidade?data=${dateISO}&quadra_id=${courtId}`)
+    const url = `${BACKEND_URL}/api/public/tenant/${slug}/disponibilidade?data=${dateISO}&quadra_id=${courtId}&esporte=${encodeURIComponent(selectedSport)}`;
+    fetch(url)
       .then(res => res.json())
       .then(data => {
         if (data.quadras && data.quadras.length > 0) {
           const qData = data.quadras[0];
+          const activeCourt = courts.find(c => c.id === courtId);
+          const activeSport = selectedSport !== 'Todos' ? selectedSport : (activeCourt?.modalities?.[0] || 'Beach Tennis');
+          
           const mappedSlots: Slot[] = qData.slots.map((s: any) => {
             const hInt = parseInt(s.hora_inicio.split(':')[0], 10);
             const block = hInt < 12 ? 'manha' : hInt < 18 ? 'tarde' : 'noite';
@@ -224,18 +273,22 @@ export default function App() {
               end: s.hora_fim,
               price: s.preco,
               status: s.status === 'disponivel' ? 'free' : s.status === 'passado' ? 'past' : 'busy',
-              block
+              block,
+              sport: activeSport
             };
           });
           setSlots(mappedSlots);
         }
       })
       .catch(err => console.error('Erro ao buscar disponibilidade:', err));
-  }, [slug, courtId, dateISO, notFound, blockedMsg, refreshCount]);
+  }, [slug, courtId, dateISO, selectedSport, notFound, blockedMsg, refreshCount, courts]);
+
+  const [sessionSport, setSessionSport] = useState<string | null>(null);
+  const [pendingSlotForSport, setPendingSlotForSport] = useState<Slot | null>(null);
 
   // ─── BLOQUEIO DE SCROLL DE FUNDO QUANDO QUALQUER MODAL ESTIVER ABERTO ───
   useEffect(() => {
-    const isAnyModalOpen = loginOpen || profileOpen || myResOpen || drawerOpen || pixOpen;
+    const isAnyModalOpen = loginOpen || profileOpen || myResOpen || drawerOpen || pixOpen || !!pendingSlotForSport;
     if (isAnyModalOpen) {
       document.documentElement.style.overflow = 'hidden';
       document.body.style.overflow = 'hidden';
@@ -247,23 +300,83 @@ export default function App() {
       document.documentElement.style.overflow = '';
       document.body.style.overflow = '';
     };
-  }, [loginOpen, profileOpen, myResOpen, drawerOpen, pixOpen]);
+  }, [loginOpen, profileOpen, myResOpen, drawerOpen, pixOpen, pendingSlotForSport]);
 
   const court = useMemo(() => courts.find((c) => c.id === courtId) || courts[0], [courts, courtId]);
+
+  // Reseta seleção ao trocar de quadra ou filtro de esporte
+  useEffect(() => {
+    setSelectedSlots([]);
+    setSessionSport(null);
+  }, [courtId, selectedSport]);
 
   const step = drawerOpen ? 2 : pixOpen ? 3 : selectedSlots.length > 0 ? 1 : 0;
   const totalPrice = useMemo(() => selectedSlots.reduce((acc, s) => acc + s.price, 0), [selectedSlots]);
 
+  // Escolha / Troca de Modalidade Esportiva
+  const handleChooseSport = (sportName: string) => {
+    setSessionSport(sportName);
+    const sportPrice = court?.sportPricing?.find(sp => sp.nome === sportName)?.preco || court?.pricePerHour || 100;
+    
+    if (pendingSlotForSport) {
+      const slotWithPrice: Slot = {
+        ...pendingSlotForSport,
+        price: sportPrice,
+        sport: sportName
+      };
+      setSelectedSlots(prev => {
+        const exists = prev.some(item => item.id === pendingSlotForSport.id);
+        return exists ? prev : [...prev, slotWithPrice];
+      });
+      setPendingSlotForSport(null);
+    } else {
+      // Atualiza preços dos horários já selecionados para o novo esporte
+      setSelectedSlots(prev => prev.map(s => ({
+        ...s,
+        price: sportPrice,
+        sport: sportName
+      })));
+    }
+  };
+
   // Seleção Múltipla de Horários (Alternar entrada/saída do carrinho)
   const handleToggleSlot = (s: Slot) => {
-    setSelectedSlots(prev => {
-      const exists = prev.some(item => item.id === s.id);
-      if (exists) {
-        return prev.filter(item => item.id !== s.id);
-      } else {
-        return [...prev, s];
-      }
-    });
+    const exists = selectedSlots.some(item => item.id === s.id);
+    if (exists) {
+      setSelectedSlots(prev => {
+        const next = prev.filter(item => item.id !== s.id);
+        if (next.length === 0 && selectedSport === 'Todos') {
+          setSessionSport(null);
+        }
+        return next;
+      });
+      return;
+    }
+
+    // Se um esporte já foi filtrado no topo
+    if (selectedSport !== 'Todos') {
+      const sportPrice = court?.sportPricing?.find(sp => sp.nome === selectedSport)?.preco || s.price;
+      setSelectedSlots(prev => [...prev, { ...s, price: sportPrice, sport: selectedSport }]);
+      return;
+    }
+
+    // Se está em "Todos"
+    const isMultiSport = (court?.sportPricing && court.sportPricing.length > 1);
+    if (!isMultiSport) {
+      const singleSport = court?.sportPricing?.[0]?.nome || court?.modalities?.[0] || 'Beach Tennis';
+      const singlePrice = court?.sportPricing?.[0]?.preco || s.price;
+      setSelectedSlots(prev => [...prev, { ...s, price: singlePrice, sport: singleSport }]);
+      return;
+    }
+
+    // Quadra multi-esporte em "Todos"
+    if (sessionSport) {
+      const sportPrice = court?.sportPricing?.find(sp => sp.nome === sessionSport)?.preco || s.price;
+      setSelectedSlots(prev => [...prev, { ...s, price: sportPrice, sport: sessionSport }]);
+    } else {
+      // Abre o mini-modal de escolha rápida de esporte
+      setPendingSlotForSport(s);
+    }
   };
 
   // Avançar para o Checkout
@@ -295,14 +408,16 @@ export default function App() {
   };
 
   // Confirmar Agendamento de Múltiplos Horários via Backend Pix
-  const handleConfirm = async (dataInput: { slots: Slot[]; name: string; phone: string; cpf: string }) => {
+  const handleConfirm = async (dataInput: { slots: Slot[]; name: string; phone: string; cpf: string; sport?: string }) => {
     try {
+      const activeSport = dataInput.sport || sessionSport || (selectedSport !== 'Todos' ? selectedSport : (court?.modalities?.[0] || 'Beach Tennis'));
       const payloadItens = dataInput.slots.map(s => ({
         quadra_id: parseInt(s.courtId, 10),
         data_reserva: s.dateISO,
         hora_inicio: s.start,
         hora_fim: s.end,
-        preco: s.price
+        preco: s.price,
+        esporte: s.sport || activeSport
       }));
 
       const res = await fetch(`${BACKEND_URL}/api/public/tenant/${slug}/agendar`, {
@@ -456,9 +571,39 @@ export default function App() {
 
       <main className={selectedSlots.length > 0 ? 'pb-28' : 'pb-4'}>
         {courts.length > 0 && (
-          <CourtSelector courts={courts} selectedId={courtId} onSelect={setCourtId} />
+          <CourtSelector 
+            courts={filteredCourts} 
+            selectedId={courtId} 
+            onSelect={setCourtId} 
+            selectedSport={selectedSport}
+            availableSports={availableSports}
+            onSelectSport={setSelectedSport}
+          />
         )}
         <DateCarousel selectedISO={dateISO} onSelect={setDateISO} />
+
+        {/* Indicador de Esporte Ativo na Sessão quando em Todos */}
+        {selectedSport === 'Todos' && sessionSport && court?.sportPricing && court.sportPricing.length > 1 && (
+          <div className="flex items-center justify-between bg-surface border border-edge rounded-2xl px-4 py-2.5 mx-4 mb-3 animate-fadeIn">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-muted">Modalidade:</span>
+              <span className="text-xs font-bold text-charcoal bg-card px-2.5 py-1 rounded-xl border border-edge shadow-xs">
+                {sessionSport} · {brl(court.sportPricing.find(sp => sp.nome === sessionSport)?.preco || selectedSlots[0]?.price || 0)}/h
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const targetSlot = selectedSlots[0] || slots.find(s => s.status === 'free') || slots[0];
+                if (targetSlot) setPendingSlotForSport(targetSlot);
+              }}
+              className="text-xs font-bold text-available-text hover:underline"
+            >
+              Trocar esporte
+            </button>
+          </div>
+        )}
+
         <SlotGrid
           slots={slots}
           selectedSlotIds={selectedSlots.map(s => s.id)}
@@ -473,6 +618,49 @@ export default function App() {
           </p>
         </footer>
       </main>
+
+      {/* Mini-Modal de Escolha Rápida de Esporte (Opção 1) */}
+      {pendingSlotForSport && (
+        <div 
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-charcoal/50 backdrop-blur-sm animate-fadeIn"
+          onClick={() => setPendingSlotForSport(null)}
+        >
+          <div 
+            className="w-full max-w-md bg-card rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-edge animate-slideUp"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-base font-bold text-charcoal">Qual esporte você vai jogar?</h3>
+                <p className="text-xs text-muted mt-0.5">
+                  {court?.name} · {pendingSlotForSport.start} às {pendingSlotForSport.end}
+                </p>
+              </div>
+              <button
+                onClick={() => setPendingSlotForSport(null)}
+                className="tap -mr-2 text-muted hover:text-charcoal p-2"
+                aria-label="Fechar"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-2 mb-2">
+              {(court?.sportPricing || []).map((sp) => (
+                <button
+                  key={sp.nome}
+                  type="button"
+                  onClick={() => handleChooseSport(sp.nome)}
+                  className="w-full flex items-center justify-between p-3.5 rounded-2xl border border-edge bg-surface hover:bg-edge/30 transition-all active:scale-[0.98]"
+                >
+                  <span className="font-semibold text-sm text-charcoal">{sp.nome}</span>
+                  <span className="font-bold text-sm text-available-text">{brl(sp.preco)}/h</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Barra Inferior Flutuante (Sticky Bottom Bar do Carrinho) */}
       {selectedSlots.length > 0 && (
@@ -502,8 +690,6 @@ export default function App() {
           </div>
         </div>
       )}
-
-
 
       {/* Modal de Login / Cadastro do Atleta */}
       {loginOpen && (
@@ -538,6 +724,8 @@ export default function App() {
         open={drawerOpen}
         slots={selectedSlots}
         court={court}
+        selectedSport={sessionSport || (selectedSport !== 'Todos' ? selectedSport : undefined)}
+        onSportChange={handleChooseSport}
         initialName={athlete?.name || ''}
         initialPhone={athlete?.phone || ''}
         onClose={() => setDrawerOpen(false)}

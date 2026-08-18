@@ -145,6 +145,7 @@ describe('Módulo de Autenticação e Cadastro do Atleta por Tenant', () => {
   });
 
   it('8. Deve manter vaga como disponível quando a reserva for Pendente e liberar via POST /tenant/:slug/cancelar-pendente', async () => {
+    const futureDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     // 8a. Faz um agendamento pendente
     const resAgendar = await supertest(app)
       .post(`/api/public/tenant/${testSlug}/agendar`)
@@ -152,7 +153,7 @@ describe('Módulo de Autenticação e Cadastro do Atleta por Tenant', () => {
         nome: 'Atleta Teste 8',
         telefone: '11944445555',
         quadra_id: 888,
-        data_reserva: '2026-08-15',
+        data_reserva: futureDate,
         hora_inicio: '10:00',
         hora_fim: '11:00'
       });
@@ -161,7 +162,7 @@ describe('Módulo de Autenticação e Cadastro do Atleta por Tenant', () => {
 
     // 8b. Consulta a disponibilidade pública: A vaga DEVE continuar 'disponivel' (não travada por pendente)
     const resDisp = await supertest(app)
-      .get(`/api/public/tenant/${testSlug}/disponibilidade?data=2026-08-15`);
+      .get(`/api/public/tenant/${testSlug}/disponibilidade?data=${futureDate}`);
     expect(resDisp.status).toBe(200);
     const slot10 = resDisp.body.quadras[0].slots.find((s) => s.hora_inicio === '10:00');
     expect(slot10.status).toBe('disponivel');

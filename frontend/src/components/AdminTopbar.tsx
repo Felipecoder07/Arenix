@@ -24,6 +24,27 @@ export function AdminTopbar({ onToggleSidebar }: AdminTopbarProps) {
       setArenaSlug(localStorage.getItem('arena_slug') || 'felp-arena');
     };
     window.addEventListener('arena_nome_changed', handleChanged);
+
+    // Busca dados atualizados da arena logada para sincronizar nome e slug reais
+    const token = localStorage.getItem('courtmanager_token');
+    if (token) {
+      fetch('/api/arenas/minha', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (data && data.slug) {
+            setArenaSlug(data.slug);
+            localStorage.setItem('arena_slug', data.slug);
+          }
+          if (data && data.nome) {
+            setArenaName(data.nome);
+            localStorage.setItem('arena_nome', data.nome);
+          }
+        })
+        .catch(() => {});
+    }
+
     return () => window.removeEventListener('arena_nome_changed', handleChanged);
   }, []);
 
@@ -49,7 +70,15 @@ export function AdminTopbar({ onToggleSidebar }: AdminTopbarProps) {
     return () => clearInterval(interval);
   }, []);
 
-  const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  const isLocal = typeof window !== 'undefined' && (
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname.startsWith('192.168.') ||
+    window.location.hostname.startsWith('10.') ||
+    window.location.hostname.startsWith('172.') ||
+    window.location.port === '5173' ||
+    window.location.port === '5176'
+  );
 
   const clientPortalUrl = isLocal
     ? `${window.location.protocol}//${window.location.hostname}:5176/arena/${arenaSlug}`

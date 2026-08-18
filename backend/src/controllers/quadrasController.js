@@ -5,7 +5,36 @@ const listarQuadras = async (req, res) => {
   try {
     const tenant_id = req.user.tenant_id;
     const quadras = await db.allAsync('SELECT * FROM Quadras WHERE tenant_id = ? ORDER BY nome ASC', [tenant_id]);
-    res.json(quadras);
+    
+    const formatted = quadras.map(q => {
+      let modalidades = [];
+      if (q.modalidades) {
+        try {
+          modalidades = typeof q.modalidades === 'string' ? JSON.parse(q.modalidades) : q.modalidades;
+        } catch {
+          modalidades = [{ nome: q.tipo || 'Beach Tennis', preco: q.preco_base || 80 }];
+        }
+      } else if (q.tipo) {
+        modalidades = q.tipo === 'Areia' 
+          ? [
+              { nome: 'Beach Tennis', preco: q.preco_base || 80 },
+              { nome: 'Vôlei de Praia', preco: q.preco_base || 80 },
+              { nome: 'Futevôlei', preco: q.preco_base || 80 }
+            ]
+          : [{ nome: q.tipo, preco: q.preco_base || 80 }];
+      }
+
+      const normalizedModalidades = (Array.isArray(modalidades) ? modalidades : []).map(m => {
+        if (typeof m === 'string') {
+          return { nome: m, preco: q.preco_base || 80 };
+        }
+        return { nome: m.nome, preco: Number(m.preco != null ? m.preco : q.preco_base || 80) };
+      });
+
+      return { ...q, modalidades: normalizedModalidades };
+    });
+
+    res.json(formatted);
   } catch (error) {
     console.error('Erro ao buscar quadras:', error);
     res.status(500).json({ error: 'Erro ao buscar quadras.' });
@@ -16,20 +45,41 @@ const listarQuadras = async (req, res) => {
 const criarQuadra = async (req, res) => {
   try {
     const tenant_id = req.user.tenant_id;
-    const { nome, tipo, preco_base, hora_abertura, hora_fechamento } = req.body;
+    const { nome, tipo, modalidades, preco_base, hora_abertura, hora_fechamento } = req.body;
 
-    if (!nome || !tipo || preco_base == null) {
-      return res.status(400).json({ error: 'Nome, modalidade e preço base são obrigatórios.' });
+    if (!nome || !tipo) {
+      return res.status(400).json({ error: 'Nome e tipo de quadra são obrigatórios.' });
     }
 
+    const basePrice = preco_base != null ? Number(preco_base) : 80;
+
+    let modalList = [];
+    if (Array.isArray(modalidades) && modalidades.length > 0) {
+      modalList = modalidades.map(m => {
+        if (typeof m === 'string') return { nome: m, preco: basePrice };
+        return { nome: m.nome, preco: Number(m.preco != null ? m.preco : basePrice) };
+      });
+    } else {
+      modalList = tipo === 'Areia'
+        ? [
+            { nome: 'Beach Tennis', preco: basePrice },
+            { nome: 'Vôlei de Praia', preco: basePrice },
+            { nome: 'Futevôlei', preco: basePrice }
+          ]
+        : [{ nome: tipo, preco: basePrice }];
+    }
+
+    const modalJson = JSON.stringify(modalList);
+
     const insert = await db.runAsync(
-      `INSERT INTO Quadras (tenant_id, nome, tipo, preco_base, hora_abertura, hora_fechamento, status) 
-       VALUES (?, ?, ?, ?, ?, ?, 'Ativa')`,
+      `INSERT INTO Quadras (tenant_id, nome, tipo, modalidades, preco_base, hora_abertura, hora_fechamento, status) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'Ativa')`,
       [
         tenant_id, 
         nome, 
         tipo, 
-        preco_base, 
+        modalJson,
+        basePrice, 
         hora_abertura || '07:00', 
         hora_fechamento || '22:00'
       ]
@@ -39,7 +89,8 @@ const criarQuadra = async (req, res) => {
       id: insert.lastID, 
       nome, 
       tipo, 
-      preco_base, 
+      modalidades: modalList,
+      preco_base: basePrice, 
       hora_abertura,
       hora_fechamento,
       status: 'Ativa' 
@@ -55,7 +106,7 @@ const atualizarQuadra = async (req, res) => {
   try {
     const tenant_id = req.user.tenant_id;
     const quadraId = req.params.id;
-    const { nome, tipo, preco_base, hora_abertura, hora_fechamento, status } = req.body;
+    const { nome, tipo, modalidades, preco_base, hora_abertura, hora_fechamento, status } = req.body;
 
     // Verificar se a quadra existe e pertence ao tenant
     const quadra = await db.getAsync('SELECT id FROM Quadras WHERE id = ? AND tenant_id = ?', [quadraId, tenant_id]);
@@ -63,11 +114,31 @@ const atualizarQuadra = async (req, res) => {
       return res.status(404).json({ error: 'Quadra não encontrada.' });
     }
 
+    const basePrice = preco_base != null ? Number(preco_base) : 80;
+
+    let modalList = [];
+    if (Array.isArray(modalidades) && modalidades.length > 0) {
+      modalList = modalidades.map(m => {
+        if (typeof m === 'string') return { nome: m, preco: basePrice };
+        return { nome: m.nome, preco: Number(m.preco != null ? m.preco : basePrice) };
+      });
+    } else {
+      modalList = tipo === 'Areia'
+        ? [
+            { nome: 'Beach Tennis', preco: basePrice },
+            { nome: 'Vôlei de Praia', preco: basePrice },
+            { nome: 'Futevôlei', preco: basePrice }
+          ]
+        : [{ nome: tipo || 'Beach Tennis', preco: basePrice }];
+    }
+
+    const modalJson = JSON.stringify(modalList);
+
     await db.runAsync(
       `UPDATE Quadras 
-       SET nome = ?, tipo = ?, preco_base = ?, hora_abertura = ?, hora_fechamento = ?, status = ?
+       SET nome = ?, tipo = ?, modalidades = ?, preco_base = ?, hora_abertura = ?, hora_fechamento = ?, status = ?
        WHERE id = ?`,
-      [nome, tipo, preco_base, hora_abertura, hora_fechamento, status, quadraId]
+      [nome, tipo, modalJson, basePrice, hora_abertura, hora_fechamento, status, quadraId]
     );
 
     res.json({ message: 'Quadra atualizada com sucesso.' });

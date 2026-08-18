@@ -1,11 +1,18 @@
 export type CourtType = 'areia' | 'coberta' | 'society';
 
+export interface SportPricing {
+  nome: string;
+  preco: number;
+}
+
 export interface Court {
   id: string;
   name: string;
   type: CourtType;
   pricePerHour: number;
   surface: string;
+  modalities?: string[];
+  sportPricing?: SportPricing[];
 }
 
 export interface Slot {
@@ -17,6 +24,7 @@ export interface Slot {
   price: number;
   status: 'free' | 'busy' | 'past';
   block: 'manha' | 'tarde' | 'noite';
+  sport?: string;
 }
 
 export interface ArenaInfo {
@@ -39,4 +47,5 @@ export interface ReservationInput {
   name: string;
   phone: string;
   cpf: string;
+  sport?: string;
 }

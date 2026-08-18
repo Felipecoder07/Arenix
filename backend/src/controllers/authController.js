@@ -172,12 +172,19 @@ const register = async (req, res) => {
         arenaStatus = 0; // Suspenso / Pendente de pagamento imediato
       }
 
-      const cleanSlug = (arenaNomeFinal || '')
+      let cleanSlug = (arenaNomeFinal || '')
         .toLowerCase()
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
-      const finalSlug = cleanSlug || `arena-${Date.now()}`;
+      if (!cleanSlug) cleanSlug = `arena-${Date.now()}`;
+
+      let finalSlug = cleanSlug;
+      let counter = 1;
+      while (await db.getAsync('SELECT id FROM Arenas WHERE slug = ?', [finalSlug])) {
+        counter++;
+        finalSlug = `${cleanSlug}-${counter}`;
+      }
 
       db.run(
         'INSERT INTO Arenas (nome, slug, email, telefone, endereco, plano_id, trial_expira_em, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', 

@@ -1,6 +1,7 @@
 const supertest = require('supertest');
 const app = require('../src/app');
 const db = require('../src/config/database');
+const initDb = require('../src/config/init_db');
 
 describe('Testes de Integração de Estresse — Conta Universal Multiarena (Modelo A)', () => {
   const slugArena1 = 'arena-alpha-test';
@@ -8,6 +9,9 @@ describe('Testes de Integração de Estresse — Conta Universal Multiarena (Mod
   let tokenAthleteGlobal;
 
   beforeAll(async () => {
+    initDb();
+    await new Promise(r => setTimeout(r, 600));
+
     // Limpa dados de testes anteriores
     await db.runAsync('DELETE FROM Reservas WHERE tenant_id IN (998, 999)');
     await db.runAsync('DELETE FROM Clientes WHERE tenant_id IN (998, 999)');

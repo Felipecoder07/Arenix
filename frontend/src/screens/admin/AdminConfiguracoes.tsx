@@ -1,10 +1,16 @@
 import { useEffect, useState } from 'react';
 import '../../assets/css/configuracoes.css';
 
+export interface ModalidadeItem {
+  nome: string;
+  preco: number;
+}
+
 interface Quadra {
   id: number;
   nome: string;
   tipo: string;
+  modalidades?: (string | ModalidadeItem)[];
   preco_base: number;
   hora_abertura: string;
   hora_fechamento: string;
@@ -41,6 +47,21 @@ interface ArenaData {
   foto_capa?: string;
 }
 
+const OPCOES_MODALIDADES = ['Beach Tennis', 'Vôlei de Praia', 'Futevôlei', 'Funcional', 'Padel', 'Futsal', 'Tênis'];
+
+const PRECOS_SUGERIDOS_PADRAO: Record<string, number> = {
+  'Beach Tennis': 120,
+  'Vôlei de Praia': 90,
+  'Futevôlei': 100,
+  'Funcional': 80,
+  'Padel': 150,
+  'Futsal': 110,
+  'Futsal / Society': 130,
+  'Tênis': 140,
+  'Pickleball': 100,
+  'Futmesa': 70
+};
+
 export function AdminConfiguracoes() {
   const [relAtivo, setRelAtivo] = useState<string>(() => {
     return sessionStorage.getItem('cm_config_tab') || 'quadras';
@@ -52,6 +73,8 @@ export function AdminConfiguracoes() {
   const [quadras, setQuadras] = useState<Quadra[]>([]);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [motivos, setMotivos] = useState<Motivo[]>([]);
+  const [opcoesModalidades, setOpcoesModalidades] = useState<string[]>(OPCOES_MODALIDADES);
+  const [novoEsporteInput, setNovoEsporteInput] = useState('');
   const [arena, setArena] = useState<ArenaData>({
     nome: '',
     endereco: '',
@@ -87,9 +110,69 @@ export function AdminConfiguracoes() {
   const [nqId, setNqId] = useState<number | null>(null);
   const [nqNome, setNqNome] = useState('');
   const [nqModalidade, setNqModalidade] = useState('');
-  const [nqPreco, setNqPreco] = useState('');
+  const [nqModalidades, setNqModalidades] = useState<ModalidadeItem[]>([
+    { nome: 'Beach Tennis', preco: 120 },
+    { nome: 'Vôlei de Praia', preco: 90 },
+    { nome: 'Futevôlei', preco: 100 }
+  ]);
+  const [nqPreco, setNqPreco] = useState('100,00');
   const [nqInicio, setNqInicio] = useState('07:00');
   const [nqFim, setNqFim] = useState('22:00');
+
+  // Helpers para Sugestão Inteligente de Preços por Esporte
+  const getDefaultSportPrice = (sportName: string): number => {
+    // 1. Herda o valor que a arena já configurou para esse esporte em outra quadra cadastrada
+    for (const q of quadras) {
+      if (Array.isArray(q.modalidades)) {
+        for (const m of q.modalidades) {
+          if (typeof m !== 'string' && m.nome === sportName && m.preco > 0) {
+            return m.preco;
+          }
+        }
+      }
+    }
+    // 2. Se for o primeiro cadastro, usa os valores de referência do mercado
+    return PRECOS_SUGERIDOS_PADRAO[sportName] || 100;
+  };
+
+  const isSportSelected = (m: string) => nqModalidades.some(item => item.nome === m);
+
+  const toggleSport = (m: string) => {
+    if (isSportSelected(m)) {
+      if (nqModalidades.length > 1) {
+        setNqModalidades(prev => prev.filter(i => i.nome !== m));
+      }
+    } else {
+      const defaultPrice = getDefaultSportPrice(m);
+      setNqModalidades(prev => [...prev, { nome: m, preco: defaultPrice }]);
+    }
+  };
+
+  const updateSportPrice = (m: string, price: number) => {
+    setNqModalidades(prev => prev.map(i => i.nome === m ? { ...i, preco: price } : i));
+  };
+
+  const handleAddCustomModalidade = () => {
+    const trimmed = novoEsporteInput.trim();
+    if (!trimmed) return;
+    if (!opcoesModalidades.includes(trimmed)) {
+      setOpcoesModalidades(prev => [...prev, trimmed]);
+    }
+    if (!nqModalidades.some(i => i.nome === trimmed)) {
+      const defaultPrice = getDefaultSportPrice(trimmed);
+      setNqModalidades(prev => [...prev, { nome: trimmed, preco: defaultPrice }]);
+    }
+    setNovoEsporteInput('');
+  };
+
+  const handleRemoveModalidade = (m: string) => {
+    if (nqModalidades.length > 1) {
+      setNqModalidades(prev => prev.filter(item => item.nome !== m));
+    }
+    if (!OPCOES_MODALIDADES.includes(m)) {
+      setOpcoesModalidades(prev => prev.filter(item => item !== m));
+    }
+  };
 
   // Forms state: Usuario
   const [nuId, setNuId] = useState<number | null>(null);
@@ -126,7 +209,8 @@ export function AdminConfiguracoes() {
   };
 
   const formatFloatToCurrencyInput = (num: number) => {
-    return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (num == null || isNaN(Number(num))) return '0,00';
+    return Number(num).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
   const parseCurrencyToFloat = (value: string) => {
@@ -165,6 +249,15 @@ export function AdminConfiguracoes() {
     try {
       const data = await request('/api/quadras');
       setQuadras(data);
+      if (Array.isArray(data)) {
+        const sportsSet = new Set(OPCOES_MODALIDADES);
+        data.forEach((q: Quadra) => {
+          if (Array.isArray(q.modalidades)) {
+            q.modalidades.forEach((m: any) => sportsSet.add(typeof m === 'string' ? m : m.nome));
+          }
+        });
+        setOpcoesModalidades(Array.from(sportsSet));
+      }
     } catch (e: any) {
       showToast('Erro ao carregar quadras: ' + e.message, 'error');
     } finally {
@@ -215,17 +308,21 @@ export function AdminConfiguracoes() {
         cidade_pix: data.cidade_pix || '',
         foto_capa: data.foto_capa || ''
       });
-      if (data.nome) {
-        localStorage.setItem('arena_nome', data.nome);
-        window.dispatchEvent(new Event('arena_nome_changed'));
-      }
-      
-      const gRes = await request('/api/pagamentos/gateway/maquineta');
-      setMaquinetaId(gRes.gateway_device_id || '');
-      setAccessToken(gRes.gateway_access_token || '');
-      setPublicKey(gRes.gateway_public_key || '');
     } catch (e: any) {
-      console.error(e);
+      showToast('Erro ao carregar dados da arena: ' + e.message, 'error');
+    }
+  };
+
+  const loadMaquineta = async () => {
+    try {
+      const data = await request('/api/gateway/pos');
+      if (data) {
+        setMaquinetaId(data.pos_serial_number || '');
+        setAccessToken(data.access_token || '');
+        setPublicKey(data.public_key || '');
+      }
+    } catch {
+      // Configuração opcional
     }
   };
 
@@ -234,6 +331,7 @@ export function AdminConfiguracoes() {
       loadQuadras();
       loadUsuarios();
       loadArena();
+      loadMaquineta();
       loadMotivos();
     }
 
@@ -269,16 +367,18 @@ export function AdminConfiguracoes() {
   // --- SAVE QUADRA ---
   const handleSaveQuadra = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nqNome || !nqModalidade || !nqPreco) {
+    if (!nqNome || !nqModalidade) {
       showToast('Preencha os campos obrigatórios.', 'warning');
       return;
     }
 
     try {
+      const basePrice = nqModalidades.length > 0 ? nqModalidades[0].preco : (parseCurrencyToFloat(nqPreco) || 80);
       const payload = {
         nome: nqNome,
         tipo: nqModalidade,
-        preco_base: parseCurrencyToFloat(nqPreco),
+        modalidades: nqModalidades.length > 0 ? nqModalidades : [{ nome: nqModalidade, preco: basePrice }],
+        preco_base: basePrice,
         hora_abertura: nqInicio,
         hora_fechamento: nqFim
       };
@@ -341,6 +441,11 @@ export function AdminConfiguracoes() {
     setNqId(q.id);
     setNqNome(q.nome);
     setNqModalidade(q.tipo);
+    const normalized = (q.modalidades && q.modalidades.length > 0 ? q.modalidades : [q.tipo || 'Beach Tennis']).map((m: any) => {
+      if (typeof m === 'string') return { nome: m, preco: q.preco_base || 80 };
+      return { nome: m.nome, preco: Number(m.preco != null ? m.preco : q.preco_base || 80) };
+    });
+    setNqModalidades(normalized);
     setNqPreco(formatFloatToCurrencyInput(q.preco_base));
     setNqInicio(q.hora_abertura || '07:00');
     setNqFim(q.hora_fechamento || '22:00');
@@ -350,8 +455,13 @@ export function AdminConfiguracoes() {
   const openNovaQuadraModal = () => {
     setNqId(null);
     setNqNome('');
-    setNqModalidade('');
-    setNqPreco('');
+    setNqModalidade('Areia');
+    setNqModalidades([
+      { nome: 'Beach Tennis', preco: getDefaultSportPrice('Beach Tennis') },
+      { nome: 'Vôlei de Praia', preco: getDefaultSportPrice('Vôlei de Praia') },
+      { nome: 'Futevôlei', preco: getDefaultSportPrice('Futevôlei') }
+    ]);
+    setNqPreco('100,00');
     setNqInicio('07:00');
     setNqFim('22:00');
     setActiveModal('nova-quadra');
@@ -608,7 +718,32 @@ export function AdminConfiguracoes() {
                             <br />
                             <small style={{ color: 'var(--muted)' }}>{formatCurrency(q.preco_base)}/h</small>
                           </td>
-                          <td>{q.tipo}</td>
+                          <td>
+                            <span style={{ fontWeight: 600 }}>{q.tipo}</span>
+                            {q.modalidades && q.modalidades.length > 0 && (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
+                                {q.modalidades.map((m: any) => {
+                                  const name = typeof m === 'string' ? m : m.nome;
+                                  const price = typeof m === 'string' ? q.preco_base : (m.preco != null ? m.preco : q.preco_base);
+                                  return (
+                                    <span 
+                                      key={name} 
+                                      style={{ 
+                                        fontSize: '11px', 
+                                        padding: '2px 8px', 
+                                        backgroundColor: 'var(--card-subtle, #e2e8f0)', 
+                                        borderRadius: '10px', 
+                                        color: 'var(--text, #334155)',
+                                        fontWeight: 500
+                                      }}
+                                    >
+                                      {name} · {formatCurrency(price)}/h
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </td>
                           <td>{q.hora_abertura || '07:00'}</td>
                           <td>{q.hora_fechamento || '22:00'}</td>
                           <td>
@@ -1280,32 +1415,177 @@ export function AdminConfiguracoes() {
             />
           </div>
           <div className="form-group">
-            <label htmlFor="nq-modalidade">Modalidade *</label>
+            <label htmlFor="nq-modalidade">Tipo Principal de Piso *</label>
             <select 
               id="nq-modalidade" 
               value={nqModalidade}
-              onChange={(e) => setNqModalidade(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setNqModalidade(val);
+                if (val === 'Areia') {
+                  setNqModalidades([
+                    { nome: 'Beach Tennis', preco: getDefaultSportPrice('Beach Tennis') },
+                    { nome: 'Vôlei de Praia', preco: getDefaultSportPrice('Vôlei de Praia') },
+                    { nome: 'Futevôlei', preco: getDefaultSportPrice('Futevôlei') }
+                  ]);
+                } else if (val === 'Padel') {
+                  setNqModalidades([{ nome: 'Padel', preco: getDefaultSportPrice('Padel') }]);
+                } else if (val === 'Tênis') {
+                  setNqModalidades([{ nome: 'Tênis', preco: getDefaultSportPrice('Tênis') }]);
+                } else if (val === 'Futsal / Society') {
+                  setNqModalidades([{ nome: 'Futsal', preco: getDefaultSportPrice('Futsal') }]);
+                }
+              }}
               required
             >
               <option value="">Selecione</option>
-              <option>Beach Tennis</option>
-              <option>Vôlei</option>
-              <option>Futevôlei</option>
-              <option>Padel</option>
-              <option>Futsal</option>
-              <option>Outro</option>
+              <option value="Areia">Areia</option>
+              <option value="Beach Tennis">Beach Tennis</option>
+              <option value="Vôlei">Vôlei de Praia</option>
+              <option value="Futevôlei">Futevôlei</option>
+              <option value="Padel">Padel</option>
+              <option value="Futsal / Society">Futsal / Society</option>
+              <option value="Tênis">Tênis</option>
+              <option value="Outro">Outro</option>
             </select>
           </div>
           <div className="form-group">
-            <label htmlFor="nq-preco">Preço base por hora (R$) *</label>
-            <input 
-              type="text" 
-              id="nq-preco" 
-              placeholder="Ex: 150,00" 
-              value={nqPreco}
-              onChange={(e) => setNqPreco(formatCurrencyInput(e.target.value))}
-              required 
-            />
+            <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600 }}>Modalidades Suportadas nesta Quadra:</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+              {opcoesModalidades.map(m => {
+                const sel = isSportSelected(m);
+                const isCustom = !OPCOES_MODALIDADES.includes(m);
+                return (
+                  <div
+                    key={m}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      borderRadius: '16px',
+                      overflow: 'hidden',
+                      border: sel ? '1.5px solid var(--accent, #3b82f6)' : '1px solid #cbd5e1',
+                      backgroundColor: sel ? 'rgba(59, 130, 246, 0.12)' : '#fff',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleSport(m)}
+                      style={{
+                        padding: '5px 10px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        border: 'none',
+                        background: 'transparent',
+                        color: sel ? 'var(--accent, #2563eb)' : '#64748b',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {sel ? '✓ ' : '+ '} {m}
+                    </button>
+                    {isCustom && (
+                      <button
+                        type="button"
+                        title="Excluir modalidade"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveModalidade(m);
+                        }}
+                        style={{
+                          border: 'none',
+                          background: 'transparent',
+                          padding: '5px 8px 5px 2px',
+                          fontSize: '11px',
+                          color: '#94a3b8',
+                          cursor: 'pointer',
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {/* Campo para adicionar modalidade personalizada */}
+            <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+              <input
+                type="text"
+                placeholder="Novo esporte (ex: Pickleball, Futmesa)..."
+                value={novoEsporteInput}
+                onChange={(e) => setNovoEsporteInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddCustomModalidade();
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  padding: '6px 12px',
+                  fontSize: '12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1'
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleAddCustomModalidade}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#f1f5f9',
+                  color: '#334155',
+                  cursor: 'pointer'
+                }}
+              >
+                + Adicionar
+              </button>
+            </div>
+
+            {/* Lista de Preços por Modalidade Individual */}
+            {nqModalidades.length > 0 && (
+              <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--muted)' }}>
+                  Preço por hora para cada modalidade nesta quadra:
+                </label>
+                {nqModalidades.map(m => (
+                  <div 
+                    key={m.nome} 
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'space-between', 
+                      padding: '8px 12px', 
+                      backgroundColor: 'var(--card-subtle, #f8fafc)', 
+                      borderRadius: '8px', 
+                      border: '1px solid #e2e8f0' 
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '10px', color: 'var(--accent, #2563eb)' }}>●</span>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b' }}>{m.nome}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '12px', color: '#64748b' }}>R$</span>
+                      <input
+                        type="text"
+                        value={formatFloatToCurrencyInput(m.preco)}
+                        onChange={(e) => updateSportPrice(m.nome, parseCurrencyToFloat(formatCurrencyInput(e.target.value)))}
+                        style={{ width: '100px', padding: '5px 8px', fontSize: '13px', textAlign: 'right', borderRadius: '6px', border: '1px solid #cbd5e1', fontWeight: 600 }}
+                        placeholder="0,00"
+                        required
+                      />
+                      <span style={{ fontSize: '11px', color: '#64748b' }}>/h</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-4)' }}>
             <div className="form-group">
@@ -1352,7 +1632,7 @@ export function AdminConfiguracoes() {
             />
           </div>
           <div className="form-group">
-            <label htmlFor="eq-modalidade">Modalidade *</label>
+            <label htmlFor="eq-modalidade">Tipo Principal de Piso *</label>
             <select 
               id="eq-modalidade" 
               value={nqModalidade}
@@ -1360,24 +1640,153 @@ export function AdminConfiguracoes() {
               required
             >
               <option value="">Selecione</option>
-              <option>Beach Tennis</option>
-              <option>Vôlei</option>
-              <option>Futevôlei</option>
-              <option>Padel</option>
-              <option>Futsal</option>
-              <option>Outro</option>
+              <option value="Areia">Areia</option>
+              <option value="Beach Tennis">Beach Tennis</option>
+              <option value="Vôlei">Vôlei de Praia</option>
+              <option value="Futevôlei">Futevôlei</option>
+              <option value="Padel">Padel</option>
+              <option value="Futsal / Society">Futsal / Society</option>
+              <option value="Tênis">Tênis</option>
+              <option value="Outro">Outro</option>
             </select>
           </div>
           <div className="form-group">
-            <label htmlFor="eq-preco">Preço base por hora (R$) *</label>
-            <input 
-              type="text" 
-              id="eq-preco" 
-              placeholder="Ex: 150,00"
-              value={nqPreco}
-              onChange={(e) => setNqPreco(formatCurrencyInput(e.target.value))}
-              required 
-            />
+            <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600 }}>Modalidades Suportadas nesta Quadra:</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+              {opcoesModalidades.map(m => {
+                const sel = isSportSelected(m);
+                const isCustom = !OPCOES_MODALIDADES.includes(m);
+                return (
+                  <div
+                    key={m}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      borderRadius: '16px',
+                      overflow: 'hidden',
+                      border: sel ? '1.5px solid var(--accent, #3b82f6)' : '1px solid #cbd5e1',
+                      backgroundColor: sel ? 'rgba(59, 130, 246, 0.12)' : '#fff',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleSport(m)}
+                      style={{
+                        padding: '5px 10px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        border: 'none',
+                        background: 'transparent',
+                        color: sel ? 'var(--accent, #2563eb)' : '#64748b',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {sel ? '✓ ' : '+ '} {m}
+                    </button>
+                    {isCustom && (
+                      <button
+                        type="button"
+                        title="Excluir modalidade"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveModalidade(m);
+                        }}
+                        style={{
+                          border: 'none',
+                          background: 'transparent',
+                          padding: '5px 8px 5px 2px',
+                          fontSize: '11px',
+                          color: '#94a3b8',
+                          cursor: 'pointer',
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {/* Campo para adicionar modalidade personalizada */}
+            <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+              <input
+                type="text"
+                placeholder="Novo esporte (ex: Pickleball, Futmesa)..."
+                value={novoEsporteInput}
+                onChange={(e) => setNovoEsporteInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddCustomModalidade();
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  padding: '6px 12px',
+                  fontSize: '12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1'
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleAddCustomModalidade}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#f1f5f9',
+                  color: '#334155',
+                  cursor: 'pointer'
+                }}
+              >
+                + Adicionar
+              </button>
+            </div>
+
+            {/* Lista de Preços por Modalidade Individual */}
+            {nqModalidades.length > 0 && (
+              <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--muted)' }}>
+                  Preço por hora para cada modalidade nesta quadra:
+                </label>
+                {nqModalidades.map(m => (
+                  <div 
+                    key={m.nome} 
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'space-between', 
+                      padding: '8px 12px', 
+                      backgroundColor: 'var(--card-subtle, #f8fafc)', 
+                      borderRadius: '8px', 
+                      border: '1px solid #e2e8f0' 
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '10px', color: 'var(--accent, #2563eb)' }}>●</span>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b' }}>{m.nome}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '12px', color: '#64748b' }}>R$</span>
+                      <input
+                        type="text"
+                        value={formatFloatToCurrencyInput(m.preco)}
+                        onChange={(e) => updateSportPrice(m.nome, parseCurrencyToFloat(formatCurrencyInput(e.target.value)))}
+                        style={{ width: '100px', padding: '5px 8px', fontSize: '13px', textAlign: 'right', borderRadius: '6px', border: '1px solid #cbd5e1', fontWeight: 600 }}
+                        placeholder="0,00"
+                        required
+                      />
+                      <span style={{ fontSize: '11px', color: '#64748b' }}>/h</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-4)' }}>
             <div className="form-group">

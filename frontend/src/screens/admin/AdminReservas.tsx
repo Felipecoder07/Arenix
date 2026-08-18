@@ -1,6 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import '../../assets/css/reservas.css';
+
+export interface ModalidadeItem {
+  nome: string;
+  preco: number;
+}
 
 interface Quadra {
   id: number;
@@ -9,6 +14,7 @@ interface Quadra {
   hora_abertura: string;
   hora_fechamento: string;
   preco_base?: number;
+  modalidades?: (string | ModalidadeItem)[];
 }
 
 interface Reserva {
@@ -23,6 +29,7 @@ interface Reserva {
   valor_pago: number;
   observacoes?: string;
   data_reserva: string;
+  esporte?: string;
 }
 
 interface Bloqueio {
@@ -53,7 +60,7 @@ export function AdminReservas() {
   // Controle de Visualização e Filtros
   const [scope, setScope] = useState<'diaria' | 'semanal'>('diaria');
   const [filterQuadraId, setFilterQuadraId] = useState<number | ''>('');
-  
+
   // Data de referência
   const tzOffset = new Date().getTimezoneOffset() * 60000;
   const todayStr = new Date(Date.now() - tzOffset).toISOString().split('T')[0];
@@ -82,6 +89,7 @@ export function AdminReservas() {
   const [nrClienteBusca, setNrClienteBusca] = useState('');
   const [nrClienteId, setNrClienteId] = useState<number | null>(null);
   const [nrQuadraId, setNrQuadraId] = useState<number | null>(null);
+  const [nrEsporte, setNrEsporte] = useState('');
   const [nrData, setNrData] = useState(selectedDate);
   const [nrInicio, setNrInicio] = useState('');
   const [nrFim, setNrFim] = useState('');
@@ -90,6 +98,28 @@ export function AdminReservas() {
   const [showNrAutocomplete, setShowNrAutocomplete] = useState(false);
   const [nrHorariosInicio, setNrHorariosInicio] = useState<string[]>([]);
   const [nrHorariosFim, setNrHorariosFim] = useState<string[]>([]);
+
+  // Modalidades da Quadra Selecionada
+  const quadraSelecionada = quadras.find(q => q.id === nrQuadraId);
+  const modalidadesQuadra = useMemo<ModalidadeItem[]>(() => {
+    if (!quadraSelecionada) return [];
+    const raw = quadraSelecionada.modalidades;
+    if (!raw || !Array.isArray(raw) || raw.length === 0) {
+      return [{ nome: quadraSelecionada.tipo || 'Beach Tennis', preco: quadraSelecionada.preco_base || 80 }];
+    }
+    return raw.map(m => typeof m === 'string' ? { nome: m, preco: quadraSelecionada.preco_base || 80 } : { nome: m.nome, preco: Number(m.preco != null ? m.preco : quadraSelecionada.preco_base || 80) });
+  }, [quadraSelecionada]);
+
+  // Sincroniza esporte padrão ao trocar de quadra
+  useEffect(() => {
+    if (modalidadesQuadra.length > 0) {
+      if (!nrEsporte || !modalidadesQuadra.some(m => m.nome === nrEsporte)) {
+        setNrEsporte(modalidadesQuadra[0].nome);
+      }
+    } else {
+      setNrEsporte('');
+    }
+  }, [modalidadesQuadra, nrEsporte]);
 
   // 2. Detalhes Reserva Selecionada
   const [selectedReserva, setSelectedReserva] = useState<Reserva | null>(null);
@@ -298,7 +328,7 @@ export function AdminReservas() {
   // Carregar valor pago real da reserva selecionada ao abrir detalhes
   useEffect(() => {
     if (!selectedReserva || !token) return;
-    
+
     const fetchPagos = async () => {
       try {
         const res = await fetch(`/api/pagamentos/reserva/${selectedReserva.id}`, {
@@ -307,7 +337,7 @@ export function AdminReservas() {
         if (res.ok) {
           const pags = await res.json();
           const totalPago = pags.reduce((acc: number, curr: any) => acc + (curr.valor || 0), 0);
-          
+
           if (selectedReserva.valor_pago !== totalPago) {
             setSelectedReserva(prev => prev ? { ...prev, valor_pago: totalPago } : null);
           }
@@ -316,7 +346,7 @@ export function AdminReservas() {
         console.warn('Erro ao carregar pagamentos da reserva:', err);
       }
     };
-    
+
     fetchPagos();
   }, [selectedReserva?.id, token]);
 
@@ -355,7 +385,7 @@ export function AdminReservas() {
       }
 
       const ocupado = resQuadra.some(r => r.hora_inicio <= startSlot && r.hora_fim > startSlot) ||
-                      bqQuadra.some(b => b.hora_inicio <= startSlot && b.hora_fim > startSlot);
+        bqQuadra.some(b => b.hora_inicio <= startSlot && b.hora_fim > startSlot);
 
       if (!ocupado) {
         livres.push(startSlot);
@@ -410,7 +440,8 @@ export function AdminReservas() {
     }
 
     const q = quadras.find(x => x.id === nrQuadraId);
-    const preco = q?.preco_base || 0;
+    const sportMatch = modalidadesQuadra.find(m => m.nome === nrEsporte);
+    const preco = sportMatch?.preco ?? q?.preco_base ?? 80;
 
     const [hIni] = nrInicio.split(':').map(Number);
     const [hFim] = nrFim.split(':').map(Number);
@@ -421,7 +452,7 @@ export function AdminReservas() {
     } else {
       setNrValorPrevisto(0);
     }
-  }, [nrQuadraId, nrInicio, nrFim, quadras]);
+  }, [nrQuadraId, nrInicio, nrFim, nrEsporte, modalidadesQuadra, quadras]);
 
   // Recalcular horários disponíveis (Bloqueio)
   useEffect(() => {
@@ -458,7 +489,7 @@ export function AdminReservas() {
       }
 
       const ocupado = resQuadra.some(r => r.hora_inicio <= startSlot && r.hora_fim > startSlot) ||
-                      bqQuadraList.some(b => b.hora_inicio <= startSlot && b.hora_fim > startSlot);
+        bqQuadraList.some(b => b.hora_inicio <= startSlot && b.hora_fim > startSlot);
 
       if (!ocupado) {
         livres.push(startSlot);
@@ -525,6 +556,7 @@ export function AdminReservas() {
           data_reserva: nrData,
           hora_inicio: nrInicio,
           hora_fim: nrFim,
+          esporte: nrEsporte || modalidadesQuadra[0]?.nome || 'Beach Tennis',
           observacoes: nrObs
         })
       });
@@ -740,7 +772,7 @@ export function AdminReservas() {
     if (!selectedBloqueio) return;
 
     try {
-      const url = tudo 
+      const url = tudo
         ? `/api/reservas/bloqueios/${selectedBloqueio.id}`
         : `/api/reservas/bloqueios/${selectedBloqueio.id}/horario?hora=${selectedBloqueioTime}`;
 
@@ -768,6 +800,7 @@ export function AdminReservas() {
     setNrClienteBusca('');
     setNrClienteId(null);
     setNrQuadraId(null);
+    setNrEsporte('');
     setNrInicio('');
     setNrFim('');
     setNrObs('');
@@ -802,8 +835,8 @@ export function AdminReservas() {
       setActiveModal('gerenciar-bloqueio');
     } else if (reserva) {
       // Inicializa valor_pago padrão seguro para evitar crash enquanto carrega
-      const valPago = reserva.valor_pago !== undefined 
-        ? reserva.valor_pago 
+      const valPago = reserva.valor_pago !== undefined
+        ? reserva.valor_pago
         : (reserva.status_pagamento === 'Pago' ? reserva.valor_total : 0);
       setSelectedReserva({ ...reserva, valor_pago: valPago });
       setActiveModal('detalhe-reserva');
@@ -934,25 +967,25 @@ export function AdminReservas() {
 
         // Se a quadra está aberta neste horário
         if (hourStr >= col.hora_abertura && hourStr < col.hora_fechamento) {
-          const res = (reservas || []).find(r => 
-            r.quadra_id === col.quadra_id && 
+          const res = (reservas || []).find(r =>
+            r.quadra_id === col.quadra_id &&
             r.data_reserva === col.data &&
-            r.hora_inicio <= hourStr && 
+            r.hora_inicio <= hourStr &&
             r.hora_fim > hourStr
           );
-          const blq = (bloqueios || []).find(b => 
-            b.quadra_id === col.quadra_id && 
+          const blq = (bloqueios || []).find(b =>
+            b.quadra_id === col.quadra_id &&
             b.data_bloqueio === col.data &&
-            b.hora_inicio <= hourStr && 
+            b.hora_inicio <= hourStr &&
             b.hora_fim > hourStr
           );
 
           if (blq) {
             // Desenha o bloqueio para cada hora individualmente
             return (
-              <div 
-                key={col.id} 
-                className="gt-slot s-blocked" 
+              <div
+                key={col.id}
+                className="gt-slot s-blocked"
                 title={blq.motivo || 'Bloqueado'}
                 style={{ gridColumn: idx + 2, gridRow: row, cursor: 'pointer' }}
                 onClick={() => handleGridCellClick(col.quadra_id, col.data, hourStr, undefined, blq)}
@@ -978,13 +1011,20 @@ export function AdminReservas() {
               const formatVal = 'R$ ' + res.valor_total.toFixed(2).replace('.', ',');
 
               return (
-                <div 
-                  key={col.id} 
-                  className={`gt-slot ${cssClass}`} 
+                <div
+                  key={col.id}
+                  className={`gt-slot ${cssClass}`}
                   style={{ gridColumn: idx + 2, gridRow: `${row} / span ${span}` }}
                   onClick={() => handleGridCellClick(col.quadra_id, col.data, hourStr, res)}
                 >
-                  <span className="slot-name">{res.cliente_nome}</span>
+                  <span className="slot-name">
+                    {res.cliente_nome}
+                    {res.esporte && res.esporte !== 'Geral' && (
+                      <span style={{ fontSize: '10px', marginLeft: '4px', opacity: 0.85, fontWeight: 'normal' }}>
+                        · {res.esporte}
+                      </span>
+                    )}
+                  </span>
                   <span className="slot-label">{formatVal} · {labelStatus}</span>
                 </div>
               );
@@ -995,16 +1035,16 @@ export function AdminReservas() {
             // Slot livre
             if (isPast) {
               return (
-                <div 
-                  key={col.id} 
-                  className="gt-slot s-past-empty" 
-                  style={{ gridColumn: idx + 2, gridRow: row }} 
+                <div
+                  key={col.id}
+                  className="gt-slot s-past-empty"
+                  style={{ gridColumn: idx + 2, gridRow: row }}
                 />
               );
             }
             return (
-              <div 
-                key={col.id} 
+              <div
+                key={col.id}
                 className="gt-slot s-available"
                 style={{ gridColumn: idx + 2, gridRow: row }}
                 onClick={() => handleGridCellClick(col.quadra_id, col.data, hourStr)}
@@ -1016,9 +1056,9 @@ export function AdminReservas() {
         } else {
           // Quadra fechada
           return (
-            <div 
-              key={col.id} 
-              className="gt-slot s-blocked" 
+            <div
+              key={col.id}
+              className="gt-slot s-blocked"
               style={{ gridColumn: idx + 2, gridRow: row, background: 'var(--charcoal-03)', border: '1px solid var(--border-passive)', opacity: 0.5, pointerEvents: 'none' }}
             >
               <span className="slot-name" style={{ color: 'var(--muted)' }}>Fechada</span>
@@ -1037,7 +1077,7 @@ export function AdminReservas() {
       );
     }
 
-    const activeCourtForHeader = scope === 'diaria' 
+    const activeCourtForHeader = scope === 'diaria'
       ? (filterQuadraId !== '' ? quadras.find(x => x.id === filterQuadraId) : null)
       : quadrasParaExibir[0];
 
@@ -1045,35 +1085,35 @@ export function AdminReservas() {
       <div className="card" style={{ padding: 'var(--s-4)' }}>
         <div style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid var(--border-passive)' }}>
           <h2 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--charcoal)' }}>
-            {scope === 'diaria' 
-              ? (activeCourtForHeader ? `${activeCourtForHeader.nome}` : 'Todas as Quadras') 
+            {scope === 'diaria'
+              ? (activeCourtForHeader ? `${activeCourtForHeader.nome}` : 'Todas as Quadras')
               : `${activeCourtForHeader ? activeCourtForHeader.nome : ''}`}
           </h2>
           <p style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px' }}>
-            {scope === 'diaria' 
-              ? (activeCourtForHeader ? `${activeCourtForHeader.tipo}` : 'Visão Geral Diária') 
+            {scope === 'diaria'
+              ? (activeCourtForHeader ? `${activeCourtForHeader.tipo}` : 'Visão Geral Diária')
               : `${activeCourtForHeader ? activeCourtForHeader.tipo : ''}`}
           </p>
         </div>
         <div className="grade-container">
-          <div 
-            className="grade-table" 
+          <div
+            className="grade-table"
             style={{ gridTemplateColumns: `80px repeat(${colunas.length}, 1fr)` }}
           >
             {/* Célula vazia no canto superior esquerdo */}
             <div className="gh-cell" style={{ gridColumn: 1, gridRow: 1 }}></div>
             {colunas.map((col, idx) => (
-              <div 
-                key={col.id} 
-                className="gh-cell" 
-                style={{ 
-                  gridColumn: idx + 2, 
-                  gridRow: 1, 
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
-                  gap: '4px' 
+              <div
+                key={col.id}
+                className="gh-cell"
+                style={{
+                  gridColumn: idx + 2,
+                  gridRow: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '4px'
                 }}
               >
                 <span style={{ fontSize: '12px', fontWeight: 600 }}>{col.label}</span>
@@ -1087,8 +1127,8 @@ export function AdminReservas() {
     );
   };
 
-  const filteredClientes = nrClienteBusca.trim() === '' 
-    ? [] 
+  const filteredClientes = nrClienteBusca.trim() === ''
+    ? []
     : clientes.filter(c => c.nome.toLowerCase().includes(nrClienteBusca.toLowerCase()) || (c.telefone && c.telefone.includes(nrClienteBusca)));
 
   const formatCurrency = (val: any) => {
@@ -1109,10 +1149,9 @@ export function AdminReservas() {
     <div className="admin-reservas-page">
       {/* Toast Alert */}
       {toast && (
-        <div 
-          className={`fixed bottom-4 right-4 z-50 px-4 py-3 rounded-lg text-white font-medium shadow-lg transition-transform duration-200 ${
-            toast.type === 'success' ? 'bg-success' : 'bg-danger'
-          }`}
+        <div
+          className={`fixed bottom-4 right-4 z-50 px-4 py-3 rounded-lg text-white font-medium shadow-lg transition-transform duration-200 ${toast.type === 'success' ? 'bg-success' : 'bg-danger'
+            }`}
         >
           {toast.message}
         </div>
@@ -1130,7 +1169,7 @@ export function AdminReservas() {
         {/* Filters */}
         <div className="filter-bar flex items-center gap-3">
           <div className="chip-group" style={{ display: 'flex', gap: 'var(--s-2)' }}>
-            <button 
+            <button
               className={`chip ${scope === 'diaria' ? 'active' : ''}`}
               onClick={() => {
                 setScope('diaria');
@@ -1139,7 +1178,7 @@ export function AdminReservas() {
             >
               Diária
             </button>
-            <button 
+            <button
               className={`chip ${scope === 'semanal' ? 'active' : ''}`}
               onClick={() => {
                 setScope('semanal');
@@ -1152,8 +1191,8 @@ export function AdminReservas() {
             </button>
           </div>
 
-          <select 
-            id="filter-quadra" 
+          <select
+            id="filter-quadra"
             style={{ width: 'auto', minWidth: '140px' }}
             value={filterQuadraId}
             onChange={(e) => setFilterQuadraId(e.target.value === '' ? '' : Number(e.target.value))}
@@ -1167,14 +1206,14 @@ export function AdminReservas() {
 
         {/* Actions */}
         <div style={{ display: 'flex', gap: 'var(--s-3)' }}>
-          <button 
-            className="btn-ghost" 
+          <button
+            className="btn-ghost"
             onClick={() => setActiveModal('bloquear-quadra')}
           >
             Bloquear Quadra
           </button>
-          <button 
-            className="btn-primary" 
+          <button
+            className="btn-primary"
             onClick={() => {
               resetNrForm();
               setNrData(selectedDate);
@@ -1208,10 +1247,10 @@ export function AdminReservas() {
             <form onSubmit={(e) => e.preventDefault()}>
               <div className="form-group" style={{ position: 'relative' }}>
                 <label htmlFor="nr-cliente">Cliente *</label>
-                <input 
-                  type="text" 
-                  id="nr-cliente" 
-                  placeholder="Buscar cliente pelo nome ou telefone..." 
+                <input
+                  type="text"
+                  id="nr-cliente"
+                  placeholder="Buscar cliente pelo nome ou telefone..."
                   value={nrClienteBusca}
                   onChange={(e) => {
                     setNrClienteBusca(e.target.value);
@@ -1225,8 +1264,8 @@ export function AdminReservas() {
                 {showNrAutocomplete && filteredClientes.length > 0 && (
                   <ul className="absolute top-full left-0 w-full bg-white border border-border-passive rounded-md max-h-48 overflow-y-auto z-50 list-none p-0 m-0 shadow-lg mt-1">
                     {filteredClientes.map(c => (
-                      <li 
-                        key={c.id} 
+                      <li
+                        key={c.id}
                         className="px-3 py-2 cursor-pointer hover:bg-cream-surface text-sm border-b border-border-passive/30 text-charcoal"
                         onMouseDown={() => {
                           setNrClienteBusca(c.nome);
@@ -1249,9 +1288,9 @@ export function AdminReservas() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="form-group">
                   <label htmlFor="nr-quadra">Quadra *</label>
-                  <select 
-                    id="nr-quadra" 
-                    value={nrQuadraId || ''} 
+                  <select
+                    id="nr-quadra"
+                    value={nrQuadraId || ''}
                     onChange={(e) => setNrQuadraId(Number(e.target.value) || null)}
                     required
                   >
@@ -1262,11 +1301,31 @@ export function AdminReservas() {
                   </select>
                 </div>
                 <div className="form-group">
+                  <label htmlFor="nr-esporte">Modalidade / Esporte *</label>
+                  <select
+                    id="nr-esporte"
+                    value={nrEsporte}
+                    onChange={(e) => setNrEsporte(e.target.value)}
+                    disabled={!nrQuadraId}
+                    required
+                  >
+                    <option value="">{nrQuadraId ? '— Selecione o esporte —' : 'Selecione a quadra primeiro'}</option>
+                    {modalidadesQuadra.map(m => (
+                      <option key={m.nome} value={m.nome}>
+                        {m.nome} — {formatCurrency(m.preco)}/h
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="form-group">
                   <label htmlFor="nr-data">Data *</label>
-                  <input 
-                    type="date" 
-                    id="nr-data" 
-                    value={nrData} 
+                  <input
+                    type="date"
+                    id="nr-data"
+                    value={nrData}
                     min={todayStr}
                     onChange={(e) => {
                       const val = e.target.value;
@@ -1277,22 +1336,19 @@ export function AdminReservas() {
                       }
                       setNrData(val);
                     }}
-                    required 
+                    required
                   />
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
                 <div className="form-group">
                   <label htmlFor="nr-inicio">Início *</label>
-                  <select 
-                    id="nr-inicio" 
-                    value={nrInicio} 
+                  <select
+                    id="nr-inicio"
+                    value={nrInicio}
                     onChange={(e) => setNrInicio(e.target.value)}
                     disabled={!nrQuadraId}
                     required
                   >
-                    <option value="">{nrQuadraId ? '— Selecione —' : 'Selecione a quadra primeiro'}</option>
+                    <option value="">{nrQuadraId ? '— Início —' : 'Quadra'}</option>
                     {nrHorariosInicio.map(h => (
                       <option key={h} value={h}>{h}</option>
                     ))}
@@ -1300,14 +1356,14 @@ export function AdminReservas() {
                 </div>
                 <div className="form-group">
                   <label htmlFor="nr-fim">Fim *</label>
-                  <select 
-                    id="nr-fim" 
-                    value={nrFim} 
+                  <select
+                    id="nr-fim"
+                    value={nrFim}
                     onChange={(e) => setNrFim(e.target.value)}
                     disabled={!nrInicio}
                     required
                   >
-                    <option value="">{nrInicio ? '— Selecione —' : 'Selecione o início primeiro'}</option>
+                    <option value="">{nrInicio ? '— Fim —' : 'Início'}</option>
                     {nrHorariosFim.map(h => (
                       <option key={h} value={h}>{h}</option>
                     ))}
@@ -1317,19 +1373,27 @@ export function AdminReservas() {
 
               <div className="form-group">
                 <label htmlFor="nr-obs">Observações</label>
-                <textarea 
-                  id="nr-obs" 
-                  rows={2} 
-                  placeholder="Opcional" 
+                <textarea
+                  id="nr-obs"
+                  rows={2}
+                  placeholder="Opcional"
                   maxLength={100}
                   value={nrObs}
                   onChange={(e) => setNrObs(e.target.value)}
+                  style={{ resize: 'none', height: '58px' }}
                 />
               </div>
 
-              <div className="form-group mt-3 p-3 bg-cream-surface border border-dashed border-border-active rounded-md flex justify-between items-center">
-                <span className="font-semibold text-charcoal">Valor Previsto:</span>
-                <span className="text-lg font-bold text-primary">{formatCurrency(nrValorPrevisto)}</span>
+              <div className="p-3.5 bg-white border border-[#ded8ce] rounded-xl shadow-xs flex justify-between items-center mt-3 mb-1">
+                <div>
+                  <span className="text-xs font-semibold text-muted block">Valor Previsto</span>
+                  <span className="text-[11px] text-charcoal/70 font-medium">
+                    {nrEsporte ? `${nrEsporte}` : 'Quadra selecionada'}
+                  </span>
+                </div>
+                <span className="text-xl font-bold text-charcoal tabular">
+                  {formatCurrency(nrValorPrevisto)}
+                </span>
               </div>
             </form>
           </div>
@@ -1351,9 +1415,8 @@ export function AdminReservas() {
             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-3)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '13px', color: 'var(--muted)' }}>Status</span>
-                <span className={`badge ${
-                  selectedReserva.status_pagamento === 'Pago' ? 'badge--paid' : selectedReserva.status_pagamento === 'Parcial' ? 'badge--partial' : 'badge--pending'
-                }`}>{selectedReserva.status_pagamento}</span>
+                <span className={`badge ${selectedReserva.status_pagamento === 'Pago' ? 'badge--paid' : selectedReserva.status_pagamento === 'Parcial' ? 'badge--partial' : 'badge--pending'
+                  }`}>{selectedReserva.status_pagamento}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: '13px', color: 'var(--muted)' }}>Cliente</span>
@@ -1371,6 +1434,12 @@ export function AdminReservas() {
                   {formatarDataBR(selectedReserva.data_reserva)} às {selectedReserva.hora_inicio.substring(0, 5)} - {selectedReserva.hora_fim.substring(0, 5)}
                 </span>
               </div>
+              {selectedReserva.esporte && selectedReserva.esporte !== 'Geral' && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '13px', color: 'var(--muted)' }}>Esporte / Modalidade</span>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--accent, #2563eb)' }}>{selectedReserva.esporte}</span>
+                </div>
+              )}
               {selectedReserva.observacoes && (
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: '13px', color: 'var(--muted)' }}>Notas</span>
@@ -1395,8 +1464,8 @@ export function AdminReservas() {
             </div>
             <div className="modal-footer">
               {selectedReserva.valor_pago > 0 && (
-                <button 
-                  className="btn-ghost" 
+                <button
+                  className="btn-ghost"
                   style={{ color: 'var(--danger)', borderColor: 'rgba(155, 34, 38, 0.3)' }}
                   onClick={() => {
                     setEstValor(formatFloatToCurrencyInput(selectedReserva.valor_pago));
@@ -1407,8 +1476,8 @@ export function AdminReservas() {
                   Estornar
                 </button>
               )}
-              <button 
-                className="btn-ghost" 
+              <button
+                className="btn-ghost"
                 style={{ color: 'var(--danger)', borderColor: 'rgba(155, 34, 38, 0.3)' }}
                 onClick={() => {
                   setMotivoCancelamento('');
@@ -1419,7 +1488,7 @@ export function AdminReservas() {
                 Cancelar
               </button>
               {selectedReserva.valor_pago < selectedReserva.valor_total && (
-                <button 
+                <button
                   className="btn-primary"
                   onClick={() => {
                     setPagValor(formatFloatToCurrencyInput(Math.max(0, selectedReserva.valor_total - selectedReserva.valor_pago)));
@@ -1451,8 +1520,8 @@ export function AdminReservas() {
               </p>
               <div className="form-group">
                 <label htmlFor="motivo-cancelamento">Motivo do cancelamento *</label>
-                <select 
-                  id="motivo-cancelamento" 
+                <select
+                  id="motivo-cancelamento"
                   value={motivoCancelamento}
                   onChange={(e) => setMotivoCancelamento(e.target.value)}
                   required
@@ -1465,10 +1534,10 @@ export function AdminReservas() {
               </div>
               <div className="form-group">
                 <label htmlFor="obs-cancelamento">Observações</label>
-                <textarea 
-                  id="obs-cancelamento" 
-                  rows={2} 
-                  placeholder="Detalhe adicional (opcional)" 
+                <textarea
+                  id="obs-cancelamento"
+                  rows={2}
+                  placeholder="Detalhe adicional (opcional)"
                   maxLength={100}
                   value={obsCancelamento}
                   onChange={(e) => setObsCancelamento(e.target.value)}
@@ -1477,8 +1546,8 @@ export function AdminReservas() {
             </div>
             <div className="modal-footer">
               <button className="btn-ghost" onClick={() => setActiveModal('detalhe-reserva')}>Voltar</button>
-              <button 
-                className="btn-primary" 
+              <button
+                className="btn-primary"
                 style={{ background: 'var(--danger)' }}
                 onClick={handleConfirmarCancelamento}
               >
@@ -1513,21 +1582,21 @@ export function AdminReservas() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-4)' }}>
                 <div className="form-group">
                   <label htmlFor="pag-valor">Valor a pagar *</label>
-                  <input 
-                    type="text" 
-                    id="pag-valor" 
-                    placeholder="0,00" 
+                  <input
+                    type="text"
+                    id="pag-valor"
+                    placeholder="0,00"
                     value={pagValor}
                     onChange={(e) => setPagValor(formatCurrencyInput(e.target.value))}
-                    required 
+                    required
                   />
                 </div>
                 <div className="form-group">
                   <label htmlFor="pag-desconto">Desconto (R$)</label>
-                  <input 
-                    type="text" 
-                    id="pag-desconto" 
-                    placeholder="Opcional" 
+                  <input
+                    type="text"
+                    id="pag-desconto"
+                    placeholder="Opcional"
                     value={pagDesconto}
                     onChange={(e) => setPagDesconto(formatCurrencyInput(e.target.value))}
                   />
@@ -1536,8 +1605,8 @@ export function AdminReservas() {
 
               <div className="form-group">
                 <label htmlFor="pag-metodo">Método de pagamento *</label>
-                <select 
-                  id="pag-metodo" 
+                <select
+                  id="pag-metodo"
                   value={pagMetodo}
                   onChange={(e) => setPagMetodo(e.target.value)}
                   required
@@ -1555,12 +1624,12 @@ export function AdminReservas() {
 
               <div className="form-group">
                 <label htmlFor="pag-data">Data do pagamento *</label>
-                <input 
-                  type="date" 
-                  id="pag-data" 
+                <input
+                  type="date"
+                  id="pag-data"
                   value={pagData}
                   onChange={(e) => setPagData(e.target.value)}
-                  required 
+                  required
                 />
               </div>
             </div>
@@ -1602,14 +1671,14 @@ export function AdminReservas() {
                 <div style={{ width: '100%', textAlign: 'left', marginBottom: '16px' }}>
                   <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--charcoal)', display: 'block', marginBottom: '4px' }}>Pix Copia e Cola</label>
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <input 
-                      type="text" 
-                      readOnly 
-                      value={copiaCola} 
+                    <input
+                      type="text"
+                      readOnly
+                      value={copiaCola}
                       style={{ flex: 1, fontSize: '11px', fontFamily: 'monospace', border: '1px solid var(--border-passive)', padding: '6px 10px', borderRadius: '4px', background: 'white' }}
                     />
-                    <button 
-                      type="button" 
+                    <button
+                      type="button"
                       className="btn-ghost btn-sm"
                       onClick={() => {
                         navigator.clipboard.writeText(copiaCola);
@@ -1643,21 +1712,21 @@ export function AdminReservas() {
               </p>
               <div className="form-group">
                 <label htmlFor="est-valor">Valor a estornar *</label>
-                <input 
-                  type="text" 
-                  id="est-valor" 
-                  placeholder="Ex: 80,00" 
+                <input
+                  type="text"
+                  id="est-valor"
+                  placeholder="Ex: 80,00"
                   value={estValor}
                   onChange={(e) => setEstValor(formatCurrencyInput(e.target.value))}
-                  required 
+                  required
                 />
               </div>
               <div className="form-group">
                 <label htmlFor="est-motivo">Justificativa do Estorno *</label>
-                <textarea 
-                  id="est-motivo" 
-                  rows={2} 
-                  placeholder="Obrigatório para auditoria" 
+                <textarea
+                  id="est-motivo"
+                  rows={2}
+                  placeholder="Obrigatório para auditoria"
                   maxLength={100}
                   value={estMotivo}
                   onChange={(e) => setEstMotivo(e.target.value)}
@@ -1667,8 +1736,8 @@ export function AdminReservas() {
             </div>
             <div className="modal-footer">
               <button className="btn-ghost" onClick={() => setActiveModal('detalhe-reserva')}>Cancelar</button>
-              <button 
-                className="btn-primary" 
+              <button
+                className="btn-primary"
                 style={{ background: 'var(--danger)' }}
                 onClick={handleConfirmarEstorno}
               >
@@ -1690,9 +1759,9 @@ export function AdminReservas() {
             <div className="modal-body">
               <div className="form-group">
                 <label htmlFor="bq-quadra">Quadra *</label>
-                <select 
-                  id="bq-quadra" 
-                  value={bqQuadraId || ''} 
+                <select
+                  id="bq-quadra"
+                  value={bqQuadraId || ''}
                   onChange={(e) => setBqQuadraId(Number(e.target.value) || null)}
                   required
                 >
@@ -1702,36 +1771,36 @@ export function AdminReservas() {
                   ))}
                 </select>
               </div>
-              <div className="form-group">
-                <label htmlFor="bq-data">Data *</label>
-                <input 
-                  type="date" 
-                  id="bq-data" 
-                  value={bqData} 
-                  min={todayStr}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val < todayStr) {
-                      showToast('Não é possível selecionar datas passadas para bloqueio.', 'error');
-                      setBqData(todayStr);
-                      return;
-                    }
-                    setBqData(val);
-                  }}
-                  required 
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="form-group">
+                  <label htmlFor="bq-data">Data *</label>
+                  <input
+                    type="date"
+                    id="bq-data"
+                    value={bqData}
+                    min={todayStr}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val < todayStr) {
+                        showToast('Não é possível selecionar datas passadas para bloqueio.', 'error');
+                        setBqData(todayStr);
+                        return;
+                      }
+                      setBqData(val);
+                    }}
+                    required
+                  />
+                </div>
                 <div className="form-group">
                   <label htmlFor="bq-inicio">Início *</label>
-                  <select 
-                    id="bq-inicio" 
-                    value={bqInicio} 
+                  <select
+                    id="bq-inicio"
+                    value={bqInicio}
                     onChange={(e) => setBqInicio(e.target.value)}
                     disabled={!bqQuadraId}
                     required
                   >
-                    <option value="">{bqQuadraId ? '— Selecione —' : 'Selecione quadra primeiro'}</option>
+                    <option value="">{bqQuadraId ? '— Início —' : 'Quadra'}</option>
                     {bqHorariosInicio.map(h => (
                       <option key={h} value={h}>{h}</option>
                     ))}
@@ -1739,14 +1808,14 @@ export function AdminReservas() {
                 </div>
                 <div className="form-group">
                   <label htmlFor="bq-fim">Fim *</label>
-                  <select 
-                    id="bq-fim" 
-                    value={bqFim} 
+                  <select
+                    id="bq-fim"
+                    value={bqFim}
                     onChange={(e) => setBqFim(e.target.value)}
                     disabled={!bqInicio}
                     required
                   >
-                    <option value="">{bqInicio ? '— Selecione —' : 'Selecione o início'}</option>
+                    <option value="">{bqInicio ? '— Fim —' : 'Início'}</option>
                     {bqHorariosFim.map(h => (
                       <option key={h} value={h}>{h}</option>
                     ))}
@@ -1755,10 +1824,10 @@ export function AdminReservas() {
               </div>
               <div className="form-group">
                 <label htmlFor="bq-motivo">Motivo do Bloqueio</label>
-                <input 
-                  type="text" 
-                  id="bq-motivo" 
-                  placeholder="Ex: Torneio, Manutenção..." 
+                <input
+                  type="text"
+                  id="bq-motivo"
+                  placeholder="Ex: Torneio, Manutenção..."
                   value={bqMotivo}
                   onChange={(e) => setBqMotivo(e.target.value)}
                 />
@@ -1786,15 +1855,15 @@ export function AdminReservas() {
               </p>
             </div>
             <div className="modal-footer flex-col gap-3">
-              <button 
-                className="btn-ghost w-full" 
+              <button
+                className="btn-ghost w-full"
                 style={{ borderColor: 'rgba(155,34,38,0.3)', color: 'var(--danger)' }}
                 onClick={() => handleDesbloquear(false)}
               >
                 Desbloquear apenas o horário de <strong>{selectedBloqueioTime}</strong>
               </button>
-              <button 
-                className="btn-primary w-full" 
+              <button
+                className="btn-primary w-full"
                 style={{ background: 'var(--danger)' }}
                 onClick={() => handleDesbloquear(true)}
               >

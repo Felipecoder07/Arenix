@@ -91,17 +91,31 @@ const criarReserva = async (req, res) => {
     const [hF, mF] = hora_fim.split(':').map(Number);
     const tenant_id = req.user.tenant_id;
 
-    const quadra = await db.getAsync('SELECT preco_base FROM Quadras WHERE id = ? AND tenant_id = ?', [quadra_id, tenant_id]);
+    const quadra = await db.getAsync('SELECT preco_base, modalidades, tipo FROM Quadras WHERE id = ? AND tenant_id = ?', [quadra_id, tenant_id]);
     if (!quadra) return res.status(404).json({ error: 'Quadra não encontrada ou não pertence a esta arena.' });
 
+    const esporte = req.body.esporte || 'Geral';
+    let precoHora = quadra.preco_base || 80;
+    if (quadra.modalidades) {
+      try {
+        const parsed = typeof quadra.modalidades === 'string' ? JSON.parse(quadra.modalidades) : quadra.modalidades;
+        if (Array.isArray(parsed)) {
+          const match = parsed.find(m => (typeof m === 'object' ? m.nome : m) === esporte);
+          if (match && typeof match === 'object' && match.preco != null && Number(match.preco) > 0) {
+            precoHora = Number(match.preco);
+          }
+        }
+      } catch {}
+    }
+
     const duracaoHoras = (hF + mF / 60) - (hI + mI / 60);
-    const valor_total = quadra.preco_base * duracaoHoras;
+    const valor_total = (req.body.valor_total != null && Number(req.body.valor_total) > 0) ? Number(req.body.valor_total) : (precoHora * duracaoHoras);
 
     // 5. Salvar a reserva
     const insert = await db.runAsync(`
-      INSERT INTO Reservas (tenant_id, cliente_id, quadra_id, data_reserva, hora_inicio, hora_fim, valor_total, criado_por)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [tenant_id, cliente_id, quadra_id, data_reserva, hora_inicio, hora_fim, valor_total || 0, usuario_id]);
+      INSERT INTO Reservas (tenant_id, cliente_id, quadra_id, data_reserva, hora_inicio, hora_fim, valor_total, criado_por, esporte)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [tenant_id, cliente_id, quadra_id, data_reserva, hora_inicio, hora_fim, valor_total || 0, usuario_id, esporte]);
 
     logAuditEvent(usuario_id, 'Criação de reserva', `Reserva ID: ${insert.lastID}, Quadra: ${quadra_id}, Data: ${data_reserva} ${hora_inicio}`, ip);
 
