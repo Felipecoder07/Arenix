@@ -1,3 +1,6 @@
+/* --- Google Fonts fallback ---- */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
 /* =============================================
    CourtManager — Design System
    Baseado no Lovable Design Skill
@@ -13,9 +16,6 @@ input[type=number]::-webkit-outer-spin-button {
 input[type=number] {
   -moz-appearance: textfield;
 }
-
-/* --- Google Fonts fallback ---- */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 
 /* --- CSS Custom Properties --- */
 :root {

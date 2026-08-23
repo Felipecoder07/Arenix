@@ -5,16 +5,19 @@ export const getBackendUrl = (): string => {
     return import.meta.env.VITE_BACKEND_URL as string;
   }
 
-  const { protocol, hostname } = window.location;
+  const { protocol, hostname, origin } = window.location;
 
-  if (hostname.includes('trycloudflare.com')) {
-    return 'https://industry-simpson-universal-dealing.trycloudflare.com';
+  // Se estiver rodando via Cloudflare Tunnel
+  if (hostname.includes('trycloudflare.com') || hostname.includes('cloudflare')) {
+    return origin;
   }
 
+  // Se estiver rodando localmente (localhost ou 127.0.0.1)
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return 'http://localhost:3000';
+    return import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
   }
 
+  // Se estiver acessando via IP da rede local (ex: 192.168.x.x)
   return `${protocol}//${hostname}:3000`;
 };
 
