@@ -10,11 +10,88 @@ import MyReservations from './components/MyReservations';
 import StepIndicator from './components/StepIndicator';
 import LoginScreen from './components/LoginScreen';
 import MyProfileModal from './components/MyProfileModal';
-import { ArrowRight, ShoppingBag, ShieldCheck, X } from 'lucide-react';
-import { brl, getLocalDateISO } from './lib/format';
+import { ArrowRight, ShoppingBag, ShieldCheck, X, MessageCircle, MapPin, ExternalLink } from 'lucide-react';
+import { brl, getLocalDateISO, formatLongDate, formatShortDate } from './lib/format';
 
 import { BACKEND_URL } from './lib/backendUrl';
 
+function buildWhatsAppReservationMessage(
+  arenaName: string,
+  slots: Slot[],
+  courtsList: Court[],
+  activeSport?: string,
+  athleteName?: string
+): string {
+  if (!slots.length) {
+    return `Olá! Gostaria de consultar informações sobre horários e reservas na ${arenaName || 'arena'}.`;
+  }
+
+  const sortedSlots = [...slots].sort((a, b) => {
+    if (a.dateISO !== b.dateISO) return a.dateISO.localeCompare(b.dateISO);
+    return a.start.localeCompare(b.start);
+  });
+
+  const total = sortedSlots.reduce((acc, s) => acc + (s.price || 0), 0);
+  const allSameDate = sortedSlots.every(s => s.dateISO === sortedSlots[0].dateISO);
+  const firstCourt = courtsList.find(c => c.id === sortedSlots[0].courtId);
+  const allSameCourt = sortedSlots.every(s => s.courtId === sortedSlots[0].courtId);
+
+  const lines: string[] = [];
+  lines.push(`Olá! Gostaria de agendar ${sortedSlots.length === 1 ? 'um horário' : 'os seguintes horários'} na *${arenaName || 'Arena'}*:\n`);
+
+  if (sortedSlots.length === 1) {
+    const s = sortedSlots[0];
+    const courtObj = courtsList.find(c => c.id === s.courtId);
+    const courtName = courtObj?.name || 'Quadra';
+    const sportName = s.sport || activeSport || courtObj?.modalities?.[0] || 'Esporte';
+
+    lines.push(`📅 *Data:* ${formatLongDate(s.dateISO)}`);
+    lines.push(`⏰ *Horário:* ${s.start} às ${s.end}`);
+    lines.push(`🏟️ *Quadra:* ${courtName}`);
+    lines.push(`🎾 *Modalidade:* ${sportName}`);
+    if (total > 0) {
+      lines.push(`💰 *Valor:* ${brl(total)}`);
+    }
+  } else if (allSameDate) {
+    const dateStr = formatLongDate(sortedSlots[0].dateISO);
+    const sportName = sortedSlots[0].sport || activeSport || firstCourt?.modalities?.[0] || 'Esporte';
+
+    lines.push(`📅 *Data:* ${dateStr}`);
+    if (allSameCourt && firstCourt) {
+      lines.push(`🏟️ *Quadra:* ${firstCourt.name}`);
+    }
+    lines.push(`🎾 *Modalidade:* ${sportName}`);
+    lines.push(`⏰ *Horários Selecionados (${sortedSlots.length}):*`);
+    sortedSlots.forEach(s => {
+      const courtObj = courtsList.find(c => c.id === s.courtId);
+      const courtSuffix = !allSameCourt && courtObj ? ` — ${courtObj.name}` : '';
+      lines.push(`  • ${s.start} às ${s.end}${courtSuffix}`);
+    });
+    if (total > 0) {
+      lines.push(`💰 *Valor Total:* ${brl(total)}`);
+    }
+  } else {
+    const sportName = sortedSlots[0].sport || activeSport || firstCourt?.modalities?.[0] || 'Esporte';
+    lines.push(`🎾 *Modalidade:* ${sportName}`);
+    lines.push(`⏰ *Horários Selecionados (${sortedSlots.length}):*`);
+    sortedSlots.forEach(s => {
+      const courtObj = courtsList.find(c => c.id === s.courtId);
+      const courtName = courtObj?.name || 'Quadra';
+      lines.push(`  • ${formatShortDate(s.dateISO)} das ${s.start} às ${s.end} — ${courtName}`);
+    });
+    if (total > 0) {
+      lines.push(`💰 *Valor Total:* ${brl(total)}`);
+    }
+  }
+
+  if (athleteName && athleteName.trim()) {
+    lines.push(`\n👤 *Atleta:* ${athleteName.trim()}`);
+  }
+
+  lines.push(`\nGostaria de confirmar a disponibilidade para reservar!`);
+
+  return lines.join('\n');
+}
 
 export default function App() {
   // 1. Extrair o Slug da URL (ex: /arena/felp-arena ou /felp-arena)
@@ -67,6 +144,7 @@ export default function App() {
   const [pixPayload, setPixPayload] = useState<{ copia_cola: string; qr_code?: string | null; reserva_id?: number; reservas_ids?: number[]; valor_total?: number; expira_em_minutos?: number; expira_em_segundos?: number } | null>(null);
   const [myResOpen, setMyResOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [paymentNotConfigured, setPaymentNotConfigured] = useState<{ telefone: string | null } | null>(null);
 
   // 1.1 Validar Token e Sincronizar Perfil do Atleta em Background
   useEffect(() => {
@@ -182,6 +260,13 @@ export default function App() {
     fetchArena();
   }, [slug]);
 
+  // Atualização dinâmica do título da página com o nome oficial da arena
+  useEffect(() => {
+    if (arena?.name) {
+      document.title = `${arena.name} · Agendamento Online | Arenix`;
+    }
+  }, [arena?.name]);
+
 
   // 3. Carregar Quadras Ativas da Arena
   useEffect(() => {
@@ -250,6 +335,27 @@ export default function App() {
 
   const [refreshCount, setRefreshCount] = useState(0);
 
+  // Auto-refresh silencioso da disponibilidade ao retornar para a aba ou desbloquear o celular
+  useEffect(() => {
+    let lastRefresh = Date.now();
+    const handleRevalidate = () => {
+      // Não recarrega se o atleta estiver no meio do pagamento Pix ou preenchendo o checkout
+      if (pixOpen || drawerOpen) return;
+
+      if (document.visibilityState === 'visible' && Date.now() - lastRefresh > 3000) {
+        lastRefresh = Date.now();
+        setRefreshCount(c => c + 1);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleRevalidate);
+    window.addEventListener('focus', handleRevalidate);
+    return () => {
+      document.removeEventListener('visibilitychange', handleRevalidate);
+      window.removeEventListener('focus', handleRevalidate);
+    };
+  }, [pixOpen, drawerOpen]);
+
   // 4. Carregar Matriz de Disponibilidade de Horários com Preço Específico por Esporte
   useEffect(() => {
     if (!courtId || notFound || blockedMsg) return;
@@ -304,6 +410,29 @@ export default function App() {
 
   const court = useMemo(() => courts.find((c) => c.id === courtId) || courts[0], [courts, courtId]);
 
+  // Preço efetivo da sessão/esporte para a quadra ativa
+  const activeSessionSport = sessionSport || (selectedSport !== 'Todos' ? selectedSport : null);
+
+  // Slots exibidos na grade com preço e modalidade 100% sincronizados em tempo real com o esporte da sessão
+  const displaySlots = useMemo(() => {
+    return slots.map(s => {
+      let price = s.price;
+      let sport = s.sport;
+      if (activeSessionSport && court?.sportPricing) {
+        const match = court.sportPricing.find(sp => sp.nome === activeSessionSport);
+        if (match && match.preco > 0) {
+          price = match.preco;
+          sport = match.nome;
+        }
+      }
+      return {
+        ...s,
+        price,
+        sport: sport || activeSessionSport || 'Esporte'
+      };
+    });
+  }, [slots, activeSessionSport, court]);
+
   // Reseta seleção ao trocar de quadra ou filtro de esporte
   useEffect(() => {
     setSelectedSlots([]);
@@ -326,7 +455,10 @@ export default function App() {
       };
       setSelectedSlots(prev => {
         const exists = prev.some(item => item.id === pendingSlotForSport.id);
-        return exists ? prev : [...prev, slotWithPrice];
+        const next = exists 
+          ? prev.map(item => item.id === pendingSlotForSport.id ? slotWithPrice : item)
+          : [...prev, slotWithPrice];
+        return next.map(item => ({ ...item, price: sportPrice, sport: sportName }));
       });
       setPendingSlotForSport(null);
     } else {
@@ -438,7 +570,10 @@ export default function App() {
         setPixPayload({
           copia_cola: resJson.copia_cola,
           qr_code: resJson.qr_code,
-          reserva_id: resJson.reserva_id
+          reserva_id: resJson.reserva_id,
+          reservas_ids: resJson.reservas_ids || (resJson.reserva_id ? [resJson.reserva_id] : []),
+          valor_total: resJson.valor_total,
+          expira_em_minutos: resJson.expira_em_minutos
         });
 
         const first = dataInput.slots[0];
@@ -457,7 +592,12 @@ export default function App() {
         setDrawerOpen(false);
         setPixOpen(true);
       } else {
-        alert(resJson.error || 'Erro ao realizar agendamento.');
+        if (resJson.payment_not_configured) {
+          setDrawerOpen(false);
+          setPaymentNotConfigured({ telefone: resJson.telefone_arena || null });
+        } else {
+          alert(resJson.error || 'Erro ao realizar agendamento.');
+        }
       }
     } catch {
       alert('Erro de conexão ao agendar. Tente novamente.');
@@ -465,12 +605,15 @@ export default function App() {
   };
 
   const handleCancelPending = async () => {
-    if (pixPayload?.reserva_id) {
+    if (pixPayload?.reserva_id || (pixPayload?.reservas_ids && pixPayload.reservas_ids.length > 0)) {
       try {
         await fetch(`${BACKEND_URL}/api/public/tenant/${slug}/cancelar-pendente`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reserva_id: pixPayload.reserva_id })
+          body: JSON.stringify({ 
+            reserva_id: pixPayload.reserva_id,
+            reservas_ids: pixPayload.reservas_ids 
+          })
         });
       } catch { }
     }
@@ -582,30 +725,8 @@ export default function App() {
         )}
         <DateCarousel selectedISO={dateISO} onSelect={setDateISO} />
 
-        {/* Indicador de Esporte Ativo na Sessão quando em Todos */}
-        {selectedSport === 'Todos' && sessionSport && court?.sportPricing && court.sportPricing.length > 1 && (
-          <div className="flex items-center justify-between bg-surface border border-edge rounded-2xl px-4 py-2.5 mx-4 mb-3 animate-fadeIn">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-muted">Modalidade:</span>
-              <span className="text-xs font-bold text-charcoal bg-card px-2.5 py-1 rounded-xl border border-edge shadow-xs">
-                {sessionSport} · {brl(court.sportPricing.find(sp => sp.nome === sessionSport)?.preco || selectedSlots[0]?.price || 0)}/h
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                const targetSlot = selectedSlots[0] || slots.find(s => s.status === 'free') || slots[0];
-                if (targetSlot) setPendingSlotForSport(targetSlot);
-              }}
-              className="text-xs font-bold text-available-text hover:underline"
-            >
-              Trocar esporte
-            </button>
-          </div>
-        )}
-
         <SlotGrid
-          slots={slots}
+          slots={displaySlots}
           selectedSlotIds={selectedSlots.map(s => s.id)}
           onSelect={handleToggleSlot}
         />
@@ -699,6 +820,128 @@ export default function App() {
           onAuthed={handleAuthed}
           onClose={() => setLoginOpen(false)}
         />
+      )}
+
+      {/* Modal: Arena sem pagamento online configurado - Direcionamento WhatsApp */}
+      {paymentNotConfigured && (
+        <div 
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn"
+          style={{ background: 'rgba(15, 13, 11, 0.65)', backdropFilter: 'blur(8px)' }}
+        >
+          <div 
+            className="bg-white w-full sm:max-w-md rounded-t-[32px] sm:rounded-[32px] shadow-2xl p-6 sm:p-7 border border-black/5 animate-slideUp sm:animate-scaleIn flex flex-col gap-5 max-h-[90vh] overflow-y-auto"
+          >
+            {/* Top Bar / Fechar */}
+            <div className="flex items-center justify-between">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200/80 text-emerald-800 text-[11px] font-semibold tracking-wide uppercase">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                Atendimento Direto
+              </div>
+              <button 
+                onClick={() => setPaymentNotConfigured(null)}
+                className="w-8 h-8 rounded-full bg-surface text-charcoal/70 hover:text-charcoal flex items-center justify-center transition tap"
+                aria-label="Fechar"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Header com Ícone e Título */}
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-[#25D366] flex items-center justify-center shrink-0 shadow-xs">
+                <MessageCircle size={24} className="fill-[#25D366]/20 stroke-[#1eb854] stroke-[2.2]" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-charcoal tracking-tight leading-snug">
+                  Reserva via WhatsApp
+                </h3>
+                <p className="text-xs text-muted mt-1 leading-relaxed">
+                  Esta arena confirma os agendamentos diretamente pela recepção no WhatsApp.
+                </p>
+              </div>
+            </div>
+
+            {/* Card com Detalhes da Arena e dos Horários Selecionados */}
+            <div className="p-4 rounded-2xl bg-[#faf8f5] border border-edge flex flex-col gap-3">
+              <div className="flex items-center justify-between text-xs">
+                <div>
+                  <span className="font-bold text-charcoal text-sm block">{arena?.nome || 'Arena'}</span>
+                  {arena?.endereco && (
+                    <span className="text-[11px] text-muted flex items-center gap-1 mt-0.5">
+                      <MapPin size={11} className="shrink-0 text-muted/70" />
+                      <span className="truncate max-w-[220px]">{arena.endereco}</span>
+                    </span>
+                  )}
+                </div>
+                {selectedSlots.length > 0 && (
+                  <span className="px-2.5 py-1 rounded-lg bg-white border border-edge text-[11px] font-bold text-charcoal shadow-xs">
+                    {selectedSlots.length} {selectedSlots.length === 1 ? 'horário' : 'horários'}
+                  </span>
+                )}
+              </div>
+
+              {selectedSlots.length > 0 && (
+                <div className="pt-2 border-t border-edge/80 flex flex-col gap-1.5 text-xs">
+                  {selectedSlots.map((s, idx) => {
+                    const c = courts.find(courtItem => courtItem.id === s.courtId);
+                    return (
+                      <div key={idx} className="flex items-center justify-between text-[11.5px] text-charcoal/80">
+                        <span>
+                          <strong>{formatShortDate(s.dateISO)}</strong> · {s.start} às {s.end}
+                          {c && <span className="text-muted ml-1">({c.name})</span>}
+                        </span>
+                        <span className="font-semibold text-charcoal">{brl(s.price)}</span>
+                      </div>
+                    );
+                  })}
+                  <div className="flex items-center justify-between pt-1.5 font-bold text-xs text-charcoal border-t border-dashed border-edge">
+                    <span>Total Previsto</span>
+                    <span>{brl(selectedSlots.reduce((acc, s) => acc + s.price, 0))}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Botões de Ação */}
+            <div className="flex flex-col gap-2.5 pt-1">
+              {(() => {
+                const rawPhone = paymentNotConfigured.telefone || arena?.telefone || '';
+                const cleanDigits = rawPhone.replace(/\D/g, '');
+                const fullPhone = cleanDigits.length === 10 || cleanDigits.length === 11 ? `55${cleanDigits}` : cleanDigits;
+                const activeSport = sessionSport || (selectedSport !== 'Todos' ? selectedSport : undefined);
+                const rawMsg = buildWhatsAppReservationMessage(
+                  arena?.nome || 'Arena',
+                  selectedSlots,
+                  courts,
+                  activeSport,
+                  athlete?.name
+                );
+                const textMsg = encodeURIComponent(rawMsg);
+                const waUrl = fullPhone ? `https://api.whatsapp.com/send?phone=${fullPhone}&text=${textMsg}` : '#';
+
+                return (
+                  <a
+                    href={waUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="tap w-full h-12 rounded-2xl bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold text-sm flex items-center justify-center gap-2 shadow-md shadow-emerald-500/20 active:scale-[0.98] transition cursor-pointer"
+                  >
+                    <MessageCircle size={18} className="fill-white stroke-white" />
+                    <span>Chamar no WhatsApp</span>
+                    <ExternalLink size={14} className="opacity-75 ml-0.5" />
+                  </a>
+                );
+              })()}
+
+              <button
+                onClick={() => setPaymentNotConfigured(null)}
+                className="w-full py-2 text-xs font-semibold text-muted hover:text-charcoal transition text-center"
+              >
+                Voltar para os horários
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modal do Perfil do Atleta */}

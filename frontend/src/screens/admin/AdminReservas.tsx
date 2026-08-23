@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, UserPlus, Check, DollarSign, Search, CreditCard } from 'lucide-react';
 import '../../assets/css/reservas.css';
 
 export interface ModalidadeItem {
@@ -98,6 +98,25 @@ export function AdminReservas() {
   const [showNrAutocomplete, setShowNrAutocomplete] = useState(false);
   const [nrHorariosInicio, setNrHorariosInicio] = useState<string[]>([]);
   const [nrHorariosFim, setNrHorariosFim] = useState<string[]>([]);
+
+  // 1.1 Cadastro Rápido de Cliente no Modal
+  const [showQuickClientForm, setShowQuickClientForm] = useState(false);
+  const [qcNome, setQcNome] = useState('');
+  const [qcTelefone, setQcTelefone] = useState('');
+  const [qcEmail, setQcEmail] = useState('');
+  const [qcLoading, setQcLoading] = useState(false);
+
+  // 1.2 Pagamento Imediato no Balcão
+  const [nrRegistrarPagamento, setNrRegistrarPagamento] = useState(false);
+  const [nrPagMetodo, setNrPagMetodo] = useState('Pix (QR Code na Tela)');
+  const [nrPagValor, setNrPagValor] = useState('');
+
+  // Sincroniza valor de pagamento com o valor previsto quando o checkbox estiver ativo
+  useEffect(() => {
+    if (nrRegistrarPagamento) {
+      setNrPagValor(nrValorPrevisto.toFixed(2));
+    }
+  }, [nrValorPrevisto, nrRegistrarPagamento]);
 
   // Modalidades da Quadra Selecionada
   const quadraSelecionada = quadras.find(q => q.id === nrQuadraId);
@@ -304,7 +323,7 @@ export function AdminReservas() {
         if (res.ok) {
           const data = await res.json();
           if (data.status_pagamento === 'Pago') {
-            showToast('🎉 Pagamento Pix confirmado com sucesso!', 'success');
+            showToast('Pagamento Pix confirmado com sucesso!', 'success');
             setActiveModal(null);
             setSelectedReserva(null);
             fetchGrade();
@@ -536,6 +555,74 @@ export function AdminReservas() {
     }
   }, [bqInicio, bqHorariosInicio]);
 
+  // Máscara de telefone/WhatsApp
+  const maskPhone = (val: string) => {
+    const digits = val.replace(/\D/g, '').slice(0, 11);
+    if (digits.length <= 2) return digits ? `(${digits}` : '';
+    if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  };
+
+  // Cadastro Rápido de Cliente direto no modal
+  const handleQuickClientCreate = async () => {
+    if (!qcNome.trim() || !qcTelefone.trim()) {
+      showToast('Informe o nome completo e o WhatsApp do cliente.', 'error');
+      return;
+    }
+
+    if (qcNome.trim().split(/\s+/).length < 2) {
+      showToast('Informe pelo menos nome e sobrenome do cliente.', 'error');
+      return;
+    }
+
+    if (!/^\(\d{2}\)\s\d{5}-\d{4}$/.test(qcTelefone.trim())) {
+      showToast('Formato do WhatsApp inválido. Use (99) 99999-9999.', 'error');
+      return;
+    }
+
+    setQcLoading(true);
+    try {
+      const res = await fetch('/api/clientes', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          nome: qcNome.trim(),
+          telefone: qcTelefone.trim(),
+          email: qcEmail.trim() || undefined
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Erro ao cadastrar cliente');
+      }
+
+      const novoCliente: Cliente = {
+        id: data.id,
+        nome: data.nome,
+        telefone: data.telefone,
+        email: data.email
+      };
+
+      setClientes(prev => [...prev, novoCliente].sort((a, b) => a.nome.localeCompare(b.nome)));
+      setNrClienteId(novoCliente.id);
+      setNrClienteBusca(novoCliente.nome);
+      setShowQuickClientForm(false);
+      setShowNrAutocomplete(false);
+      setQcNome('');
+      setQcTelefone('');
+      setQcEmail('');
+      showToast(`Cliente ${novoCliente.nome} cadastrado e selecionado!`, 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao cadastrar cliente', 'error');
+    } finally {
+      setQcLoading(false);
+    }
+  };
+
   // Submit Nova Reserva
   const handleConfirmarReserva = async () => {
     if (!nrClienteId || !nrQuadraId || !nrData || !nrInicio || !nrFim) {
@@ -544,27 +631,105 @@ export function AdminReservas() {
     }
 
     try {
+      const isPixQrCode = nrRegistrarPagamento && nrPagMetodo === 'Pix (QR Code na Tela)';
+      const valPago = parseFloat(nrPagValor.replace(',', '.')) || nrValorPrevisto;
+
+      const payload: any = {
+        cliente_id: nrClienteId,
+        quadra_id: nrQuadraId,
+        data_reserva: nrData,
+        hora_inicio: nrInicio,
+        hora_fim: nrFim,
+        esporte: nrEsporte || modalidadesQuadra[0]?.nome || 'Beach Tennis',
+        observacoes: nrObs,
+        valor_total: nrValorPrevisto
+      };
+
+      if (nrRegistrarPagamento && nrValorPrevisto > 0 && !isPixQrCode) {
+        payload.pagamento = {
+          registrar: true,
+          metodo: nrPagMetodo,
+          valor: valPago
+        };
+      }
+
       const res = await fetch('/api/reservas', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          cliente_id: nrClienteId,
-          quadra_id: nrQuadraId,
-          data_reserva: nrData,
-          hora_inicio: nrInicio,
-          hora_fim: nrFim,
-          esporte: nrEsporte || modalidadesQuadra[0]?.nome || 'Beach Tennis',
-          observacoes: nrObs
-        })
+        body: JSON.stringify(payload)
       });
 
       const dataJson = await res.json();
       if (!res.ok) throw new Error(dataJson.error || 'Erro ao criar reserva');
 
-      showToast('Reserva criada com sucesso!', 'success');
+      const reservaCriadaId = dataJson.id || dataJson.reserva_id;
+
+      // Se escolheu gerar QR Code Pix na tela
+      if (isPixQrCode && reservaCriadaId && valPago > 0) {
+        try {
+          const cobrancaRes = await fetch('/api/pagamentos/gateway/cobranca', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              reserva_id: reservaCriadaId,
+              metodo: 'Pix',
+              valor: valPago
+            })
+          });
+
+          const cobrancaJson = await cobrancaRes.json();
+          if (!cobrancaRes.ok) {
+            throw new Error(cobrancaJson.error || 'Erro ao gerar QR Code do Pix.');
+          }
+
+          const novaReservaObj: Reserva = {
+            id: reservaCriadaId,
+            cliente_id: nrClienteId,
+            cliente_nome: nrClienteBusca || 'Cliente',
+            cliente_telefone: clientes.find(c => c.id === nrClienteId)?.telefone || '',
+            quadra_id: nrQuadraId,
+            quadra_nome: quadras.find(q => q.id === nrQuadraId)?.nome || '',
+            data_reserva: nrData,
+            hora_inicio: nrInicio,
+            hora_fim: nrFim,
+            valor_total: nrValorPrevisto,
+            status: 'Confirmada',
+            status_pagamento: 'Pendente',
+            esporte: nrEsporte || 'Beach Tennis',
+            total_pago: 0
+          };
+
+          setSelectedReserva(novaReservaObj);
+          setPagValor(valPago.toFixed(2));
+          setGatewayRef(cobrancaJson.gateway_ref);
+          setQrCode(cobrancaJson.qr_code || (cobrancaJson.qr_code_base64 ? `data:image/png;base64,${cobrancaJson.qr_code_base64}` : ''));
+          setCopiaCola(cobrancaJson.copia_cola || '');
+          setActiveModal('pix-gateway');
+          resetNrForm();
+          fetchGrade();
+          showToast('Reserva criada! Apresente o QR Code Pix na tela para o cliente.', 'success');
+          return;
+        } catch (gatewayErr: any) {
+          showToast(`Reserva criada, mas falhou ao gerar QR Code: ${gatewayErr.message}`, 'error');
+          setActiveModal(null);
+          resetNrForm();
+          fetchGrade();
+          return;
+        }
+      }
+
+      showToast(
+        nrRegistrarPagamento
+          ? 'Reserva criada e pagamento registrado no caixa com sucesso.'
+          : 'Reserva criada com sucesso.',
+        'success'
+      );
       setActiveModal(null);
       resetNrForm();
       fetchGrade();
@@ -805,6 +970,14 @@ export function AdminReservas() {
     setNrFim('');
     setNrObs('');
     setNrValorPrevisto(0);
+    setNrRegistrarPagamento(false);
+    setNrPagMetodo('Pix (QR Code na Tela)');
+    setNrPagValor('');
+    setShowQuickClientForm(false);
+    setShowNrAutocomplete(false);
+    setQcNome('');
+    setQcTelefone('');
+    setQcEmail('');
   };
 
   const resetBqForm = () => {
@@ -1238,56 +1411,190 @@ export function AdminReservas() {
 
       {/* MODAL 1: NOVA RESERVA */}
       <div className={`modal-overlay ${activeModal === 'new-reserva' ? 'open' : ''}`}>
-        <div className="modal">
-          <div className="modal-header">
-            <h2 className="modal-title">Nova Reserva</h2>
-            <button className="modal-close" onClick={() => setActiveModal(null)}>✕</button>
+        <div className="modal" style={{ maxWidth: '520px' }}>
+          <div className="modal-header" style={{ padding: '18px 22px 14px', borderBottom: '1px solid var(--border-passive)' }}>
+            <div>
+              <h2 className="modal-title" style={{ fontSize: '16px', fontWeight: 700, color: 'var(--charcoal)', margin: 0 }}>
+                Nova Reserva
+              </h2>
+              <p style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px', marginBottom: 0 }}>
+                Agendamento manual de quadra e registro de balcão
+              </p>
+            </div>
+            <button className="modal-close" onClick={() => setActiveModal(null)} title="Fechar">✕</button>
           </div>
-          <div className="modal-body">
-            <form onSubmit={(e) => e.preventDefault()}>
-              <div className="form-group" style={{ position: 'relative' }}>
-                <label htmlFor="nr-cliente">Cliente *</label>
-                <input
-                  type="text"
-                  id="nr-cliente"
-                  placeholder="Buscar cliente pelo nome ou telefone..."
-                  value={nrClienteBusca}
-                  onChange={(e) => {
-                    setNrClienteBusca(e.target.value);
-                    setShowNrAutocomplete(true);
-                    setNrClienteId(null);
-                  }}
-                  onBlur={() => setTimeout(() => setShowNrAutocomplete(false), 200)}
-                  required
-                  autoComplete="off"
-                />
-                {showNrAutocomplete && filteredClientes.length > 0 && (
-                  <ul className="absolute top-full left-0 w-full bg-white border border-border-passive rounded-md max-h-48 overflow-y-auto z-50 list-none p-0 m-0 shadow-lg mt-1">
-                    {filteredClientes.map(c => (
-                      <li
-                        key={c.id}
-                        className="px-3 py-2 cursor-pointer hover:bg-cream-surface text-sm border-b border-border-passive/30 text-charcoal"
-                        onMouseDown={() => {
-                          setNrClienteBusca(c.nome);
-                          setNrClienteId(c.id);
-                          setShowNrAutocomplete(false);
-                        }}
+          <div className="modal-body" style={{ padding: '18px 22px' }}>
+            <form onSubmit={(e) => e.preventDefault()} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* Busca e Seleção de Cliente */}
+              <div className="form-group" style={{ position: 'relative', margin: 0 }}>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label htmlFor="nr-cliente" style={{ margin: 0, fontSize: '12px', fontWeight: 600, color: 'var(--charcoal)' }}>
+                    Atleta / Cliente *
+                  </label>
+                  {!showQuickClientForm && !nrClienteId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowQuickClientForm(true);
+                        setQcNome(nrClienteBusca);
+                      }}
+                      className="text-xs text-brand hover:underline font-semibold flex items-center gap-1 bg-transparent border-0 cursor-pointer p-0"
+                    >
+                      <UserPlus size={13} />
+                      + Cadastrar Novo
+                    </button>
+                  )}
+                </div>
+
+                {/* Se o cliente já estiver selecionado */}
+                {nrClienteId && !showQuickClientForm ? (
+                  <div className="flex items-center justify-between p-2.5 bg-neutral-50 border border-border-passive rounded-xl">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-full bg-brand/10 text-brand font-bold text-xs flex items-center justify-center">
+                        {nrClienteBusca ? nrClienteBusca.charAt(0).toUpperCase() : 'A'}
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-charcoal">{nrClienteBusca}</div>
+                        <div className="text-[11px] text-muted">
+                          {clientes.find(c => c.id === nrClienteId)?.telefone || 'Cliente Selecionado'}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNrClienteId(null);
+                        setNrClienteBusca('');
+                      }}
+                      className="text-xs text-muted hover:text-charcoal font-semibold px-2 py-1 rounded hover:bg-neutral-200/60 transition-colors bg-transparent border-0 cursor-pointer"
+                    >
+                      Trocar
+                    </button>
+                  </div>
+                ) : showQuickClientForm ? (
+                  /* Bloco de Cadastro Rápido de Cliente */
+                  <div className="p-3 bg-neutral-50/90 border border-border-passive rounded-xl space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-charcoal flex items-center gap-1.5">
+                        <UserPlus size={13} className="text-brand" />
+                        Cadastro Rápido de Atleta
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowQuickClientForm(false)}
+                        className="text-xs text-muted hover:text-charcoal font-medium bg-transparent border-0 cursor-pointer"
                       >
-                        <strong>{c.nome}</strong> <span style={{ color: 'var(--muted)', fontSize: '11px', marginLeft: '8px' }}>{c.telefone || ''}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {showNrAutocomplete && nrClienteBusca.trim() !== '' && filteredClientes.length === 0 && (
-                  <div className="absolute top-full left-0 w-full bg-white border border-border-passive rounded-md p-3 z-50 shadow-lg mt-1 text-xs text-muted">
-                    Nenhum cliente cadastrado com esse nome. Crie o cliente na aba "Clientes".
+                        Cancelar
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] font-semibold text-muted uppercase tracking-wider block mb-1">Nome Completo *</label>
+                        <input
+                          type="text"
+                          placeholder="Nome e Sobrenome"
+                          value={qcNome}
+                          onChange={(e) => setQcNome(e.target.value)}
+                          className="text-xs p-2 rounded-lg border border-border-passive bg-white outline-none w-full"
+                          autoFocus
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold text-muted uppercase tracking-wider block mb-1">WhatsApp *</label>
+                        <input
+                          type="tel"
+                          placeholder="(99) 99999-9999"
+                          value={qcTelefone}
+                          onChange={(e) => setQcTelefone(maskPhone(e.target.value))}
+                          className="text-xs p-2 rounded-lg border border-border-passive bg-white outline-none w-full"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <div className="flex-1">
+                        <label className="text-[10px] font-semibold text-muted uppercase tracking-wider block mb-1">E-mail (opcional)</label>
+                        <input
+                          type="email"
+                          placeholder="atleta@email.com"
+                          value={qcEmail}
+                          onChange={(e) => setQcEmail(e.target.value)}
+                          className="text-xs p-2 rounded-lg border border-border-passive bg-white outline-none w-full"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleQuickClientCreate}
+                        disabled={qcLoading || !qcNome.trim() || !qcTelefone.trim()}
+                        className="btn-primary text-xs py-2 px-3.5 shrink-0 disabled:opacity-50 h-[34px]"
+                      >
+                        {qcLoading ? 'Salvando...' : 'Salvar e Selecionar'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* Campo de Busca com Autocomplete */
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type="text"
+                      id="nr-cliente"
+                      placeholder="Buscar por nome ou telefone..."
+                      value={nrClienteBusca}
+                      onChange={(e) => {
+                        setNrClienteBusca(e.target.value);
+                        setShowNrAutocomplete(true);
+                        setNrClienteId(null);
+                      }}
+                      onBlur={() => setTimeout(() => setShowNrAutocomplete(false), 200)}
+                      required
+                      autoComplete="off"
+                    />
+                    {showNrAutocomplete && filteredClientes.length > 0 && (
+                      <ul className="absolute top-full left-0 w-full bg-white border border-border-passive rounded-md max-h-48 overflow-y-auto z-50 list-none p-0 m-0 shadow-lg mt-1">
+                        {filteredClientes.map(c => (
+                          <li
+                            key={c.id}
+                            className="px-3 py-2 cursor-pointer hover:bg-cream-surface text-sm border-b border-border-passive/30 text-charcoal flex justify-between items-center"
+                            onMouseDown={() => {
+                              setNrClienteBusca(c.nome);
+                              setNrClienteId(c.id);
+                              setShowNrAutocomplete(false);
+                            }}
+                          >
+                            <div>
+                              <strong>{c.nome}</strong>
+                              <span style={{ color: 'var(--muted)', fontSize: '11px', marginLeft: '8px' }}>{c.telefone || ''}</span>
+                            </div>
+                            <span className="text-[10px] text-muted font-medium bg-neutral-100 px-1.5 py-0.5 rounded">Selecionar</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {showNrAutocomplete && nrClienteBusca.trim() !== '' && filteredClientes.length === 0 && (
+                      <div className="absolute top-full left-0 w-full bg-white border border-border-passive rounded-md p-3 z-50 shadow-lg mt-1 text-xs text-muted flex justify-between items-center">
+                        <span>Nenhum cliente encontrado.</span>
+                        <button
+                          type="button"
+                          onMouseDown={() => {
+                            setShowQuickClientForm(true);
+                            setQcNome(nrClienteBusca);
+                            setShowNrAutocomplete(false);
+                          }}
+                          className="text-xs font-bold text-brand hover:underline cursor-pointer bg-transparent border-0 p-0"
+                        >
+                          + Cadastrar agora
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="form-group">
-                  <label htmlFor="nr-quadra">Quadra *</label>
+              {/* Quadra e Modalidade */}
+              <div className="grid grid-cols-2 gap-3" style={{ margin: 0 }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label htmlFor="nr-quadra" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--charcoal)', marginBottom: '4px' }}>
+                    Quadra *
+                  </label>
                   <select
                     id="nr-quadra"
                     value={nrQuadraId || ''}
@@ -1300,8 +1607,10 @@ export function AdminReservas() {
                     ))}
                   </select>
                 </div>
-                <div className="form-group">
-                  <label htmlFor="nr-esporte">Modalidade / Esporte *</label>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label htmlFor="nr-esporte" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--charcoal)', marginBottom: '4px' }}>
+                    Modalidade *
+                  </label>
                   <select
                     id="nr-esporte"
                     value={nrEsporte}
@@ -1319,9 +1628,12 @@ export function AdminReservas() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                <div className="form-group">
-                  <label htmlFor="nr-data">Data *</label>
+              {/* Data e Horários */}
+              <div className="grid grid-cols-3 gap-2.5" style={{ margin: 0 }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label htmlFor="nr-data" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--charcoal)', marginBottom: '4px' }}>
+                    Data *
+                  </label>
                   <input
                     type="date"
                     id="nr-data"
@@ -1339,8 +1651,10 @@ export function AdminReservas() {
                     required
                   />
                 </div>
-                <div className="form-group">
-                  <label htmlFor="nr-inicio">Início *</label>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label htmlFor="nr-inicio" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--charcoal)', marginBottom: '4px' }}>
+                    Início *
+                  </label>
                   <select
                     id="nr-inicio"
                     value={nrInicio}
@@ -1354,8 +1668,10 @@ export function AdminReservas() {
                     ))}
                   </select>
                 </div>
-                <div className="form-group">
-                  <label htmlFor="nr-fim">Fim *</label>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label htmlFor="nr-fim" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--charcoal)', marginBottom: '4px' }}>
+                    Fim *
+                  </label>
                   <select
                     id="nr-fim"
                     value={nrFim}
@@ -1371,35 +1687,100 @@ export function AdminReservas() {
                 </div>
               </div>
 
-              <div className="form-group">
-                <label htmlFor="nr-obs">Observações</label>
+              {/* Observações */}
+              <div className="form-group" style={{ margin: 0 }}>
+                <label htmlFor="nr-obs" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--charcoal)', marginBottom: '4px' }}>
+                  Observações
+                </label>
                 <textarea
                   id="nr-obs"
                   rows={2}
-                  placeholder="Opcional"
+                  placeholder="Informações adicionais sobre o agendamento (opcional)..."
                   maxLength={100}
                   value={nrObs}
                   onChange={(e) => setNrObs(e.target.value)}
-                  style={{ resize: 'none', height: '58px' }}
+                  style={{ resize: 'none', height: '48px', margin: 0 }}
                 />
               </div>
 
-              <div className="p-3.5 bg-white border border-[#ded8ce] rounded-xl shadow-xs flex justify-between items-center mt-3 mb-1">
+              {/* Resumo do Valor Previsto */}
+              <div className="p-3 bg-neutral-50/80 border border-[#ded8ce] rounded-xl flex justify-between items-center">
                 <div>
-                  <span className="text-xs font-semibold text-muted block">Valor Previsto</span>
-                  <span className="text-[11px] text-charcoal/70 font-medium">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted block">
+                    Valor Previsto
+                  </span>
+                  <span className="text-xs text-charcoal font-semibold">
                     {nrEsporte ? `${nrEsporte}` : 'Quadra selecionada'}
                   </span>
                 </div>
-                <span className="text-xl font-bold text-charcoal tabular">
+                <span className="text-base font-bold text-charcoal tabular-nums">
                   {formatCurrency(nrValorPrevisto)}
                 </span>
               </div>
+
+              {/* Bloco de Pagamento Imediato no Balcão */}
+              <div className="p-3 bg-neutral-50/70 border border-[#ded8ce] rounded-xl">
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={nrRegistrarPagamento}
+                    onChange={(e) => {
+                      setNrRegistrarPagamento(e.target.checked);
+                      if (e.target.checked && !nrPagValor) {
+                        setNrPagValor(nrValorPrevisto.toFixed(2));
+                      }
+                    }}
+                    className="w-4 h-4 rounded text-brand focus:ring-brand cursor-pointer"
+                  />
+                  <span className="text-xs font-bold text-charcoal flex items-center gap-1.5">
+                    <CreditCard size={14} className="text-muted" />
+                    Registrar pagamento no ato da reserva (baixa no caixa)
+                  </span>
+                </label>
+
+                {nrRegistrarPagamento && (
+                  <div className="grid grid-cols-2 gap-3 mt-2.5 pt-2.5 border-t border-border-passive/60">
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="text-[10px] font-semibold text-muted uppercase tracking-wider block mb-1">
+                        Forma de Pagamento *
+                      </label>
+                      <select
+                        value={nrPagMetodo}
+                        onChange={(e) => setNrPagMetodo(e.target.value)}
+                        className="text-xs p-2 rounded-lg border border-border-passive bg-white w-full"
+                      >
+                        <option value="Pix (QR Code na Tela)">Pix (Gerar QR Code na Tela)</option>
+                        <option value="Pix (Manual)">Pix (Manual / Transferência)</option>
+                        <option value="Dinheiro">Dinheiro</option>
+                        <option value="Cartão de Débito">Cartão de Débito</option>
+                        <option value="Cartão de Crédito">Cartão de Crédito</option>
+                      </select>
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="text-[10px] font-semibold text-muted uppercase tracking-wider block mb-1">
+                        Valor Pago (R$) *
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={nrPagValor}
+                        onChange={(e) => setNrPagValor(e.target.value)}
+                        placeholder={nrValorPrevisto.toFixed(2)}
+                        className="text-xs font-bold p-2 rounded-lg border border-border-passive bg-white w-full"
+                        required
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </form>
           </div>
-          <div className="modal-footer">
+          <div className="modal-footer" style={{ padding: '14px 22px 18px', borderTop: '1px solid var(--border-passive)' }}>
             <button className="btn-ghost" onClick={() => setActiveModal(null)}>Cancelar</button>
-            <button className="btn-primary" onClick={handleConfirmarReserva}>Confirmar Reserva</button>
+            <button className="btn-primary" onClick={handleConfirmarReserva}>
+              {nrRegistrarPagamento ? 'Confirmar e Baixar Pagamento' : 'Confirmar Reserva'}
+            </button>
           </div>
         </div>
       </div>
@@ -1646,8 +2027,8 @@ export function AdminReservas() {
         {selectedReserva && (
           <div className="modal" style={{ maxWidth: '420px', textAlign: 'center' }}>
             <div className="modal-header">
-              <h2 className="modal-title">Pagamento via Pix Online</h2>
-              <button className="modal-close" onClick={() => setActiveModal('detalhe-reserva')}>✕</button>
+              <h2 className="modal-title">Pagamento via Pix</h2>
+              <button className="modal-close" onClick={() => { setActiveModal(null); setSelectedReserva(null); }}>✕</button>
             </div>
             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <div style={{ background: 'var(--cream-surface)', border: '1px solid var(--border-passive)', borderRadius: 'var(--r-md)', padding: '10px 14px', marginBottom: '16px', fontSize: '13px', width: '100%', textAlign: 'left' }}>
@@ -1664,7 +2045,7 @@ export function AdminReservas() {
               )}
 
               <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '14px' }}>
-                Peça para o cliente escanear o QR Code acima pelo app do banco dele. A tela atualizará sozinha.
+                Apresente o QR Code acima para o cliente escanear no app do banco dele.
               </p>
 
               {copiaCola && (
@@ -1691,8 +2072,32 @@ export function AdminReservas() {
                 </div>
               )}
             </div>
-            <div className="modal-footer">
-              <button className="btn-ghost" onClick={() => setActiveModal('detalhe-reserva')}>Voltar</button>
+            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+              <button className="btn-ghost" onClick={() => { setActiveModal(null); setSelectedReserva(null); }}>Fechar</button>
+              <button
+                className="btn-primary"
+                onClick={async () => {
+                  if (!selectedReserva) return;
+                  try {
+                    const valNum = parseCurrencyToFloat(pagValor) || selectedReserva.valor_total;
+                    const res = await fetch('/api/pagamentos', {
+                      method: 'POST',
+                      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ reserva_id: selectedReserva.id, valor: valNum, metodo: 'Pix' })
+                    });
+                    if (res.ok) {
+                      showToast('Pagamento confirmado manualmente com sucesso!', 'success');
+                      setActiveModal(null);
+                      setSelectedReserva(null);
+                      fetchGrade();
+                    }
+                  } catch (err: any) {
+                    showToast(err.message, 'error');
+                  }
+                }}
+              >
+                Confirmar no Caixa
+              </button>
             </div>
           </div>
         )}

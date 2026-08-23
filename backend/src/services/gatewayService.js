@@ -141,14 +141,40 @@ const obterTokenGatewayArena = async (tenant_id) => {
   return null;
 };
 
+const { gerarPixEMV } = require('../utils/pixPayload');
+
 const criarCobrancaPix = async (reserva_id, valor, tenant_id) => {
   const token = await obterTokenGatewayArena(tenant_id);
 
-  // Sem token = arena não conectou a conta Mercado Pago ainda
+  // Sem token = verificar se a arena possui chave Pix cadastrada para gerar QR Code direto
   if (!token) {
+    const arena = await db.getAsync('SELECT nome, chave_pix, titular_pix, cidade_pix FROM Arenas WHERE id = ?', [tenant_id]);
+    if (arena && arena.chave_pix && arena.chave_pix.trim() !== '') {
+      const chavePix = arena.chave_pix.trim();
+      const titular = arena.titular_pix || arena.nome || 'Arena';
+      const cidade = arena.cidade_pix || 'SAO PAULO';
+
+      const copiaCola = gerarPixEMV({
+        chave: chavePix,
+        nome: titular,
+        cidade: cidade,
+        valor: valor,
+        txid: `RESERVA${reserva_id}`
+      });
+
+      const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(copiaCola)}`;
+
+      return {
+        qr_code: qrCodeUrl,
+        copia_cola: copiaCola,
+        gateway_ref: `PIX_ESTATICO_${reserva_id}`,
+        is_estatico: true
+      };
+    }
+
     throw new Error(
-      'Esta arena ainda não conectou uma conta Mercado Pago. ' +
-      'Acesse Configurações → Pagamentos e clique em "Conectar com Mercado Pago" para habilitar o Pix Online.'
+      'Esta arena ainda não configurou uma chave Pix ou conta Mercado Pago. ' +
+      'Acesse Configurações → Pagamentos para cadastrar sua chave Pix.'
     );
   }
 

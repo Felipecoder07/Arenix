@@ -381,13 +381,14 @@ const agendarReservaPublica = async (req, res) => {
 
     const tenantId = arena.id;
 
-    const hasGateway = arena.gateway_access_token && arena.gateway_access_token.trim() !== '';
-    const hasChavePix = arena.chave_pix && arena.chave_pix.trim() !== '';
+    const hasGateway = !!(arena.gateway_access_token?.trim());
+    const hasChavePix = !!(arena.chave_pix?.trim());
 
     if (!hasGateway && !hasChavePix) {
       return res.status(400).json({
         payment_not_configured: true,
-        error: 'Esta arena ainda não configurou o recebimento de pagamentos online via Pix. Por favor, entre em contato direto com a recepção do local para agendar.'
+        telefone_arena: arena.telefone || null,
+        error: 'Esta arena ainda não configurou o recebimento de pagamentos online via Pix. Entre em contato direto com a recepção para agendar.'
       });
     }
 
@@ -490,8 +491,16 @@ const agendarReservaPublica = async (req, res) => {
 
     if (reservaRecente) {
       const primeiraReservaId = reservaRecente.id;
-      const chavePixArena = arena.chave_pix || arena.email || arena.telefone || 'financeiro@felparena.com.br';
-      const titularArena = arena.titular_pix || arena.nome || 'Felp Arena';
+      // Segurança: só gera Pix se a arena tiver chave Pix explicitamente configurada
+      if (!hasChavePix && !hasGateway) {
+        return res.status(400).json({
+          payment_not_configured: true,
+          telefone_arena: arena.telefone || null,
+          error: 'Esta arena ainda não configurou o recebimento de pagamentos online via Pix.'
+        });
+      }
+      const chavePixArena = arena.chave_pix.trim();
+      const titularArena = arena.titular_pix || arena.nome || 'Arena';
       const cidadeArena = arena.cidade_pix || 'SAO PAULO';
       const copiaCola = gerarPixEMV({
         chave: chavePixArena,
@@ -557,8 +566,25 @@ const agendarReservaPublica = async (req, res) => {
     }
 
     // Gera o código Copia e Cola EMV padrão Banco Central utilizando a Chave Pix Real do Dono da Arena
-    const chavePixArena = arena.chave_pix || arena.email || arena.telefone || 'financeiro@felparena.com.br';
-    const titularArena = arena.titular_pix || arena.nome || 'Felp Arena';
+    // Segurança: se não tiver chave Pix real configurada e o gateway falhou, faz rollback das reservas criadas e bloqueia
+    if (!pixData && !hasChavePix) {
+      if (reservasCriadasIds.length > 0) {
+        try {
+          const placeholders = reservasCriadasIds.map(() => '?').join(',');
+          await db.runAsync(`DELETE FROM Reservas WHERE id IN (${placeholders})`, reservasCriadasIds);
+        } catch (rErr) {
+          console.warn('[Public Controller Rollback Warning]:', rErr.message);
+        }
+      }
+      return res.status(400).json({
+        payment_not_configured: true,
+        telefone_arena: arena.telefone || null,
+        error: 'Esta arena ainda não configurou o recebimento de pagamentos online via Pix.'
+      });
+    }
+
+    const chavePixArena = arena.chave_pix?.trim();
+    const titularArena = arena.titular_pix || arena.nome || 'Arena';
     const cidadeArena = arena.cidade_pix || 'SAO PAULO';
 
     const gatewayRef = pixData?.gateway_ref || `PIX_MULTI_${primeiraReservaId}_${Date.now()}`;
@@ -588,6 +614,14 @@ const agendarReservaPublica = async (req, res) => {
       expira_em_minutos: 15
     });
   } catch (err) {
+    if (reservasCriadasIds.length > 0) {
+      try {
+        const placeholders = reservasCriadasIds.map(() => '?').join(',');
+        await db.runAsync(`DELETE FROM Reservas WHERE id IN (${placeholders})`, reservasCriadasIds);
+      } catch (rollbackErr) {
+        console.warn('[Public Checkout Catch Rollback Error]:', rollbackErr.message);
+      }
+    }
     console.error('[Public Controller Error] agendarReservaPublica:', err);
     res.status(500).json({ error: 'Erro ao concluir o agendamento.' });
   }
@@ -1258,8 +1292,8 @@ const getMinhasReservasAtleta = async (req, res) => {
                 ELSE 'Pendente'
               END as status,
               CASE 
-                WHEN MAX(CASE WHEN r.status_pagamento NOT IN ('Estornado', 'Expirado', 'Cancelado (Pendente Estorno)') THEN 1 ELSE 0 END) = 0 THEN MAX(r.status_pagamento)
                 WHEN MAX(CASE WHEN r.status_pagamento = 'Pago' THEN 1 ELSE 0 END) = 1 THEN 'Pago'
+                WHEN MAX(CASE WHEN r.status = 'Cancelada' OR r.status_pagamento IN ('Estornado', 'Expirado', 'Cancelado (Pendente Estorno)', 'Desistência', 'Cancelado') THEN 1 ELSE 0 END) = 1 THEN MAX(r.status_pagamento)
                 ELSE 'Pendente'
               END as status_pagamento,
               MAX(r.criado_em) as criado_em, r.codigo_validacao_cancelamento,
@@ -1274,7 +1308,7 @@ const getMinhasReservasAtleta = async (req, res) => {
        WHERE r.tenant_id = ? AND r.cliente_id IN (${clientIds.map(() => '?').join(',')})
        GROUP BY COALESCE(NULLIF(r.grupo_id, ''), CAST(r.id AS TEXT))
        ORDER BY CASE 
-                  WHEN MAX(CASE WHEN r.status != 'Cancelada' THEN 1 ELSE 0 END) = 0 THEN 3
+                  WHEN MAX(CASE WHEN r.status = 'Cancelada' OR r.status_pagamento IN ('Estornado', 'Expirado', 'Cancelado (Pendente Estorno)', 'Desistência') THEN 1 ELSE 0 END) = 1 AND MAX(CASE WHEN r.status = 'Confirmada' OR r.status_pagamento = 'Pago' THEN 1 ELSE 0 END) = 0 THEN 3
                   WHEN (MIN(r.status) = 'Pendente' OR MIN(r.status_pagamento) = 'Pendente') AND r.data_reserva >= date('now', 'localtime') THEN 0
                   WHEN r.data_reserva >= date('now', 'localtime') THEN 1
                   ELSE 2 
@@ -1493,8 +1527,17 @@ const obterPixReservaPendente = async (req, res) => {
     }
 
     if (!copiaCola) {
-      const chavePixArena = arena.chave_pix || arena.email || arena.telefone || 'financeiro@felparena.com.br';
-      const titularArena = arena.titular_pix || arena.nome || 'Felp Arena';
+      // Segurança: só usa Pix EMV se a arena tiver chave Pix explicitamente configurada
+      const hasChavePixReconsumo = !!(arena.chave_pix?.trim());
+      if (!hasChavePixReconsumo) {
+        return res.status(400).json({
+          payment_not_configured: true,
+          telefone_arena: arena.telefone || null,
+          error: 'Esta arena não tem uma chave Pix configurada. Entre em contato com a recepção.'
+        });
+      }
+      const chavePixArena = arena.chave_pix.trim();
+      const titularArena = arena.titular_pix || arena.nome || 'Arena';
       const cidadeArena = arena.cidade_pix || 'SAO PAULO';
 
       copiaCola = gerarPixEMV({
