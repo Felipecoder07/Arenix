@@ -39,8 +39,8 @@ describe('Testes de Integração de Reservas e Validação de Conflito de Horár
     // Insere dados de teste específicos (Arena, Quadras e Cliente)
     await db.runAsync("INSERT OR IGNORE INTO Arenas (id, nome, status) VALUES (1, 'Arena Teste', 1)");
     await db.runAsync("INSERT OR IGNORE INTO Clientes (id, tenant_id, nome, telefone) VALUES (1, 1, 'Cliente Teste', '11999999999')");
-    await db.runAsync("INSERT OR IGNORE INTO Quadras (id, tenant_id, nome, tipo, preco_base) VALUES (1, 1, 'Quadra 1 Areia', 'Areia', 100)");
-    await db.runAsync("INSERT OR IGNORE INTO Quadras (id, tenant_id, nome, tipo, preco_base) VALUES (2, 1, 'Quadra 2 Padel', 'Saibro', 120)");
+    await db.runAsync("INSERT OR IGNORE INTO Quadras (id, tenant_id, nome, tipo, preco_base, hora_abertura, hora_fechamento) VALUES (1, 1, 'Quadra 1 Areia', 'Areia', 100, '08:00', '22:00')");
+    await db.runAsync("INSERT OR IGNORE INTO Quadras (id, tenant_id, nome, tipo, preco_base, hora_abertura, hora_fechamento) VALUES (2, 1, 'Quadra 2 Padel', 'Saibro', 120, '08:00', '22:00')");
   });
 
   afterAll(async () => {
@@ -197,5 +197,52 @@ describe('Testes de Integração de Reservas e Validação de Conflito de Horár
 
     expect(resCancel.statusCode).toBe(200);
     expect(resCancel.body).toHaveProperty('message', 'Reserva cancelada com sucesso.');
+  });
+
+  it('Deve criar uma reserva com pagamento imediato no balcão e salvar com status_pagamento = Pago', async () => {
+    const res = await request(app)
+      .post('/api/reservas')
+      .set('Authorization', `Bearer ${testToken}`)
+      .send({
+        cliente_id: 1,
+        quadra_id: 2,
+        data_reserva: '2026-12-16',
+        hora_inicio: '14:00',
+        hora_fim: '15:00',
+        valor_total: 120,
+        pagamento: {
+          registrar: true,
+          metodo: 'Dinheiro',
+          valor: 120
+        }
+      });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.body).toHaveProperty('status_pagamento', 'Pago');
+    expect(res.body).toHaveProperty('reserva_id');
+
+    // Verifica se o pagamento foi persistido na tabela Pagamentos
+    const pmt = await db.getAsync('SELECT * FROM Pagamentos WHERE reserva_id = ?', [res.body.reserva_id]);
+    expect(pmt).toBeDefined();
+    expect(pmt.valor).toBe(120);
+    expect(pmt.metodo).toBe('Dinheiro');
+  });
+
+  it('Deve criar uma reserva como Cortesia (R$ 0,00) e registrar status_pagamento = Pago', async () => {
+    const res = await request(app)
+      .post('/api/reservas')
+      .set('Authorization', `Bearer ${testToken}`)
+      .send({
+        cliente_id: 1,
+        quadra_id: 2,
+        data_reserva: '2026-12-16',
+        hora_inicio: '15:00',
+        hora_fim: '16:00',
+        valor_total: 0
+      });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.body).toHaveProperty('valor_total', 0);
+    expect(res.body).toHaveProperty('status_pagamento', 'Pago');
   });
 });

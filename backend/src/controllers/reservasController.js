@@ -59,12 +59,33 @@ const criarReserva = async (req, res) => {
       return res.status(400).json({ error: 'Não é permitido criar agendamentos em horários que já se encerraram.' });
     }
 
-    // 1. RN-002: Validar horário de expediente (08:00 as 22:00)
-    if (hora_inicio < '08:00' || hora_fim > '22:00') {
-      return res.status(400).json({ error: 'Reserva fora do horário de funcionamento (08:00 às 22:00).' });
+    const tenant_id = req.user.tenant_id;
+
+    // 1. Buscar a quadra para checar limites reais de horário e preços
+    const quadra = await db.getAsync(
+      'SELECT preco_base, modalidades, tipo, hora_abertura, hora_fechamento FROM Quadras WHERE id = ? AND tenant_id = ?',
+      [quadra_id, tenant_id]
+    );
+    if (!quadra) return res.status(404).json({ error: 'Quadra não encontrada ou não pertence a esta arena.' });
+
+    // 2. RN-002: Validar horário de expediente dinâmico da quadra/arena
+    const horaAbertura = quadra.hora_abertura || '08:00';
+    const horaFechamento = quadra.hora_fechamento || '22:00';
+    if (hora_inicio < horaAbertura || hora_fim > horaFechamento) {
+      return res.status(400).json({
+        error: `Reserva fora do horário de funcionamento (${horaAbertura} às ${horaFechamento}).`
+      });
     }
 
-    // 2. RN-001: Validar sobreposição de reservas
+    // 3a. Limpa previamente reservas pendentes expiradas para evitar falso conflito
+    await db.runAsync(
+      `UPDATE Reservas 
+       SET status = 'Cancelada', status_pagamento = 'Expirado' 
+       WHERE status = 'Pendente' AND status_pagamento = 'Pendente' 
+         AND datetime(criado_em, '+15 minutes') < datetime('now')`
+    );
+
+    // 3b. RN-001: Validar sobreposição de reservas
     const conflitoReservas = await db.getAsync(`
       SELECT id FROM Reservas 
       WHERE quadra_id = ? AND data_reserva = ? AND status != 'Cancelada'
@@ -75,7 +96,7 @@ const criarReserva = async (req, res) => {
       return res.status(409).json({ error: 'A quadra já possui uma reserva neste horário.' });
     }
 
-    // 3. RN-003, RN-012: Validar conflito com bloqueios
+    // 4. RN-003, RN-012: Validar conflito com bloqueios
     const conflitoBloqueios = await db.getAsync(`
       SELECT id FROM Bloqueios
       WHERE quadra_id = ? AND data_bloqueio = ?
@@ -86,13 +107,9 @@ const criarReserva = async (req, res) => {
       return res.status(409).json({ error: 'A quadra está bloqueada para manutenção/evento neste horário.' });
     }
 
-    // 4. RN-004: Calcular valor da reserva
+    // 5. RN-004: Calcular valor da reserva
     const [hI, mI] = hora_inicio.split(':').map(Number);
     const [hF, mF] = hora_fim.split(':').map(Number);
-    const tenant_id = req.user.tenant_id;
-
-    const quadra = await db.getAsync('SELECT preco_base, modalidades, tipo FROM Quadras WHERE id = ? AND tenant_id = ?', [quadra_id, tenant_id]);
-    if (!quadra) return res.status(404).json({ error: 'Quadra não encontrada ou não pertence a esta arena.' });
 
     const esporte = req.body.esporte || 'Geral';
     let precoHora = quadra.preco_base || 80;
@@ -109,15 +126,44 @@ const criarReserva = async (req, res) => {
     }
 
     const duracaoHoras = (hF + mF / 60) - (hI + mI / 60);
-    const valor_total = (req.body.valor_total != null && Number(req.body.valor_total) > 0) ? Number(req.body.valor_total) : (precoHora * duracaoHoras);
+    const valor_total = (req.body.valor_total !== undefined && req.body.valor_total !== null && req.body.valor_total !== '')
+      ? Math.max(0, Number(req.body.valor_total))
+      : (precoHora * duracaoHoras);
 
-    // 5. Salvar a reserva
+    const { pagamento } = req.body;
+    let statusInicial = 'Confirmada';
+    let statusPagamentoInicial = valor_total === 0 ? 'Pago' : 'Pendente';
+
+    // 6. Salvar a reserva
     const insert = await db.runAsync(`
-      INSERT INTO Reservas (tenant_id, cliente_id, quadra_id, data_reserva, hora_inicio, hora_fim, valor_total, criado_por, esporte)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [tenant_id, cliente_id, quadra_id, data_reserva, hora_inicio, hora_fim, valor_total || 0, usuario_id, esporte]);
+      INSERT INTO Reservas (tenant_id, cliente_id, quadra_id, data_reserva, hora_inicio, hora_fim, valor_total, status, status_pagamento, criado_por, esporte)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [tenant_id, cliente_id, quadra_id, data_reserva, hora_inicio, hora_fim, valor_total, statusInicial, statusPagamentoInicial, usuario_id, esporte]);
 
-    logAuditEvent(usuario_id, 'Criação de reserva', `Reserva ID: ${insert.lastID}, Quadra: ${quadra_id}, Data: ${data_reserva} ${hora_inicio}`, ip);
+    const reservaId = insert.lastID;
+
+    // Processa pagamento imediato no balcão se solicitado
+    if (pagamento && pagamento.registrar && valor_total > 0) {
+      const valorPago = Math.max(0, Number(pagamento.valor || valor_total));
+      const metodoPago = pagamento.metodo || 'Dinheiro';
+      
+      await db.runAsync(`
+        INSERT INTO Pagamentos (reserva_id, valor, metodo, registrado_por)
+        VALUES (?, ?, ?, ?)
+      `, [reservaId, valorPago, metodoPago, usuario_id]);
+
+      statusPagamentoInicial = valorPago >= valor_total ? 'Pago' : 'Parcial';
+      await db.runAsync(`UPDATE Reservas SET status_pagamento = ? WHERE id = ?`, [statusPagamentoInicial, reservaId]);
+
+      logAuditEvent(
+        usuario_id,
+        'Pagamento Balcão',
+        `Pagamento de R$ ${valorPago.toFixed(2)} registrado via '${metodoPago}' para Reserva ID #${reservaId}.`,
+        ip
+      );
+    }
+
+    logAuditEvent(usuario_id, 'Criação de reserva', `Reserva ID: ${reservaId}, Quadra: ${quadra_id}, Data: ${data_reserva} ${hora_inicio}, StatusPagamento: ${statusPagamentoInicial}`, ip);
 
     // Dispara e-mail de confirmação em background (defensivo)
     (async () => {
@@ -154,8 +200,9 @@ const criarReserva = async (req, res) => {
 
     res.status(201).json({
       message: 'Reserva criada com sucesso.',
-      reserva_id: insert.lastID,
-      valor_total
+      reserva_id: reservaId,
+      valor_total,
+      status_pagamento: statusPagamentoInicial
     });
 
   } catch (error) {

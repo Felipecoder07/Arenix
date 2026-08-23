@@ -136,35 +136,6 @@ export default function CheckoutDrawer({
         </div>
 
         <div className="overflow-y-auto px-5 pt-4 pb-5 flex-1 overscroll-contain">
-          {/* Seletor de Modalidade se a quadra for multi-esporte */}
-          {court.sportPricing && court.sportPricing.length > 1 && onSportChange && (
-            <div className="mb-4">
-              <span className="text-xs font-bold text-charcoal block mb-2">Modalidade do Jogo:</span>
-              <div className="flex flex-wrap gap-2">
-                {court.sportPricing.map((sp) => {
-                  const isSel = currentSport === sp.nome;
-                  return (
-                    <button
-                      key={sp.nome}
-                      type="button"
-                      onClick={() => onSportChange(sp.nome)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all active:scale-95 flex items-center gap-1.5 ${
-                        isSel
-                          ? 'bg-charcoal text-white border-charcoal shadow-sm'
-                          : 'bg-surface text-charcoal/80 border-edge hover:border-charcoal/30'
-                      }`}
-                    >
-                      <span>{sp.nome}</span>
-                      <span className={`text-[11px] font-bold ${isSel ? 'text-white/80' : 'text-available-text'}`}>
-                        ({brl(sp.preco)}/h)
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
           <div className="rounded-2xl bg-surface border border-edge p-4 mb-5 space-y-3">
             <div className="flex items-center justify-between">
               <div>
