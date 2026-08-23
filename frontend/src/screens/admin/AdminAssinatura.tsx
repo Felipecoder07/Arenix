@@ -52,7 +52,7 @@ export function AdminAssinatura() {
   const token = localStorage.getItem('courtmanager_token');
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   const [dados, setDados] = useState<PlanoDados | null>(null);
   const [faturas, setFaturas] = useState<Fatura[]>([]);
@@ -65,7 +65,7 @@ export function AdminAssinatura() {
   const [pixCopiado, setPixCopiado] = useState(false);
   const [pixPagoComSucesso, setPixPagoComSucesso] = useState(false);
 
-  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
   };

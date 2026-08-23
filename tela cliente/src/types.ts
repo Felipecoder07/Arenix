@@ -35,6 +35,11 @@ export interface ArenaInfo {
   hoursToday: string;
   rating: number;
   reviews: number;
+  nome?: string;
+  endereco?: string;
+  telefone?: string;
+  logo?: string;
+  foto_perfil?: string;
 }
 
 export interface ReservationInput {

@@ -23,6 +23,8 @@ interface Reserva {
   hora_inicio: string;
   hora_fim: string;
   cliente_nome: string;
+  cliente_telefone?: string;
+  cliente_email?: string;
   cliente_id?: number;
   status_pagamento: string;
   valor_total: number;
