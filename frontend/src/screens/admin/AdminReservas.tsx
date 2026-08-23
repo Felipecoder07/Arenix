@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, UserPlus, Check, DollarSign, Search, CreditCard } from 'lucide-react';
+import { UserPlus, CreditCard } from 'lucide-react';
 import '../../assets/css/reservas.css';
 
 export interface ModalidadeItem {
@@ -20,15 +20,18 @@ interface Quadra {
 interface Reserva {
   id: number;
   quadra_id: number;
+  quadra_nome?: string;
   hora_inicio: string;
   hora_fim: string;
   cliente_nome: string;
   cliente_telefone?: string;
   cliente_email?: string;
   cliente_id?: number;
+  status?: string;
   status_pagamento: string;
   valor_total: number;
   valor_pago: number;
+  total_pago?: number;
   observacoes?: string;
   data_reserva: string;
   esporte?: string;
@@ -84,7 +87,6 @@ export function AdminReservas() {
   const [gatewayRef, setGatewayRef] = useState('');
   const [qrCode, setQrCode] = useState('');
   const [copiaCola, setCopiaCola] = useState('');
-  const [loadingGateway, setLoadingGateway] = useState(false);
 
   // Estados dos Formulários
   // 1. Nova Reserva
@@ -704,6 +706,7 @@ export function AdminReservas() {
             status: 'Confirmada',
             status_pagamento: 'Pendente',
             esporte: nrEsporte || 'Beach Tennis',
+            valor_pago: 0,
             total_pago: 0
           };
 
@@ -1335,10 +1338,11 @@ export function AdminReservas() {
       {/* Toolbar / Filtros */}
       <div className="page-toolbar mb-6 flex flex-col md:flex-row items-center justify-between gap-4 py-3">
         {/* Date navigation */}
-        <div className="date-nav" style={{ width: '280px', flex: '0 0 280px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="date-nav" style={{ width: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
           <button className="date-nav-btn" onClick={() => adjustDate(-1)}>‹</button>
-          <span id="grade-date-label" style={{ textAlign: 'center', flex: '1' }}>{getHeaderDateLabel()}</span>
+          <span id="grade-date-label" style={{ textAlign: 'center', minWidth: '140px' }}>{getHeaderDateLabel()}</span>
           <button className="date-nav-btn" onClick={() => adjustDate(1)}>›</button>
+          <button type="button" className="chip" style={{ fontSize: '11px', padding: '4px 8px' }} onClick={setToday}>Hoje</button>
         </div>
 
         {/* Filters */}
