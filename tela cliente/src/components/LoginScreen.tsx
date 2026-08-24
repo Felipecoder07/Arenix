@@ -98,7 +98,7 @@ export default function LoginScreen({ arena, slug, onAuthed, onClose }: Props) {
           }
         });
 
-        client.requestAccessToken();
+        client.requestAccessToken({ prompt: 'select_account' });
         return;
       } catch (eToken) {
         console.error('Erro ao inicializar TokenClient do Google:', eToken);

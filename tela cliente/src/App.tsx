@@ -10,7 +10,7 @@ import MyReservations from './components/MyReservations';
 import StepIndicator from './components/StepIndicator';
 import LoginScreen from './components/LoginScreen';
 import MyProfileModal from './components/MyProfileModal';
-import { ArrowRight, ShoppingBag, ShieldCheck, X, MessageCircle, MapPin, ExternalLink } from 'lucide-react';
+import { ArrowRight, ShoppingBag, ShieldCheck, X, MessageCircle, MapPin, ExternalLink, AlertCircle } from 'lucide-react';
 import { brl, getLocalDateISO, formatLongDate, formatShortDate } from './lib/format';
 
 import { BACKEND_URL } from './lib/backendUrl';
@@ -197,33 +197,13 @@ export default function App() {
 
     const fetchArena = () => {
       setLoading(true);
+      setNotFound(false);
+      setBlockedMsg(null);
+
       fetch(`${BACKEND_URL}/api/public/tenant/${slug}`)
         .then(async (res) => {
           const data = await res.json();
           if (res.status === 404) {
-            // Se o backend explicitamente disser 404, tentar com o slug padrao felp-arena como fallback
-            if (slug !== 'felp-arena') {
-              fetch(`${BACKEND_URL}/api/public/tenant/felp-arena`)
-                .then(r => r.json())
-                .then(d => {
-                  if (d.arena) {
-                    setArena({
-                      name: d.arena.nome,
-                      cover: resolveCoverUrl(d.arena.foto_capa),
-                      address: d.arena.endereco || 'Endereço não informado',
-                      whatsapp: d.arena.telefone || '',
-                      hoursToday: d.arena.horario_abertura && d.arena.horario_fechamento ? `${d.arena.horario_abertura} às ${d.arena.horario_fechamento}` : '06:00 às 23:00',
-                      rating: 4.9,
-                      reviews: 128
-                    });
-                  } else {
-                    setNotFound(true);
-                  }
-                })
-                .catch(() => setNotFound(true))
-                .finally(() => setLoading(false));
-              return;
-            }
             setNotFound(true);
             return;
           }
@@ -391,10 +371,16 @@ export default function App() {
 
   const [sessionSport, setSessionSport] = useState<string | null>(null);
   const [pendingSlotForSport, setPendingSlotForSport] = useState<Slot | null>(null);
+  const [pendingNavigation, setPendingNavigation] = useState<{
+    type: 'court' | 'date' | 'sport';
+    targetId?: string;
+    targetIso?: string;
+    targetSport?: string;
+  } | null>(null);
 
   // ─── BLOQUEIO DE SCROLL DE FUNDO QUANDO QUALQUER MODAL ESTIVER ABERTO ───
   useEffect(() => {
-    const isAnyModalOpen = loginOpen || profileOpen || myResOpen || drawerOpen || pixOpen || !!pendingSlotForSport;
+    const isAnyModalOpen = loginOpen || profileOpen || myResOpen || drawerOpen || pixOpen || !!pendingSlotForSport || !!pendingNavigation;
     if (isAnyModalOpen) {
       document.documentElement.style.overflow = 'hidden';
       document.body.style.overflow = 'hidden';
@@ -406,7 +392,7 @@ export default function App() {
       document.documentElement.style.overflow = '';
       document.body.style.overflow = '';
     };
-  }, [loginOpen, profileOpen, myResOpen, drawerOpen, pixOpen, pendingSlotForSport]);
+  }, [loginOpen, profileOpen, myResOpen, drawerOpen, pixOpen, pendingSlotForSport, pendingNavigation]);
 
   const court = useMemo(() => courts.find((c) => c.id === courtId) || courts[0], [courts, courtId]);
 
@@ -433,11 +419,86 @@ export default function App() {
     });
   }, [slots, activeSessionSport, court]);
 
-  // Reseta seleção ao trocar de quadra ou filtro de esporte
-  useEffect(() => {
+  // Executa troca efetiva de quadra
+  const executeCourtChange = (newCourtId: string) => {
+    const targetCourt = courts.find(c => c.id === newCourtId);
+    const activeSport = sessionSport || (selectedSport !== 'Todos' ? selectedSport : null);
+
+    if (targetCourt && activeSport) {
+      const isSportSupported = (targetCourt.modalities || []).includes(activeSport);
+      if (isSportSupported) {
+        setSelectedSport(activeSport);
+        setSessionSport(activeSport);
+      } else {
+        setSelectedSport('Todos');
+        setSessionSport(null);
+      }
+    }
+
     setSelectedSlots([]);
-    setSessionSport(null);
-  }, [courtId, selectedSport]);
+    setCourtId(newCourtId);
+  };
+
+  // Seleção Inteligente de Quadra (com proteção para carrinho preenchido)
+  const handleSelectCourt = (newCourtId: string) => {
+    if (newCourtId === courtId) return;
+
+    if (selectedSlots.length > 0) {
+      setPendingNavigation({ type: 'court', targetId: newCourtId });
+      return;
+    }
+
+    executeCourtChange(newCourtId);
+  };
+
+  // Executa troca efetiva de modalidade
+  const executeSportChange = (sport: string) => {
+    setSelectedSport(sport);
+    setSessionSport(sport === 'Todos' ? null : sport);
+    setSelectedSlots([]);
+  };
+
+  // Seleção de Modalidade na Barra Superior (com proteção)
+  const handleSelectSport = (sport: string) => {
+    if (sport === selectedSport) return;
+
+    if (selectedSlots.length > 0) {
+      setPendingNavigation({ type: 'sport', targetSport: sport });
+      return;
+    }
+
+    executeSportChange(sport);
+  };
+
+  // Seleção de Data no Carrossel (com proteção)
+  const handleSelectDate = (newIso: string) => {
+    if (newIso === dateISO) return;
+
+    if (selectedSlots.length > 0) {
+      setPendingNavigation({ type: 'date', targetIso: newIso });
+      return;
+    }
+
+    setSelectedSlots([]);
+    setDateISO(newIso);
+  };
+
+  // Confirmar navegação e limpar horários anteriores
+  const handleConfirmNavigation = () => {
+    if (!pendingNavigation) return;
+
+    setSelectedSlots([]);
+
+    if (pendingNavigation.type === 'court' && pendingNavigation.targetId) {
+      executeCourtChange(pendingNavigation.targetId);
+    } else if (pendingNavigation.type === 'date' && pendingNavigation.targetIso) {
+      setDateISO(pendingNavigation.targetIso);
+    } else if (pendingNavigation.type === 'sport' && pendingNavigation.targetSport) {
+      executeSportChange(pendingNavigation.targetSport);
+    }
+
+    setPendingNavigation(null);
+  };
 
   const step = drawerOpen ? 2 : pixOpen ? 3 : selectedSlots.length > 0 ? 1 : 0;
   const totalPrice = useMemo(() => selectedSlots.reduce((acc, s) => acc + s.price, 0), [selectedSlots]);
@@ -445,6 +506,7 @@ export default function App() {
   // Escolha / Troca de Modalidade Esportiva
   const handleChooseSport = (sportName: string) => {
     setSessionSport(sportName);
+    setSelectedSport(sportName);
     const sportPrice = court?.sportPricing?.find(sp => sp.nome === sportName)?.preco || court?.pricePerHour || 100;
     
     if (pendingSlotForSport) {
@@ -717,18 +779,19 @@ export default function App() {
           <CourtSelector 
             courts={filteredCourts} 
             selectedId={courtId} 
-            onSelect={setCourtId} 
+            onSelect={handleSelectCourt} 
             selectedSport={selectedSport}
             availableSports={availableSports}
-            onSelectSport={setSelectedSport}
+            onSelectSport={handleSelectSport}
           />
         )}
-        <DateCarousel selectedISO={dateISO} onSelect={setDateISO} />
+        <DateCarousel selectedISO={dateISO} onSelect={handleSelectDate} />
 
         <SlotGrid
           slots={displaySlots}
           selectedSlotIds={selectedSlots.map(s => s.id)}
           onSelect={handleToggleSlot}
+          showPrice={selectedSport !== 'Todos' || !!sessionSport}
         />
 
         {/* Rodapé Elegante com Selo da Plataforma */}
@@ -739,6 +802,54 @@ export default function App() {
           </p>
         </footer>
       </main>
+
+      {/* Modal de Confirmação de Troca com Seleção Ativa */}
+      {pendingNavigation && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal/60 backdrop-blur-sm animate-fadeIn"
+          onClick={() => setPendingNavigation(null)}
+        >
+          <div 
+            className="w-full max-w-sm bg-card rounded-3xl p-6 shadow-2xl border border-edge text-center animate-slideUp"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="w-12 h-12 rounded-full bg-amber-500/15 text-amber-500 flex items-center justify-center mx-auto mb-4">
+              <AlertCircle size={26} />
+            </div>
+
+            <h3 className="text-base font-bold text-charcoal mb-1.5">
+              {pendingNavigation.type === 'court' 
+                ? 'Trocar de quadra?' 
+                : pendingNavigation.type === 'date' 
+                ? 'Trocar de data?' 
+                : 'Trocar de modalidade?'}
+            </h3>
+
+            <p className="text-xs text-muted leading-relaxed mb-6">
+              Você já selecionou <strong className="text-charcoal font-semibold">{selectedSlots.length} {selectedSlots.length === 1 ? 'horário' : 'horários'}</strong>. 
+              Mudar agora irá limpar a sua seleção atual. Deseja continuar?
+            </p>
+
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={handleConfirmNavigation}
+                className="w-full py-3 rounded-2xl bg-charcoal text-white font-bold text-sm shadow-soft transition-all active:scale-[0.98]"
+              >
+                Trocar e limpar seleção
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPendingNavigation(null)}
+                className="w-full py-2.5 rounded-2xl text-xs font-semibold text-muted hover:text-charcoal transition-colors"
+              >
+                Manter meus horários
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Mini-Modal de Escolha Rápida de Esporte (Opção 1) */}
       {pendingSlotForSport && (

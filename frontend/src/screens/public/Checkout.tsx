@@ -31,13 +31,21 @@ export function Checkout() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const planoParam = params.get('plano');
+
     fetch('/api/auth/planos')
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {
           setPlanosPublicos(data);
-          const pro = data.find(p => p.nome.toLowerCase() === 'pro');
-          setFormData(prev => ({ ...prev, plano: String(pro ? pro.id : data[0].id) }));
+          if (planoParam && data.some(p => String(p.id) === planoParam || p.nome.toLowerCase() === planoParam.toLowerCase())) {
+            const found = data.find(p => String(p.id) === planoParam || p.nome.toLowerCase() === planoParam.toLowerCase());
+            setFormData(prev => ({ ...prev, plano: String(found ? found.id : planoParam) }));
+          } else {
+            const pro = data.find(p => p.nome.toLowerCase() === 'pro');
+            setFormData(prev => ({ ...prev, plano: String(pro ? pro.id : data[0].id) }));
+          }
         }
       })
       .catch(err => console.error('Erro ao buscar planos públicos:', err));

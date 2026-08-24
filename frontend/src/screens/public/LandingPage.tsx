@@ -253,7 +253,7 @@ export function LandingPage() {
           <div className="pricing-grid">
             {/* Starter / Basic Plan */}
             {(() => {
-              const p = planos.find(x => x.id === 1 || x.nome.toLowerCase() === 'basic' || x.nome.toLowerCase() === 'starter');
+              const p = planos.find(x => x.nome?.toLowerCase() === 'basic' || x.nome?.toLowerCase() === 'starter');
               const valorExibir = period === 'monthly'
                 ? (p?.valor_mensal ?? 49.99)
                 : (p?.valor_anual && p.valor_anual > 0 ? p.valor_anual : (p?.valor_mensal ? p.valor_mensal * 0.8 : 39.99));
@@ -269,7 +269,7 @@ export function LandingPage() {
                   <div className="price-period">
                     <span className="period-label">
                       {period === 'monthly' 
-                        ? `/mês — até ${p?.max_quadras || 3} quadras` 
+                        ? `/mês — até ${p?.max_quadras || 2} quadras` 
                         : '/mês — cobrado anualmente'}
                     </span>
                   </div>
@@ -279,14 +279,14 @@ export function LandingPage() {
                     <li>{p?.max_usuarios || 3} usuários internos</li>
                     <li>Suporte via e-mail</li>
                   </ul>
-                  <Link to="/cadastro" className="btn btn-dark btn-full">Começar grátis</Link>
+                  <Link to={`/cadastro?plano=${p?.id || 2}`} className="btn btn-dark btn-full">Começar grátis</Link>
                 </div>
               );
             })()}
 
             {/* Pro Plan */}
             {(() => {
-              const p = planos.find(x => x.id === 2 || x.nome.toLowerCase() === 'pro');
+              const p = planos.find(x => x.nome?.toLowerCase() === 'pro');
               const valorExibir = period === 'monthly'
                 ? (p?.valor_mensal ?? 79.99)
                 : (p?.valor_anual && p.valor_anual > 0 ? p.valor_anual : (p?.valor_mensal ? p.valor_mensal * 0.8 : 63.99));
@@ -303,7 +303,7 @@ export function LandingPage() {
                   <div className="price-period">
                     <span className="period-label">
                       {period === 'monthly' 
-                        ? `/mês — até ${p?.max_quadras || 10} quadras` 
+                        ? `/mês — até ${p?.max_quadras || 5} quadras` 
                         : '/mês — cobrado anualmente'}
                     </span>
                   </div>
@@ -315,14 +315,14 @@ export function LandingPage() {
                     <li>Gestão de mensalistas</li>
                     <li>Suporte prioritário</li>
                   </ul>
-                  <Link to="/cadastro" className="btn btn-dark btn-full">Começar grátis</Link>
+                  <Link to={`/cadastro?plano=${p?.id || 3}`} className="btn btn-dark btn-full">Começar grátis</Link>
                 </div>
               );
             })()}
 
             {/* Enterprise Plan */}
             {(() => {
-              const p = planos.find(x => x.id === 3 || x.nome.toLowerCase() === 'enterprise');
+              const p = planos.find(x => x.nome?.toLowerCase() === 'enterprise');
               const valorExibir = period === 'monthly'
                 ? p?.valor_mensal
                 : (p?.valor_anual && p.valor_anual > 0 ? p.valor_anual : p?.valor_mensal);

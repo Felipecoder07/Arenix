@@ -6,6 +6,7 @@ interface Props {
   slots: Slot[];
   selectedSlotIds?: string[];
   onSelect: (slot: Slot) => void;
+  showPrice?: boolean;
 }
 
 const blocks: { key: Slot['block']; label: string; Icon: typeof Sun }[] = [
@@ -14,7 +15,7 @@ const blocks: { key: Slot['block']; label: string; Icon: typeof Sun }[] = [
   { key: 'noite', label: 'Noite', Icon: Moon },
 ];
 
-export default function SlotGrid({ slots, selectedSlotIds = [], onSelect }: Props) {
+export default function SlotGrid({ slots, selectedSlotIds = [], onSelect, showPrice = true }: Props) {
   const freeCount = slots.filter((s) => s.status === 'free').length;
 
   return (
@@ -55,7 +56,7 @@ export default function SlotGrid({ slots, selectedSlotIds = [], onSelect }: Prop
                         {isSelected && <Check size={16} className="text-amber-400 font-bold" />}
                       </div>
                       <span className={`text-xs font-semibold ${isSelected ? 'text-white/80' : 'text-available-text/80'}`}>
-                        {brl(s.price)}
+                        {isSelected || showPrice ? brl(s.price) : 'Disponível'}
                       </span>
                     </button>
                   );

@@ -1,5 +1,6 @@
-import { MapPin, MessageCircle, Clock, Star, CalendarCheck, User } from 'lucide-react';
+import { MapPin, MessageCircle, Clock, CalendarCheck, User } from 'lucide-react';
 import type { ArenaInfo } from '../types';
+import { maskPhone } from '../lib/format';
 
 interface Props {
   arena: ArenaInfo;
@@ -56,11 +57,6 @@ export default function ArenaHeader({ arena, athlete, onMyReservations, onMyProf
         </div>
 
         <div className="absolute bottom-4 left-4 right-4 text-white">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="inline-flex items-center gap-1 bg-white/20 backdrop-blur-sm rounded-full px-2.5 py-1 text-xs font-semibold">
-              <Star size={12} className="fill-white" /> {arena.rating.toFixed(1)} · {arena.reviews} avaliações
-            </span>
-          </div>
           <h1 className="text-2xl font-bold tracking-tight drop-shadow-sm">{arena.name}</h1>
         </div>
       </div>
@@ -85,7 +81,7 @@ export default function ArenaHeader({ arena, athlete, onMyReservations, onMyProf
               className="flex items-center gap-2.5 text-sm text-available-text font-medium active:opacity-70"
             >
               <MessageCircle size={18} className="shrink-0" />
-              {arena.whatsapp} · Falar no WhatsApp
+              {maskPhone(arena.whatsapp) || arena.whatsapp} · Falar no WhatsApp
             </a>
           );
         })()}

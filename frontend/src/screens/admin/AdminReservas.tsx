@@ -183,10 +183,11 @@ export function AdminReservas() {
 
   // Toast / Status messages
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [qcErrors, setQcErrors] = useState<{ nome?: string; telefone?: string; email?: string }>({});
 
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), 4000);
   };
 
   // Polling em tempo real do Pix Gateway no modal de reservas
@@ -568,22 +569,34 @@ export function AdminReservas() {
   };
 
   // Cadastro Rápido de Cliente direto no modal
-  const handleQuickClientCreate = async () => {
-    if (!qcNome.trim() || !qcTelefone.trim()) {
-      showToast('Informe o nome completo e o WhatsApp do cliente.', 'error');
-      return;
+  const handleQuickClientCreate = async (): Promise<number | null> => {
+    const errors: { nome?: string; telefone?: string; email?: string } = {};
+
+    if (!qcNome.trim()) {
+      errors.nome = 'O nome do cliente é obrigatório.';
+    } else if (qcNome.trim().split(/\s+/).length < 2) {
+      errors.nome = 'Informe pelo menos nome e sobrenome (ex: João Silva).';
     }
 
-    if (qcNome.trim().split(/\s+/).length < 2) {
-      showToast('Informe pelo menos nome e sobrenome do cliente.', 'error');
-      return;
+    if (!qcTelefone.trim()) {
+      errors.telefone = 'O WhatsApp é obrigatório.';
+    } else if (!/^\(\d{2}\)\s\d{5}-\d{4}$/.test(qcTelefone.trim())) {
+      errors.telefone = 'Número incompleto. Use (99) 99999-9999.';
     }
 
-    if (!/^\(\d{2}\)\s\d{5}-\d{4}$/.test(qcTelefone.trim())) {
-      showToast('Formato do WhatsApp inválido. Use (99) 99999-9999.', 'error');
-      return;
+    if (qcEmail.trim()) {
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (!emailRegex.test(qcEmail.trim())) {
+        errors.email = 'Formato de e-mail inválido.';
+      }
     }
 
+    if (Object.keys(errors).length > 0) {
+      setQcErrors(errors);
+      return null;
+    }
+
+    setQcErrors({});
     setQcLoading(true);
     try {
       const res = await fetch('/api/clientes', {
@@ -601,7 +614,12 @@ export function AdminReservas() {
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Erro ao cadastrar cliente');
+        if (data.field && data.error) {
+          setQcErrors({ [data.field]: data.error });
+        } else {
+          showToast(data.error || 'Erro ao cadastrar cliente', 'error');
+        }
+        return null;
       }
 
       const novoCliente: Cliente = {
@@ -619,9 +637,12 @@ export function AdminReservas() {
       setQcNome('');
       setQcTelefone('');
       setQcEmail('');
+      setQcErrors({});
       showToast(`Cliente ${novoCliente.nome} cadastrado e selecionado!`, 'success');
+      return novoCliente.id;
     } catch (err: any) {
       showToast(err.message || 'Erro ao cadastrar cliente', 'error');
+      return null;
     } finally {
       setQcLoading(false);
     }
@@ -629,8 +650,21 @@ export function AdminReservas() {
 
   // Submit Nova Reserva
   const handleConfirmarReserva = async () => {
-    if (!nrClienteId || !nrQuadraId || !nrData || !nrInicio || !nrFim) {
-      showToast('Por favor, preencha todos os campos obrigatórios.', 'error');
+    let finalClienteId = nrClienteId;
+
+    // Se o formulário rápido de cliente estiver aberto e preenchido, salva o cliente automaticamente antes de criar a reserva!
+    if (!finalClienteId && showQuickClientForm && (qcNome.trim() || qcTelefone.trim())) {
+      const createdId = await handleQuickClientCreate();
+      if (!createdId) return; // Parar se houver erro de validação inline
+      finalClienteId = createdId;
+    }
+
+    if (!finalClienteId || !nrQuadraId || !nrData || !nrInicio || !nrFim) {
+      if (!finalClienteId) {
+        showToast('Por favor, selecione ou cadastre um cliente.', 'error');
+      } else {
+        showToast('Por favor, preencha todos os campos obrigatórios.', 'error');
+      }
       return;
     }
 
@@ -1500,10 +1534,20 @@ export function AdminReservas() {
                           type="text"
                           placeholder="Nome e Sobrenome"
                           value={qcNome}
-                          onChange={(e) => setQcNome(e.target.value)}
-                          className="text-xs p-2 rounded-lg border border-border-passive bg-white outline-none w-full"
+                          onChange={(e) => {
+                            setQcNome(e.target.value);
+                            if (qcErrors.nome) setQcErrors(prev => ({ ...prev, nome: undefined }));
+                          }}
+                          className={`text-xs p-2 rounded-lg border bg-white outline-none w-full transition-colors ${
+                            qcErrors.nome ? 'border-red-500 bg-red-50/40 text-red-900' : 'border-border-passive focus:border-brand'
+                          }`}
                           autoFocus
                         />
+                        {qcErrors.nome && (
+                          <span className="text-[10px] text-red-600 font-medium block mt-1">
+                            {qcErrors.nome}
+                          </span>
+                        )}
                       </div>
                       <div>
                         <label className="text-[10px] font-semibold text-muted uppercase tracking-wider block mb-1">WhatsApp *</label>
@@ -1511,27 +1555,47 @@ export function AdminReservas() {
                           type="tel"
                           placeholder="(99) 99999-9999"
                           value={qcTelefone}
-                          onChange={(e) => setQcTelefone(maskPhone(e.target.value))}
-                          className="text-xs p-2 rounded-lg border border-border-passive bg-white outline-none w-full"
+                          onChange={(e) => {
+                            setQcTelefone(maskPhone(e.target.value));
+                            if (qcErrors.telefone) setQcErrors(prev => ({ ...prev, telefone: undefined }));
+                          }}
+                          className={`text-xs p-2 rounded-lg border bg-white outline-none w-full transition-colors ${
+                            qcErrors.telefone ? 'border-red-500 bg-red-50/40 text-red-900' : 'border-border-passive focus:border-brand'
+                          }`}
                         />
+                        {qcErrors.telefone && (
+                          <span className="text-[10px] text-red-600 font-medium block mt-1">
+                            {qcErrors.telefone}
+                          </span>
+                        )}
                       </div>
                     </div>
-                    <div className="flex items-end gap-2">
+                    <div className="flex items-start gap-2">
                       <div className="flex-1">
                         <label className="text-[10px] font-semibold text-muted uppercase tracking-wider block mb-1">E-mail (opcional)</label>
                         <input
                           type="email"
                           placeholder="atleta@email.com"
                           value={qcEmail}
-                          onChange={(e) => setQcEmail(e.target.value)}
-                          className="text-xs p-2 rounded-lg border border-border-passive bg-white outline-none w-full"
+                          onChange={(e) => {
+                            setQcEmail(e.target.value);
+                            if (qcErrors.email) setQcErrors(prev => ({ ...prev, email: undefined }));
+                          }}
+                          className={`text-xs p-2 rounded-lg border bg-white outline-none w-full transition-colors ${
+                            qcErrors.email ? 'border-red-500 bg-red-50/40 text-red-900' : 'border-border-passive focus:border-brand'
+                          }`}
                         />
+                        {qcErrors.email && (
+                          <span className="text-[10px] text-red-600 font-medium block mt-1">
+                            {qcErrors.email}
+                          </span>
+                        )}
                       </div>
                       <button
                         type="button"
                         onClick={handleQuickClientCreate}
-                        disabled={qcLoading || !qcNome.trim() || !qcTelefone.trim()}
-                        className="btn-primary text-xs py-2 px-3.5 shrink-0 disabled:opacity-50 h-[34px]"
+                        disabled={qcLoading}
+                        className="btn-primary text-xs py-2 px-3.5 shrink-0 disabled:opacity-50 h-[34px] mt-[18px]"
                       >
                         {qcLoading ? 'Salvando...' : 'Salvar e Selecionar'}
                       </button>
@@ -2284,6 +2348,20 @@ export function AdminReservas() {
           </div>
         )}
       </div>
+
+      {/* Alerta Toast em Primeiro Plano */}
+      {toast && (
+        <div
+          style={{ zIndex: 999999 }}
+          className={`fixed bottom-5 right-5 px-4 py-3 rounded-xl text-white text-xs font-semibold shadow-2xl flex items-center gap-2.5 animate-slideUp border ${
+            toast.type === 'success'
+              ? 'bg-emerald-600 border-emerald-500 text-white'
+              : 'bg-rose-600 border-rose-500 text-white'
+          }`}
+        >
+          <span>{toast.message}</span>
+        </div>
+      )}
     </div>
   );
 }
