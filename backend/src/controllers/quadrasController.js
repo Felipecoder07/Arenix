@@ -1,10 +1,11 @@
 const db = require('../config/database');
+const logAuditEvent = require('../utils/auditLogger');
 
 // Listar quadras filtrando pelo tenant do usuário logado
 const listarQuadras = async (req, res) => {
   try {
     const tenant_id = req.user.tenant_id;
-    const quadras = await db.allAsync('SELECT * FROM Quadras WHERE tenant_id = ? ORDER BY nome ASC', [tenant_id]);
+    const quadras = await db.allAsync("SELECT * FROM Quadras WHERE tenant_id = ? AND status != 'Excluida' ORDER BY nome ASC", [tenant_id]);
     
     const formatted = quadras.map(q => {
       let modalidades = [];
@@ -51,6 +52,29 @@ const criarQuadra = async (req, res) => {
       return res.status(400).json({ error: 'Nome e tipo de quadra são obrigatórios.' });
     }
 
+    // Validar limite de quadras do plano SaaS da arena
+    const arenaPlano = await db.getAsync(`
+      SELECT p.nome, p.max_quadras 
+      FROM Arenas a
+      LEFT JOIN PlanosSaaS p ON a.plano_id = p.id
+      WHERE a.id = ?
+    `, [tenant_id]);
+
+    if (arenaPlano && arenaPlano.max_quadras) {
+      const quadrasCount = await db.getAsync(
+        "SELECT COUNT(*) as total FROM Quadras WHERE tenant_id = ? AND status != 'Excluida'",
+        [tenant_id]
+      );
+      if (quadrasCount && quadrasCount.total >= arenaPlano.max_quadras) {
+        return res.status(403).json({
+          error: `Limite de quadras atingido para o plano ${arenaPlano.nome} (máximo ${arenaPlano.max_quadras} quadras). Faça upgrade do seu plano para cadastrar mais quadras.`,
+          code: 'PLAN_LIMIT_REACHED',
+          limite: arenaPlano.max_quadras,
+          atual: quadrasCount.total
+        });
+      }
+    }
+
     const basePrice = preco_base != null ? Number(preco_base) : 80;
 
     let modalList = [];
@@ -84,6 +108,8 @@ const criarQuadra = async (req, res) => {
         hora_fechamento || '22:00'
       ]
     );
+
+    logAuditEvent(req.user.id, 'Criação de Quadra', `Criou a quadra "${nome}" (${tipo})`, req.ip);
 
     res.status(201).json({ 
       id: insert.lastID, 
@@ -141,6 +167,8 @@ const atualizarQuadra = async (req, res) => {
       [nome, tipo, modalJson, basePrice, hora_abertura, hora_fechamento, status, quadraId]
     );
 
+    logAuditEvent(req.user.id, 'Edição de Quadra', `Atualizou a quadra "${nome}" (ID ${quadraId})`, req.ip);
+
     res.json({ message: 'Quadra atualizada com sucesso.' });
   } catch (error) {
     console.error('Erro ao atualizar quadra:', error);
@@ -155,12 +183,35 @@ const alterarStatusQuadra = async (req, res) => {
     const quadraId = req.params.id;
     const { status } = req.body;
 
-    const quadra = await db.getAsync('SELECT id FROM Quadras WHERE id = ? AND tenant_id = ?', [quadraId, tenant_id]);
+    const quadra = await db.getAsync('SELECT id, nome, status FROM Quadras WHERE id = ? AND tenant_id = ?', [quadraId, tenant_id]);
     if (!quadra) {
       return res.status(404).json({ error: 'Quadra não encontrada.' });
     }
 
+    if (status === 'Ativa' && quadra.status !== 'Ativa') {
+      const arenaPlano = await db.getAsync(`
+        SELECT p.nome, p.max_quadras 
+        FROM Arenas a
+        LEFT JOIN PlanosSaaS p ON a.plano_id = p.id
+        WHERE a.id = ?
+      `, [tenant_id]);
+
+      if (arenaPlano && arenaPlano.max_quadras) {
+        const ativasCount = await db.getAsync(
+          "SELECT COUNT(*) as total FROM Quadras WHERE tenant_id = ? AND status = 'Ativa'",
+          [tenant_id]
+        );
+        if (ativasCount && ativasCount.total >= arenaPlano.max_quadras) {
+          return res.status(403).json({
+            error: `Não é possível reativar. Limite de ${arenaPlano.max_quadras} quadras ativas já foi atingido no plano ${arenaPlano.nome}.`,
+            code: 'PLAN_LIMIT_REACHED'
+          });
+        }
+      }
+    }
+
     await db.runAsync('UPDATE Quadras SET status = ? WHERE id = ?', [status, quadraId]);
+    logAuditEvent(req.user.id, 'Status de Quadra', `Alterou o status da quadra "${quadra.nome || quadraId}" para ${status}`, req.ip);
     res.json({ message: `Quadra marcada como ${status}` });
   } catch (error) {
     console.error('Erro ao alterar status:', error);
@@ -181,6 +232,8 @@ const criarBloqueio = async (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?)
     `, [quadra_id, data_bloqueio, hora_inicio, hora_fim, motivo, req.user.id]);
 
+    logAuditEvent(req.user.id, 'Criação de bloqueio', `Bloqueou a quadra ID ${quadra_id} no dia ${data_bloqueio} (${hora_inicio} às ${hora_fim})`, req.ip);
+
     res.status(201).json({ message: 'Bloqueio criado com sucesso', id: insert.lastID });
   } catch (error) {
     console.error('Erro ao criar bloqueio:', error);
@@ -188,25 +241,37 @@ const criarBloqueio = async (req, res) => {
   }
 };
 
-// Excluir Quadra
+// Excluir Quadra (Soft Delete Híbrido)
 const deletarQuadra = async (req, res) => {
   try {
     const tenant_id = req.user.tenant_id;
     const quadraId = req.params.id;
 
-    const quadra = await db.getAsync('SELECT id FROM Quadras WHERE id = ? AND tenant_id = ?', [quadraId, tenant_id]);
+    const quadra = await db.getAsync('SELECT id, nome FROM Quadras WHERE id = ? AND tenant_id = ?', [quadraId, tenant_id]);
     if (!quadra) {
       return res.status(404).json({ error: 'Quadra não encontrada.' });
     }
 
-    // Trava de segurança: verificar se há reservas
+    // Verifica se há histórico de reservas vinculadas
     const reservas = await db.getAsync('SELECT COUNT(*) as count FROM Reservas WHERE quadra_id = ?', [quadraId]);
     if (reservas && reservas.count > 0) {
-      return res.status(400).json({ error: 'Não é possível excluir esta quadra pois ela possui histórico de reservas. Por favor, utilize a opção "Desativar".' });
+      // Soft Delete: Marca como 'Excluida' para manter a integridade dos relatórios passados
+      await db.runAsync("UPDATE Quadras SET status = 'Excluida' WHERE id = ?", [quadraId]);
+      logAuditEvent(req.user.id, 'Exclusão de Quadra', `Arquivou a quadra "${quadra.nome}" (ID ${quadraId}) preservando ${reservas.count} reservas`, req.ip);
+      return res.json({ 
+        message: `Quadra "${quadra.nome}" arquivada com sucesso! O histórico de ${reservas.count} reservas foi preservado nos relatórios.`,
+        action: 'soft_deleted',
+        reservas_preservadas: reservas.count
+      });
     }
 
+    // Sem histórico: Exclusão física definitiva
     await db.runAsync('DELETE FROM Quadras WHERE id = ?', [quadraId]);
-    res.json({ message: 'Quadra excluída com sucesso.' });
+    logAuditEvent(req.user.id, 'Exclusão de Quadra', `Excluiu definitivamente a quadra "${quadra.nome}" (ID ${quadraId})`, req.ip);
+    res.json({ 
+      message: `Quadra "${quadra.nome}" excluída definitivamente.`,
+      action: 'hard_deleted'
+    });
   } catch (error) {
     console.error('Erro ao excluir quadra:', error);
     res.status(500).json({ error: 'Erro interno ao excluir quadra.' });

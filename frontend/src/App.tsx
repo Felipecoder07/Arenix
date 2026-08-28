@@ -68,7 +68,15 @@ function AdminGuard({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        if (!res.ok) throw new Error(data.error || 'Sessão expirada ou não autorizada');
+        if (res.status === 401) {
+          throw new Error('Sessão expirada. Faça login novamente.');
+        }
+
+        if (!res.ok) {
+          console.warn('[AdminGuard] Erro ao validar sessão:', data);
+          setChecking(false);
+          return;
+        }
 
         const user = data.usuario;
 
@@ -330,6 +338,7 @@ function App() {
         <Route path="pagamentos" element={<AdminPagamentos />} />
         <Route path="relatorios" element={<RoleRoute allowedRoles={['Administrador', 'Gerente']}><AdminRelatorios /></RoleRoute>} />
         <Route path="assinatura" element={<RoleRoute allowedRoles={['Administrador', 'Gerente']}><AdminAssinatura /></RoleRoute>} />
+        <Route path="plano" element={<Navigate to="/admin/assinatura" replace />} />
         <Route path="configuracoes" element={<RoleRoute allowedRoles={['Administrador', 'Gerente']}><AdminConfiguracoes /></RoleRoute>} />
         <Route path="auditoria" element={<RoleRoute allowedRoles={['Administrador']}><AdminAuditoria /></RoleRoute>} />
         <Route path="*" element={<Navigate to="dashboard" replace />} />

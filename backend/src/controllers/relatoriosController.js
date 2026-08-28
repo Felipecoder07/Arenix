@@ -247,6 +247,7 @@ const relatorioFormasPagamento = async (req, res) => {
       FROM Pagamentos p
       JOIN Reservas r ON p.reserva_id = r.id
       WHERE p.valor > 0
+        AND r.status != 'Cancelada'
         AND DATE(p.registrado_em) BETWEEN ? AND ?
         AND r.tenant_id = ?
         ${quadra_id ? 'AND r.quadra_id = ?' : ''}
@@ -275,6 +276,7 @@ const relatorioFormasPagamento = async (req, res) => {
       JOIN Quadras q ON r.quadra_id = q.id
       LEFT JOIN Usuarios u ON p.registrado_por = u.id
       WHERE p.valor > 0
+        AND r.status != 'Cancelada'
         AND DATE(p.registrado_em) BETWEEN ? AND ?
         AND r.tenant_id = ?
         ${quadra_id ? 'AND r.quadra_id = ?' : ''}

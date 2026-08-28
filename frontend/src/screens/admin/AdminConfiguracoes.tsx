@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import '../../assets/css/configuracoes.css';
 
 export interface ModalidadeItem {
@@ -105,6 +106,12 @@ export function AdminConfiguracoes() {
 
   // Modals state
   const [activeModal, setActiveModal] = useState<string | null>(null);
+
+  // Plano SaaS Info
+  const [planoInfo, setPlanoInfo] = useState<{
+    plano: { nome: string; max_quadras: number; max_usuarios: number; valor_mensal: number };
+    uso: { quadras_usadas: number; usuarios_usados: number };
+  } | null>(null);
 
   // Forms state: Quadra
   const [nqId, setNqId] = useState<number | null>(null);
@@ -327,12 +334,24 @@ export function AdminConfiguracoes() {
   };
 
   useEffect(() => {
+    const loadPlanoInfo = async () => {
+      try {
+        const data = await request('/api/tenant/assinatura/plano');
+        if (data && data.plano) {
+          setPlanoInfo(data);
+        }
+      } catch {
+        // Silencioso se não houver permissão
+      }
+    };
+
     if (token) {
       loadQuadras();
       loadUsuarios();
       loadArena();
       loadMaquineta();
       loadMotivos();
+      loadPlanoInfo();
     }
 
     const params = new URLSearchParams(window.location.search);
@@ -423,13 +442,13 @@ export function AdminConfiguracoes() {
   };
 
   const handleDeleteQuadra = async (id: number, nome: string) => {
-    if (!confirm(`Tem certeza que deseja excluir DEFINITIVAMENTE a quadra "${nome}"? Esta ação não pode ser desfeita.`)) return;
+    if (!confirm(`Tem certeza que deseja excluir a quadra "${nome}"?`)) return;
 
     try {
-      await request(`/api/quadras/${id}`, {
+      const res = await request(`/api/quadras/${id}`, {
         method: 'DELETE'
       });
-      showToast('Quadra excluída com sucesso!', 'success');
+      showToast(res.message || 'Quadra excluída com sucesso!', 'success');
       setActiveModal(null);
       loadQuadras();
     } catch (err: any) {
@@ -679,8 +698,16 @@ export function AdminConfiguracoes() {
           
           {/* QUADRAS */}
           <div className={`config-section card ${relAtivo === 'quadras' ? 'active' : ''}`}>
-            <div className="card-header">
-              <h2 className="card-title">Quadras</h2>
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h2 className="card-title">Quadras</h2>
+                {planoInfo && planoInfo.plano.max_quadras > 0 && (
+                  <span style={{ fontSize: '12px', color: quadras.filter(q => q.status !== 'Excluida').length >= planoInfo.plano.max_quadras ? '#d97706' : 'var(--muted)' }}>
+                    Plano {planoInfo.plano.nome}: {quadras.filter(q => q.status !== 'Excluida').length}/{planoInfo.plano.max_quadras} quadras
+                    {quadras.filter(q => q.status !== 'Excluida').length >= planoInfo.plano.max_quadras && ' (Limite atingido)'}
+                  </span>
+                )}
+              </div>
               <button className="btn-primary" onClick={openNovaQuadraModal}>+ Nova Quadra</button>
             </div>
             <div className="table-wrap">
@@ -772,8 +799,16 @@ export function AdminConfiguracoes() {
 
           {/* USUARIOS */}
           <div className={`config-section card ${relAtivo === 'usuarios' ? 'active' : ''}`}>
-            <div className="card-header">
-              <h2 className="card-title">Usuários do Sistema</h2>
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h2 className="card-title">Usuários do Sistema</h2>
+                {planoInfo && planoInfo.plano.max_usuarios > 0 && (
+                  <span style={{ fontSize: '12px', color: usuarios.length >= planoInfo.plano.max_usuarios ? '#d97706' : 'var(--muted)' }}>
+                    Plano {planoInfo.plano.nome}: {usuarios.length}/{planoInfo.plano.max_usuarios} funcionários
+                    {usuarios.length >= planoInfo.plano.max_usuarios && ' (Limite atingido)'}
+                  </span>
+                )}
+              </div>
               <button className="btn-primary" onClick={openNovoUsuarioModal}>+ Novo Usuário</button>
             </div>
             <div className="table-wrap">
@@ -1398,220 +1433,281 @@ export function AdminConfiguracoes() {
 
       {/* MODAL: NOVA QUADRA */}
       <div className={`modal-overlay ${activeModal === 'nova-quadra' ? 'open' : ''}`} role="dialog" aria-modal="true" aria-labelledby="modal-nq-title" onClick={() => setActiveModal(null)}>
-        <form className="modal" onSubmit={handleSaveQuadra} onClick={(e) => e.stopPropagation()}>
-          <div className="modal-header">
-            <h2 className="modal-title" id="modal-nq-title">Nova Quadra</h2>
-            <button type="button" className="modal-close" aria-label="Fechar" onClick={() => setActiveModal(null)}>✕</button>
-          </div>
-          <div className="form-group">
-            <label htmlFor="nq-nome">Nome da quadra *</label>
-            <input 
-              type="text" 
-              id="nq-nome" 
-              placeholder="Ex: Quadra 5" 
-              value={nqNome}
-              onChange={(e) => setNqNome(e.target.value)}
-              required 
-            />
-          </div>
-          <div className="form-group">
-            <label htmlFor="nq-modalidade">Tipo Principal de Piso *</label>
-            <select 
-              id="nq-modalidade" 
-              value={nqModalidade}
-              onChange={(e) => {
-                const val = e.target.value;
-                setNqModalidade(val);
-                if (val === 'Areia') {
-                  setNqModalidades([
-                    { nome: 'Beach Tennis', preco: getDefaultSportPrice('Beach Tennis') },
-                    { nome: 'Vôlei de Praia', preco: getDefaultSportPrice('Vôlei de Praia') },
-                    { nome: 'Futevôlei', preco: getDefaultSportPrice('Futevôlei') }
-                  ]);
-                } else if (val === 'Padel') {
-                  setNqModalidades([{ nome: 'Padel', preco: getDefaultSportPrice('Padel') }]);
-                } else if (val === 'Tênis') {
-                  setNqModalidades([{ nome: 'Tênis', preco: getDefaultSportPrice('Tênis') }]);
-                } else if (val === 'Futsal / Society') {
-                  setNqModalidades([{ nome: 'Futsal', preco: getDefaultSportPrice('Futsal') }]);
-                }
-              }}
-              required
-            >
-              <option value="">Selecione</option>
-              <option value="Areia">Areia</option>
-              <option value="Beach Tennis">Beach Tennis</option>
-              <option value="Vôlei">Vôlei de Praia</option>
-              <option value="Futevôlei">Futevôlei</option>
-              <option value="Padel">Padel</option>
-              <option value="Futsal / Society">Futsal / Society</option>
-              <option value="Tênis">Tênis</option>
-              <option value="Outro">Outro</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600 }}>Modalidades Suportadas nesta Quadra:</label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
-              {opcoesModalidades.map(m => {
-                const sel = isSportSelected(m);
-                const isCustom = !OPCOES_MODALIDADES.includes(m);
-                return (
-                  <div
-                    key={m}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      borderRadius: '16px',
-                      overflow: 'hidden',
-                      border: sel ? '1.5px solid var(--accent, #3b82f6)' : '1px solid #cbd5e1',
-                      backgroundColor: sel ? 'rgba(59, 130, 246, 0.12)' : '#fff',
-                      transition: 'all 0.15s ease'
-                    }}
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          {planoInfo && planoInfo.plano.max_quadras > 0 && quadras.filter(q => q.status !== 'Excluida').length >= planoInfo.plano.max_quadras ? (
+            <div>
+              <div className="modal-header">
+                <div>
+                  <h2 className="modal-title" id="modal-nq-title">Limite de Quadras Atingido</h2>
+                  <p style={{ fontSize: '12px', color: 'var(--muted)', margin: 0 }}>Plano {planoInfo.plano.nome} · {quadras.filter(q => q.status !== 'Excluida').length}/{planoInfo.plano.max_quadras} quadras em uso</p>
+                </div>
+                <button type="button" className="modal-close" aria-label="Fechar" onClick={() => setActiveModal(null)}>✕</button>
+              </div>
+
+              <div className="modal-body" style={{ padding: '24px 20px', textAlign: 'center' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--charcoal)', marginBottom: '8px' }}>
+                  Capacidade máxima do plano atingida
+                </h3>
+
+                <p style={{ fontSize: '13px', color: 'var(--muted)', lineHeight: '1.5', maxWidth: '380px', margin: '0 auto 20px auto' }}>
+                  Sua arena já está utilizando o limite de <strong>{planoInfo.plano.max_quadras} quadras</strong> do plano <strong>{planoInfo.plano.nome}</strong>. Para cadastrar novas quadras, faça o upgrade da sua assinatura.
+                </p>
+
+                <div 
+                  style={{ 
+                    background: '#f8fafc', 
+                    border: '1px solid #e2e8f0', 
+                    borderRadius: '8px', 
+                    padding: '12px 16px', 
+                    fontSize: '12.5px', 
+                    color: 'var(--charcoal)', 
+                    textAlign: 'left',
+                    marginBottom: '20px'
+                  }}
+                >
+                  <div style={{ fontWeight: 600, color: '#2563eb', marginBottom: '4px' }}>
+                    💡 Benefícios do Upgrade de Plano:
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: '18px', lineHeight: '1.5', color: '#475569' }}>
+                    <li>Mais quadras disponíveis simultâneas</li>
+                    <li>Cadastro de novos funcionários e colaboradores</li>
+                    <li>Ativação imediata e sem perda de histórico</li>
+                  </ul>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                  <Link 
+                    to="/admin/assinatura" 
+                    className="btn-primary" 
+                    style={{ background: '#2563eb', color: '#fff', textDecoration: 'none', padding: '10px 22px', fontSize: '13.5px', fontWeight: 600, borderRadius: '6px', display: 'inline-flex', alignItems: 'center' }}
                   >
-                    <button
-                      type="button"
-                      onClick={() => toggleSport(m)}
-                      style={{
-                        padding: '5px 10px',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        border: 'none',
-                        background: 'transparent',
-                        color: sel ? 'var(--accent, #2563eb)' : '#64748b',
-                        cursor: 'pointer'
+                    Fazer Upgrade de Plano
+                  </Link>
+                  <button type="button" className="btn-ghost" onClick={() => setActiveModal(null)}>
+                    Voltar
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={handleSaveQuadra}>
+              <div className="modal-header">
+                <h2 className="modal-title" id="modal-nq-title">Nova Quadra</h2>
+                <button type="button" className="modal-close" aria-label="Fechar" onClick={() => setActiveModal(null)}>✕</button>
+              </div>
+              <div className="modal-body">
+                <div className="form-group">
+                  <label htmlFor="nq-nome">Nome da quadra *</label>
+                  <input 
+                    type="text" 
+                    id="nq-nome" 
+                    placeholder="Ex: Quadra 5" 
+                    value={nqNome}
+                    onChange={(e) => setNqNome(e.target.value)}
+                    required 
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="nq-modalidade">Tipo Principal de Piso *</label>
+                  <select 
+                    id="nq-modalidade" 
+                    value={nqModalidade}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setNqModalidade(val);
+                      if (val === 'Areia') {
+                        setNqModalidades([
+                          { nome: 'Beach Tennis', preco: getDefaultSportPrice('Beach Tennis') },
+                          { nome: 'Vôlei de Praia', preco: getDefaultSportPrice('Vôlei de Praia') },
+                          { nome: 'Futevôlei', preco: getDefaultSportPrice('Futevôlei') }
+                        ]);
+                      } else if (val === 'Padel') {
+                        setNqModalidades([{ nome: 'Padel', preco: getDefaultSportPrice('Padel') }]);
+                      } else if (val === 'Tênis') {
+                        setNqModalidades([{ nome: 'Tênis', preco: getDefaultSportPrice('Tênis') }]);
+                      } else if (val === 'Futsal / Society') {
+                        setNqModalidades([{ nome: 'Futsal', preco: getDefaultSportPrice('Futsal') }]);
+                      }
+                    }}
+                    required
+                  >
+                    <option value="">Selecione</option>
+                    <option value="Areia">Areia</option>
+                    <option value="Beach Tennis">Beach Tennis</option>
+                    <option value="Vôlei">Vôlei de Praia</option>
+                    <option value="Futevôlei">Futevôlei</option>
+                    <option value="Padel">Padel</option>
+                    <option value="Futsal / Society">Futsal / Society</option>
+                    <option value="Tênis">Tênis</option>
+                    <option value="Outro">Outro</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600 }}>Modalidades Suportadas nesta Quadra:</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+                    {opcoesModalidades.map(m => {
+                      const sel = isSportSelected(m);
+                      const isCustom = !OPCOES_MODALIDADES.includes(m);
+                      return (
+                        <div
+                          key={m}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            borderRadius: '16px',
+                            overflow: 'hidden',
+                            border: sel ? '1.5px solid var(--accent, #3b82f6)' : '1px solid #cbd5e1',
+                            backgroundColor: sel ? 'rgba(59, 130, 246, 0.12)' : '#fff',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => toggleSport(m)}
+                            style={{
+                              padding: '5px 10px',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              border: 'none',
+                              background: 'transparent',
+                              color: sel ? 'var(--accent, #2563eb)' : '#64748b',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {sel ? '✓ ' : '+ '} {m}
+                          </button>
+                          {isCustom && (
+                            <button
+                              type="button"
+                              title="Excluir modalidade"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveModalidade(m);
+                              }}
+                              style={{
+                                border: 'none',
+                                background: 'transparent',
+                                padding: '5px 8px 5px 2px',
+                                fontSize: '11px',
+                                color: '#94a3b8',
+                                cursor: 'pointer',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+              {/* Campo para adicionar modalidade personalizada */}
+              <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="Novo esporte (ex: Pickleball, Futmesa)..."
+                  value={novoEsporteInput}
+                  onChange={(e) => setNovoEsporteInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddCustomModalidade();
+                    }
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    fontSize: '13px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1'
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={handleAddCustomModalidade}
+                  style={{
+                    padding: '8px 14px',
+                    fontSize: '12.5px',
+                    fontWeight: 600,
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    backgroundColor: '#f1f5f9',
+                    color: '#334155',
+                    cursor: 'pointer'
+                  }}
+                >
+                  + Adicionar
+                </button>
+              </div>
+
+              {/* Lista de Preços por Modalidade Individual */}
+              {nqModalidades.length > 0 && (
+                <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--muted)', marginBottom: '2px' }}>
+                    Preço por hora para cada modalidade nesta quadra:
+                  </label>
+                  {nqModalidades.map(m => (
+                    <div 
+                      key={m.nome} 
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between', 
+                        padding: '10px 14px', 
+                        backgroundColor: 'var(--card-subtle, #f8fafc)', 
+                        borderRadius: '10px', 
+                        border: '1px solid #e2e8f0' 
                       }}
                     >
-                      {sel ? '✓ ' : '+ '} {m}
-                    </button>
-                    {isCustom && (
-                      <button
-                        type="button"
-                        title="Excluir modalidade"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRemoveModalidade(m);
-                        }}
-                        style={{
-                          border: 'none',
-                          background: 'transparent',
-                          padding: '5px 8px 5px 2px',
-                          fontSize: '11px',
-                          color: '#94a3b8',
-                          cursor: 'pointer',
-                          fontWeight: 'bold'
-                        }}
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            {/* Campo para adicionar modalidade personalizada */}
-            <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
-              <input
-                type="text"
-                placeholder="Novo esporte (ex: Pickleball, Futmesa)..."
-                value={novoEsporteInput}
-                onChange={(e) => setNovoEsporteInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAddCustomModalidade();
-                  }
-                }}
-                style={{
-                  flex: 1,
-                  padding: '6px 12px',
-                  fontSize: '12px',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1'
-                }}
-              />
-              <button
-                type="button"
-                onClick={handleAddCustomModalidade}
-                style={{
-                  padding: '6px 12px',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  backgroundColor: '#f1f5f9',
-                  color: '#334155',
-                  cursor: 'pointer'
-                }}
-              >
-                + Adicionar
-              </button>
-            </div>
-
-            {/* Lista de Preços por Modalidade Individual */}
-            {nqModalidades.length > 0 && (
-              <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--muted)' }}>
-                  Preço por hora para cada modalidade nesta quadra:
-                </label>
-                {nqModalidades.map(m => (
-                  <div 
-                    key={m.nome} 
-                    style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'space-between', 
-                      padding: '8px 12px', 
-                      backgroundColor: 'var(--card-subtle, #f8fafc)', 
-                      borderRadius: '8px', 
-                      border: '1px solid #e2e8f0' 
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '10px', color: 'var(--accent, #2563eb)' }}>●</span>
-                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b' }}>{m.nome}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '10px', color: 'var(--accent, #2563eb)' }}>●</span>
+                        <span style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b' }}>{m.nome}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 500 }}>R$</span>
+                        <input
+                          type="text"
+                          value={formatFloatToCurrencyInput(m.preco)}
+                          onChange={(e) => updateSportPrice(m.nome, parseCurrencyToFloat(formatCurrencyInput(e.target.value)))}
+                          style={{ width: '110px', padding: '7px 10px', fontSize: '13.5px', textAlign: 'right', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600, minHeight: '36px' }}
+                          placeholder="0,00"
+                          required
+                        />
+                        <span style={{ fontSize: '12px', color: '#64748b' }}>/h</span>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '12px', color: '#64748b' }}>R$</span>
-                      <input
-                        type="text"
-                        value={formatFloatToCurrencyInput(m.preco)}
-                        onChange={(e) => updateSportPrice(m.nome, parseCurrencyToFloat(formatCurrencyInput(e.target.value)))}
-                        style={{ width: '100px', padding: '5px 8px', fontSize: '13px', textAlign: 'right', borderRadius: '6px', border: '1px solid #cbd5e1', fontWeight: 600 }}
-                        placeholder="0,00"
-                        required
-                      />
-                      <span style={{ fontSize: '11px', color: '#64748b' }}>/h</span>
-                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-4)' }}>
+                  <div className="form-group">
+                    <label htmlFor="nq-inicio">Horário de abertura *</label>
+                    <input 
+                      type="time" 
+                      id="nq-inicio" 
+                      value={nqInicio}
+                      onChange={(e) => setNqInicio(e.target.value)}
+                    />
                   </div>
-                ))}
+                  <div className="form-group">
+                    <label htmlFor="nq-fim">Horário de fechamento *</label>
+                    <input 
+                      type="time" 
+                      id="nq-fim" 
+                      value={nqFim}
+                      onChange={(e) => setNqFim(e.target.value)}
+                    />
+                  </div>
+                </div>
               </div>
-            )}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-4)' }}>
-            <div className="form-group">
-              <label htmlFor="nq-inicio">Horário de abertura *</label>
-              <input 
-                type="time" 
-                id="nq-inicio" 
-                value={nqInicio}
-                onChange={(e) => setNqInicio(e.target.value)}
-              />
-            </div>
-            <div className="form-group">
-              <label htmlFor="nq-fim">Horário de fechamento *</label>
-              <input 
-                type="time" 
-                id="nq-fim" 
-                value={nqFim}
-                onChange={(e) => setNqFim(e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="modal-footer">
-            <button type="button" className="btn-ghost" onClick={() => setActiveModal(null)}>Cancelar</button>
-            <button type="submit" className="btn-primary">Salvar Quadra</button>
-          </div>
-        </form>
+              <div className="modal-footer">
+                <button type="button" className="btn-ghost" onClick={() => setActiveModal(null)}>Cancelar</button>
+                <button type="submit" className="btn-primary">Salvar Quadra</button>
+              </div>
+            </form>
+          )}
+        </div>
       </div>
 
       {/* MODAL: EDITAR QUADRA */}
@@ -1621,7 +1717,8 @@ export function AdminConfiguracoes() {
             <h2 className="modal-title" id="modal-eq-title">Editar Quadra</h2>
             <button type="button" className="modal-close" aria-label="Fechar" onClick={() => setActiveModal(null)}>✕</button>
           </div>
-          <div className="form-group">
+          <div className="modal-body">
+            <div className="form-group">
             <label htmlFor="eq-nome">Nome da quadra *</label>
             <input 
               type="text" 
@@ -1724,8 +1821,8 @@ export function AdminConfiguracoes() {
                 }}
                 style={{
                   flex: 1,
-                  padding: '6px 12px',
-                  fontSize: '12px',
+                  padding: '8px 12px',
+                  fontSize: '13px',
                   borderRadius: '8px',
                   border: '1px solid #cbd5e1'
                 }}
@@ -1734,8 +1831,8 @@ export function AdminConfiguracoes() {
                 type="button"
                 onClick={handleAddCustomModalidade}
                 style={{
-                  padding: '6px 12px',
-                  fontSize: '12px',
+                  padding: '8px 14px',
+                  fontSize: '12.5px',
                   fontWeight: 600,
                   borderRadius: '8px',
                   border: '1px solid #cbd5e1',
@@ -1750,8 +1847,8 @@ export function AdminConfiguracoes() {
 
             {/* Lista de Preços por Modalidade Individual */}
             {nqModalidades.length > 0 && (
-              <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--muted)' }}>
+              <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--muted)', marginBottom: '2px' }}>
                   Preço por hora para cada modalidade nesta quadra:
                 </label>
                 {nqModalidades.map(m => (
@@ -1761,27 +1858,27 @@ export function AdminConfiguracoes() {
                       display: 'flex', 
                       alignItems: 'center', 
                       justifyContent: 'space-between', 
-                      padding: '8px 12px', 
+                      padding: '10px 14px', 
                       backgroundColor: 'var(--card-subtle, #f8fafc)', 
-                      borderRadius: '8px', 
+                      borderRadius: '10px', 
                       border: '1px solid #e2e8f0' 
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ fontSize: '10px', color: 'var(--accent, #2563eb)' }}>●</span>
-                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b' }}>{m.nome}</span>
+                      <span style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b' }}>{m.nome}</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '12px', color: '#64748b' }}>R$</span>
+                      <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 500 }}>R$</span>
                       <input
                         type="text"
                         value={formatFloatToCurrencyInput(m.preco)}
                         onChange={(e) => updateSportPrice(m.nome, parseCurrencyToFloat(formatCurrencyInput(e.target.value)))}
-                        style={{ width: '100px', padding: '5px 8px', fontSize: '13px', textAlign: 'right', borderRadius: '6px', border: '1px solid #cbd5e1', fontWeight: 600 }}
+                        style={{ width: '110px', padding: '7px 10px', fontSize: '13.5px', textAlign: 'right', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600, minHeight: '36px' }}
                         placeholder="0,00"
                         required
                       />
-                      <span style={{ fontSize: '11px', color: '#64748b' }}>/h</span>
+                      <span style={{ fontSize: '12px', color: '#64748b' }}>/h</span>
                     </div>
                   </div>
                 ))}
@@ -1808,6 +1905,7 @@ export function AdminConfiguracoes() {
               />
             </div>
           </div>
+          </div>
           <div className="modal-footer" style={{ display: 'flex' }}>
             <button 
               type="button" 
@@ -1825,80 +1923,148 @@ export function AdminConfiguracoes() {
 
       {/* MODAL: CRIAR/EDITAR USUÁRIO */}
       <div className={`modal-overlay ${activeModal === 'usuario' ? 'open' : ''}`} role="dialog" aria-modal="true" aria-labelledby="modal-u-title" onClick={() => setActiveModal(null)}>
-        <form className="modal" onSubmit={handleSaveUsuario} onClick={(e) => e.stopPropagation()}>
-          <div className="modal-header">
-            <h2 className="modal-title" id="modal-u-title">
-              {nuId ? 'Editar Usuário' : 'Novo Usuário'}
-            </h2>
-            <button type="button" className="modal-close" aria-label="Fechar" onClick={() => setActiveModal(null)}>✕</button>
-          </div>
-          <div className="form-group">
-            <label htmlFor="u-nome">Nome completo *</label>
-            <input 
-              type="text" 
-              id="u-nome" 
-              value={nuNome}
-              onChange={(e) => setNuNome(e.target.value)}
-              required 
-            />
-          </div>
-          <div className="form-group">
-            <label htmlFor="u-email">E-mail *</label>
-            <input 
-              type="email" 
-              id="u-email" 
-              value={nuEmail}
-              onChange={(e) => setNuEmail(e.target.value)}
-              required 
-            />
-          </div>
-          <div className="form-group">
-            <label htmlFor="u-perfil">Perfil de acesso *</label>
-            <select 
-              id="u-perfil" 
-              value={nuPerfil}
-              onChange={(e) => setNuPerfil(e.target.value)}
-              required
-            >
-              <option value="">Selecione</option>
-              <option value="Recepcionista">Recepcionista</option>
-              <option value="Gerente">Gerente</option>
-              <option value="Administrador">Administrador</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label htmlFor="u-senha">
-              Senha {!nuId && <span style={{ color: 'var(--danger)' }}>*</span>}
-            </label>
-            <input 
-              type="password" 
-              id="u-senha" 
-              placeholder="Digite a senha" 
-              value={nuSenha}
-              onChange={(e) => setNuSenha(e.target.value)}
-              required={!nuId}
-            />
-            {nuId && (
-              <small style={{ color: 'var(--muted)', fontSize: '11px', display: 'block' }}>
-                Deixe em branco para manter a senha atual.
-              </small>
-            )}
-          </div>
-          <div className="modal-footer" style={{ display: 'flex' }}>
-            {nuId && (
-              <button 
-                type="button" 
-                className="btn-ghost" 
-                style={{ color: 'var(--danger)', borderColor: 'var(--danger-bg)', marginRight: 'auto' }}
-                onClick={() => handleDeleteUsuario(nuId, nuNome)}
-              >
-                Excluir
-              </button>
-            )}
-            <button type="button" className="btn-ghost" onClick={() => setActiveModal(null)}>Cancelar</button>
-            <button type="submit" className="btn-primary">Salvar Usuário</button>
-          </div>
-        </form>
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          {!nuId && planoInfo && planoInfo.plano.max_usuarios > 0 && usuarios.length >= planoInfo.plano.max_usuarios ? (
+            <div>
+              <div className="modal-header">
+                <div>
+                  <h2 className="modal-title" id="modal-u-title">Limite de Usuários Atingido</h2>
+                  <p style={{ fontSize: '12px', color: 'var(--muted)', margin: 0 }}>Plano {planoInfo.plano.nome} · {usuarios.length}/{planoInfo.plano.max_usuarios} funcionários em uso</p>
+                </div>
+                <button type="button" className="modal-close" aria-label="Fechar" onClick={() => setActiveModal(null)}>✕</button>
+              </div>
+
+              <div className="modal-body" style={{ padding: '24px 20px', textAlign: 'center' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--charcoal)', marginBottom: '8px' }}>
+                  Limite de equipe atingido
+                </h3>
+
+                <p style={{ fontSize: '13px', color: 'var(--muted)', lineHeight: '1.5', maxWidth: '380px', margin: '0 auto 20px auto' }}>
+                  Sua arena já está utilizando o limite de <strong>{planoInfo.plano.max_usuarios} funcionários</strong> do plano <strong>{planoInfo.plano.nome}</strong>. Para adicionar novos recepcionistas ou gerentes, faça o upgrade da sua assinatura.
+                </p>
+
+                <div 
+                  style={{ 
+                    background: '#f8fafc', 
+                    border: '1px solid #e2e8f0', 
+                    borderRadius: '8px', 
+                    padding: '12px 16px', 
+                    fontSize: '12.5px', 
+                    color: 'var(--charcoal)', 
+                    textAlign: 'left',
+                    marginBottom: '20px'
+                  }}
+                >
+                  <div style={{ fontWeight: 600, color: '#2563eb', marginBottom: '4px' }}>
+                    💡 Vantagens ao expandir sua equipe:
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: '18px', lineHeight: '1.5', color: '#475569' }}>
+                    <li>Acesso simultâneo para atendentes em diferentes turnos</li>
+                    <li>Rastreabilidade de auditoria individual por colaborador</li>
+                    <li>Mais quadras e relatórios avançados</li>
+                  </ul>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                  <Link 
+                    to="/admin/assinatura" 
+                    className="btn-primary" 
+                    style={{ background: '#2563eb', color: '#fff', textDecoration: 'none', padding: '10px 22px', fontSize: '13.5px', fontWeight: 600, borderRadius: '6px', display: 'inline-flex', alignItems: 'center' }}
+                  >
+                    Fazer Upgrade de Plano
+                  </Link>
+                  <button type="button" className="btn-ghost" onClick={() => setActiveModal(null)}>
+                    Voltar
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={handleSaveUsuario}>
+              <div className="modal-header">
+                <h2 className="modal-title" id="modal-u-title">
+                  {nuId ? 'Editar Usuário' : 'Novo Usuário'}
+                </h2>
+                <button type="button" className="modal-close" aria-label="Fechar" onClick={() => setActiveModal(null)}>✕</button>
+              </div>
+              <div className="modal-body">
+                <div className="form-group">
+                  <label htmlFor="u-nome">Nome completo *</label>
+                  <input 
+                    type="text" 
+                    id="u-nome" 
+                    value={nuNome}
+                    onChange={(e) => setNuNome(e.target.value)}
+                    required 
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="u-email">E-mail *</label>
+                  <input 
+                    type="email" 
+                    id="u-email" 
+                    value={nuEmail}
+                    onChange={(e) => setNuEmail(e.target.value)}
+                    required 
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="u-perfil">Perfil de acesso *</label>
+                  <select 
+                    id="u-perfil" 
+                    value={nuPerfil}
+                    onChange={(e) => setNuPerfil(e.target.value)}
+                    required
+                  >
+                    <option value="">Selecione</option>
+                    <option value="Recepcionista">Recepcionista</option>
+                    <option value="Gerente">Gerente</option>
+                    <option value="Administrador">Administrador</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label htmlFor="u-senha">
+                    Senha {!nuId && <span style={{ color: 'var(--danger)' }}>*</span>}
+                  </label>
+                  <input 
+                    type="password" 
+                    id="u-senha" 
+                    placeholder="Digite a senha" 
+                    value={nuSenha}
+                    onChange={(e) => setNuSenha(e.target.value)}
+                    required={!nuId}
+                  />
+                  {nuId && (
+                    <small style={{ color: 'var(--muted)', fontSize: '11px', display: 'block' }}>
+                      Deixe em branco para manter a senha atual.
+                    </small>
+                  )}
+                </div>
+              </div>
+              <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                {nuId ? (
+                  <>
+                    <button 
+                      type="button" 
+                      className="btn-ghost" 
+                      style={{ color: 'var(--danger)', borderColor: 'var(--danger-bg)', marginRight: 'auto' }}
+                      onClick={() => handleDeleteUsuario(nuId, nuNome)}
+                    >
+                      Excluir
+                    </button>
+                    <button type="button" className="btn-ghost" onClick={() => setActiveModal(null)}>Cancelar</button>
+                    <button type="submit" className="btn-primary">Salvar Alterações</button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" className="btn-ghost" onClick={() => setActiveModal(null)}>Cancelar</button>
+                    <button type="submit" className="btn-primary">Criar Usuário</button>
+                  </>
+                )}
+              </div>
+            </form>
+          )}
+        </div>
       </div>
 
       {/* MODAL: NOVO MOTIVO DE CANCELAMENTO */}
@@ -1908,16 +2074,18 @@ export function AdminConfiguracoes() {
             <h2 className="modal-title" id="modal-motivo-title">Adicionar Motivo de Cancelamento</h2>
             <button type="button" className="modal-close" aria-label="Fechar" onClick={() => setActiveModal(null)}>✕</button>
           </div>
-          <div className="form-group">
-            <label htmlFor="nm-nome">Motivo *</label>
-            <input 
-              type="text" 
-              id="nm-nome" 
-              placeholder="Ex: Chuva forte" 
-              value={nmNome}
-              onChange={(e) => setNmNome(e.target.value)}
-              required 
-            />
+          <div className="modal-body">
+            <div className="form-group">
+              <label htmlFor="nm-nome">Motivo *</label>
+              <input 
+                type="text" 
+                id="nm-nome" 
+                placeholder="Ex: Chuva forte" 
+                value={nmNome}
+                onChange={(e) => setNmNome(e.target.value)}
+                required 
+              />
+            </div>
           </div>
           <div className="modal-footer">
             <button type="button" className="btn-ghost" onClick={() => setActiveModal(null)}>Cancelar</button>

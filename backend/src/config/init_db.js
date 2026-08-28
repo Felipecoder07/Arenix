@@ -363,12 +363,45 @@ const initDb = () => {
     // Enquanto trial_expira_em > date('now'), o cron não gera fatura para esta arena.
     db.run("ALTER TABLE Arenas ADD COLUMN trial_expira_em DATE", (err) => { /* ignora se já existir */ });
 
+    db.run("ALTER TABLE Arenas ADD COLUMN ciclo_cobranca TEXT DEFAULT 'mensal'", (err) => { /* ignora se já existir */ });
+
     // Migrações de FaturasSaaS — adiciona colunas de Pix para bancos existentes (idempotentes)
     // Nota: SQLite não suporta UNIQUE em ALTER TABLE ADD COLUMN; unicidade garantida pela lógica da aplicação.
     db.run("ALTER TABLE FaturasSaaS ADD COLUMN gateway_ref TEXT", (err) => { /* ignora se já existir */ });
     db.run("ALTER TABLE FaturasSaaS ADD COLUMN copia_cola TEXT", (err) => { /* ignora se já existir */ });
     db.run("ALTER TABLE FaturasSaaS ADD COLUMN qr_expira_em DATETIME", (err) => { /* ignora se já existir */ });
     db.run("ALTER TABLE FaturasSaaS ADD COLUMN metodo_pagamento TEXT", (err) => { /* ignora se já existir */ });
+    db.run("ALTER TABLE FaturasSaaS ADD COLUMN ciclo TEXT DEFAULT 'mensal'", (err) => { /* ignora se já existir */ });
+    db.run("ALTER TABLE FaturasSaaS ADD COLUMN descricao TEXT", (err) => { /* ignora se já existir */ });
+    
+    // Migração de coerência financeira: atualiza faturas legadas antigas de teste para os valores reais dos planos
+    db.run("UPDATE FaturasSaaS SET valor = 49.99 WHERE plano_id = 1 AND valor = 99.9", () => {});
+    db.run("UPDATE FaturasSaaS SET valor = 79.99 WHERE plano_id = 2 AND valor = 99.9", () => {});
+    
+    // Migração de coerência de pagamentos: garante que reservas legadas com status 'Pago' tenham seu registro em Pagamentos com a data correta da reserva
+    db.all("SELECT id, valor_total, COALESCE(criado_em, data_reserva || ' 12:00:00') as data_reg FROM Reservas WHERE status_pagamento = 'Pago' AND status != 'Cancelada' AND id NOT IN (SELECT DISTINCT reserva_id FROM Pagamentos)", (err, rows) => {
+      if (rows && rows.length > 0) {
+        rows.forEach(r => {
+          db.run("INSERT INTO Pagamentos (reserva_id, valor, metodo, registrado_por, registrado_em) VALUES (?, ?, 'Pix', 1, ?)", [r.id, r.valor_total, r.data_reg]);
+        });
+      }
+    });
+
+    // Correção de datas para registros de pagamentos migrados retroativamente
+    db.run(`
+      UPDATE Pagamentos 
+      SET registrado_em = (SELECT COALESCE(r.criado_em, r.data_reserva || ' 12:00:00') FROM Reservas r WHERE r.id = Pagamentos.reserva_id)
+      WHERE id IN (
+        SELECT p.id FROM Pagamentos p 
+        JOIN Reservas r ON p.reserva_id = r.id 
+        WHERE DATE(p.registrado_em) != r.data_reserva 
+          AND r.data_reserva < DATE('now')
+          AND p.registrado_em >= DATE('now')
+      )
+    `, () => {});
+
+    // Alinhamento de coerência para testes legados com Pix de 2 centavos
+    db.run("UPDATE Reservas SET valor_total = 0.02 WHERE id IN (79, 85) AND valor_total = 0.01", () => {});
     
     console.log('Tabelas base criadas com sucesso!');
   });

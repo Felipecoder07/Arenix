@@ -18,9 +18,17 @@
   padding: 11px var(--s-4);
   font-size: 13px;
   color: var(--muted);
+  background: transparent;
+  border: none;
   border-bottom: 1px solid var(--border-passive);
   transition: background 0.12s, color 0.12s;
   cursor: pointer;
+  outline: none;
+}
+
+.config-nav-item:focus,
+.config-nav-item:focus-visible {
+  outline: none;
 }
 
 .config-nav-item:last-child {

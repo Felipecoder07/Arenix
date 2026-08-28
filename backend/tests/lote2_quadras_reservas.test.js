@@ -26,9 +26,11 @@ describe('LOTE 2 — Testes de Quadras, Limites de Plano e Regras de Reservas (4
 
     // Fixture: Plano Basic (id = 1, max_quadras = 3)
     await db.runAsync("INSERT OR IGNORE INTO PlanosSaaS (id, nome, max_quadras, max_usuarios, valor_mensal) VALUES (1, 'Basic', 3, 3, 49.99)");
+    await db.runAsync("UPDATE PlanosSaaS SET max_quadras = 3, max_usuarios = 3 WHERE id = 1");
 
     // Fixture: Arena 1 no Plano 1
     await db.runAsync("INSERT INTO Arenas (id, nome, plano_id, status) VALUES (1, 'Arena Lote 2', 1, 1)");
+    await db.runAsync("UPDATE Arenas SET plano_id = 1, status = 1 WHERE id = 1");
 
     // Fixture: Usuário Admin
     await db.runAsync("INSERT INTO Usuarios (id, tenant_id, nome, email, senha_hash, perfil, ativo) VALUES (10, 1, 'Admin Lote2', 'lote2@arena.com', 'hash', 'Administrador', 1)");
@@ -175,20 +177,27 @@ describe('LOTE 2 — Testes de Quadras, Limites de Plano e Regras de Reservas (4
       .set('Authorization', `Bearer ${tokenAdmin}`)
       .send({
         nome: 'Quadra 4 Excedente',
+        tipo: 'Areia',
         preco_base: 100.0,
         hora_abertura: '08:00',
         hora_fechamento: '22:00'
       });
 
-    expect([400, 403]).toContain(res.statusCode);
+    expect(res.statusCode).toBe(403);
+    expect(res.body.code).toBe('PLAN_LIMIT_REACHED');
   });
 
-  // 50. QUAD-02: Impedir exclusão física de quadra com reservas
-  it('50. QUAD-02: Deve recusar a exclusão física de quadra que possui histórico de reservas', async () => {
+  // 50. QUAD-02: Soft Delete Híbrido — quadra com reservas deve ser arquivada (status = 'Excluida') sem apagar do banco
+  it('50. QUAD-02: Deve arquivar logicamente (soft delete) quadra que possui histórico de reservas preservando integridade', async () => {
     const res = await request(app)
       .delete('/api/quadras/1') // Quadra 1 tem reservas atreladas
       .set('Authorization', `Bearer ${tokenAdmin}`);
 
-    expect([400, 403]).toContain(res.statusCode);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.action).toBe('soft_deleted');
+
+    const quadra = await db.getAsync('SELECT * FROM Quadras WHERE id = 1');
+    expect(quadra).toBeDefined();
+    expect(quadra.status).toBe('Excluida');
   });
 });

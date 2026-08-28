@@ -1303,8 +1303,20 @@ const getMinhasReservasAtleta = async (req, res) => {
        FROM Reservas r
        JOIN Quadras q ON r.quadra_id = q.id
        JOIN Clientes c ON r.cliente_id = c.id
-       LEFT JOIN TransacoesGateway tg ON r.id = tg.reserva_id
-       LEFT JOIN Pagamentos p ON r.id = p.reserva_id
+       LEFT JOIN (
+         SELECT tg1.reserva_id, tg1.gateway_ref, tg1.metodo, tg1.status, tg1.atualizado_em
+         FROM TransacoesGateway tg1
+         INNER JOIN (
+           SELECT reserva_id, MAX(id) as max_id FROM TransacoesGateway GROUP BY reserva_id
+         ) tg2 ON tg1.id = tg2.max_id
+       ) tg ON r.id = tg.reserva_id
+       LEFT JOIN (
+         SELECT p1.reserva_id, p1.metodo, p1.registrado_em
+         FROM Pagamentos p1
+         INNER JOIN (
+           SELECT reserva_id, MAX(id) as max_id FROM Pagamentos GROUP BY reserva_id
+         ) p2 ON p1.id = p2.max_id
+       ) p ON r.id = p.reserva_id
        WHERE r.tenant_id = ? AND r.cliente_id IN (${clientIds.map(() => '?').join(',')})
        GROUP BY COALESCE(NULLIF(r.grupo_id, ''), CAST(r.id AS TEXT))
        ORDER BY CASE 
@@ -1706,6 +1718,10 @@ const cancelarReservaAtleta = async (req, res) => {
                codigo_validacao_cancelamento = ?, observacoes_cancelamento = 'Cancelado pelo cliente (Estorno MP Automático)'
            ${grupoClause}`,
           [codigoValidacao, ...grupoParams]
+        );
+        await db.runAsync(
+          "INSERT INTO Pagamentos (reserva_id, valor, metodo, registrado_por) VALUES (?, ?, 'Estorno', NULL)",
+          [reserva.id, -reserva.valor_total]
         );
       } else {
         estornoStatus = 'manual';

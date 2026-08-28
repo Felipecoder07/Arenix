@@ -25,10 +25,15 @@ const processSaaS = async () => {
     `, [currentDay, todayStr]);
 
     for (let arena of arenasParaFaturar) {
+      // Verifica se já existe fatura gerada para este mês OU se a arena já pagou adiantado cobrindo o período
+      const mesAtualStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
       const existeFatura = await db.getAsync(`
-        SELECT id FROM FaturasSaaS 
-        WHERE tenant_id = ? AND strftime('%Y-%m', data_vencimento) = ?
-      `, [arena.tenant_id, `${currentYear}-${String(currentMonth).padStart(2, '0')}`]);
+        SELECT id, status FROM FaturasSaaS 
+        WHERE tenant_id = ? AND (
+          strftime('%Y-%m', data_vencimento) = ?
+          OR (status = 'Paga' AND strftime('%Y-%m', data_vencimento) >= ?)
+        )
+      `, [arena.tenant_id, mesAtualStr, mesAtualStr]);
 
       if (!existeFatura) {
         await db.runAsync(`

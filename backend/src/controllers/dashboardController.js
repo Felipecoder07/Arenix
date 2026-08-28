@@ -10,12 +10,12 @@ const obterResumoDia = async (req, res) => {
     const hoje = getTodayString(fuso);
     
     // RF-DASH-001: Faturamento do Dia
-    // Soma de pagamentos registrados hoje
+    // Soma de pagamentos registrados hoje para reservas ativas (não canceladas)
     const faturamentoDiaResult = await db.getAsync(`
-      SELECT SUM(p.valor) as total
+      SELECT COALESCE(SUM(p.valor), 0) as total
       FROM Pagamentos p
       JOIN Reservas r ON p.reserva_id = r.id
-      WHERE DATE(p.registrado_em) = ? AND r.tenant_id = ?
+      WHERE DATE(p.registrado_em) = ? AND r.status != 'Cancelada' AND r.tenant_id = ?
     `, [hoje, tenant_id]);
     const faturamentoDia = faturamentoDiaResult.total || 0;
 
@@ -89,10 +89,10 @@ const obterResumoDia = async (req, res) => {
     // Faturamento do Mês
     const mesAtual = hoje.substring(0, 7); // "YYYY-MM"
     const faturamentoMesResult = await db.getAsync(`
-      SELECT SUM(valor) as total
+      SELECT COALESCE(SUM(p.valor), 0) as total
       FROM Pagamentos p
       JOIN Reservas r ON p.reserva_id = r.id
-      WHERE strftime('%Y-%m', p.registrado_em) = ? AND r.tenant_id = ?
+      WHERE strftime('%Y-%m', p.registrado_em) = ? AND r.status != 'Cancelada' AND r.tenant_id = ?
     `, [mesAtual, tenant_id]);
     const faturamentoMes = faturamentoMesResult.total || 0;
 

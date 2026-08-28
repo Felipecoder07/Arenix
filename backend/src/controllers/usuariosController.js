@@ -30,6 +30,31 @@ const criarUsuario = async (req, res) => {
   }
 
   try {
+    const tenant_id = req.user.tenant_id;
+
+    // Validar limite de usuários do plano SaaS da arena
+    const arenaPlano = await db.getAsync(`
+      SELECT p.nome, p.max_usuarios 
+      FROM Arenas a
+      LEFT JOIN PlanosSaaS p ON a.plano_id = p.id
+      WHERE a.id = ?
+    `, [tenant_id]);
+
+    if (arenaPlano && arenaPlano.max_usuarios) {
+      const usersCount = await db.getAsync(
+        "SELECT COUNT(*) as total FROM Usuarios WHERE tenant_id = ? AND (perfil IS NULL OR (perfil != 'Cliente' AND perfil != 'cliente'))",
+        [tenant_id]
+      );
+      if (usersCount && usersCount.total >= arenaPlano.max_usuarios) {
+        return res.status(403).json({
+          error: `Limite de usuários atingido para o plano ${arenaPlano.nome} (máximo ${arenaPlano.max_usuarios} funcionários). Faça upgrade do seu plano para adicionar novos usuários.`,
+          code: 'PLAN_LIMIT_REACHED',
+          limite: arenaPlano.max_usuarios,
+          atual: usersCount.total
+        });
+      }
+    }
+
     const crypto = require('crypto');
     // Gerar token de ativação (válido por 7 dias)
     const token = crypto.randomBytes(32).toString('hex');

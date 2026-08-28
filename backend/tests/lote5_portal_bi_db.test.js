@@ -23,7 +23,7 @@ describe('LOTE 5 — Testes do Portal do Atleta, Relatórios BI e Banco de Dados
     await db.runAsync("DELETE FROM Usuarios");
     await db.runAsync("DELETE FROM Arenas");
 
-    await db.runAsync("INSERT INTO Arenas (id, nome, fuso_horario, status) VALUES (1, 'Arena Lote 5', 'America/Sao_Paulo', 1)");
+    await db.runAsync("INSERT INTO Arenas (id, nome, slug, fuso_horario, status) VALUES (1, 'Arena Lote 5', 'arena-lote-5', 'America/Sao_Paulo', 1)");
     await db.runAsync("INSERT INTO Usuarios (id, tenant_id, nome, email, senha_hash, perfil, ativo) VALUES (10, 1, 'Admin 5', 'admin5@arena.com', 'hash', 'Administrador', 1)");
     await db.runAsync("INSERT INTO Clientes (id, tenant_id, nome, email, telefone, cpf) VALUES (100, 1, 'Atleta Portal', 'atleta_portal@test.com', '11966665555', '33333333333')");
     await db.runAsync("INSERT INTO Quadras (id, tenant_id, nome, preco_base, hora_abertura, hora_fechamento, status) VALUES (1, 1, 'Quadra Central', 100.0, '08:00', '22:00', 'Ativa')");
@@ -135,12 +135,22 @@ describe('LOTE 5 — Testes do Portal do Atleta, Relatórios BI e Banco de Dados
     expect(arena.fuso_horario).toBe('America/Sao_Paulo');
   });
 
-  // 81. DB-03: Constraints de integridade do banco SQLite
-  it('81. DB-03: Deve garantir unicidade de e-mail na tabela de Usuários', async () => {
-    try {
-      await db.runAsync("INSERT INTO Usuarios (tenant_id, nome, email, senha_hash, perfil) VALUES (1, 'Duplicado', 'admin5@arena.com', 'hash', 'Gerente')");
-    } catch (err) {
-      expect(err).toBeDefined();
-    }
+  // 82. PORTAL: Minhas Reservas não deve multiplicar valor_total com múltiplos pagamentos
+  it('82. PORTAL: getMinhasReservasAtleta não deve multiplicar valor_total quando existirem múltiplos pagamentos', async () => {
+    // Adicionar múltiplos pagamentos e transações para a reserva 701
+    await db.runAsync("INSERT INTO Pagamentos (reserva_id, metodo, valor, registrado_por) VALUES (701, 'Pix Online', 100.0, 10)");
+    await db.runAsync("INSERT INTO Pagamentos (reserva_id, metodo, valor, registrado_por) VALUES (701, 'Pix Online', 100.0, 10)");
+    await db.runAsync("INSERT INTO TransacoesGateway (reserva_id, gateway_ref, valor, status, metodo) VALUES (701, 'ref_1', 100.0, 'approved', 'Pix')");
+    await db.runAsync("INSERT INTO TransacoesGateway (reserva_id, gateway_ref, valor, status, metodo) VALUES (701, 'ref_2', 100.0, 'approved', 'Pix')");
+
+    // Buscar com slug da arena e telefone do atleta
+    const res = await request(app)
+      .get('/api/public/tenant/arena-lote-5/minhas-reservas?telefone=11966665555');
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    const reserva701 = res.body.find(r => r.id === 701);
+    expect(reserva701).toBeDefined();
+    expect(reserva701.valor_total).toBe(100.0); // Valor exato, NÃO 500 ou 600
   });
 });

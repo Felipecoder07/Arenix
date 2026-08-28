@@ -15,6 +15,7 @@ interface Quadra {
   hora_fechamento: string;
   preco_base?: number;
   modalidades?: (string | ModalidadeItem)[];
+  status?: string;
 }
 
 interface Reserva {
@@ -298,9 +299,10 @@ export function AdminReservas() {
         if (resQd.ok) {
           const qd = await resQd.json();
           setQuadras(qd);
-          // Set initial filter to first court if weekly view is entered
-          if (scope === 'semanal' && !filterQuadraId && qd.length > 0) {
-            setFilterQuadraId(qd[0].id);
+          // Set initial filter to first active court if weekly view is entered
+          const ativas = Array.isArray(qd) ? qd.filter((q: Quadra) => q.status === 'Ativa') : [];
+          if (scope === 'semanal' && !filterQuadraId && ativas.length > 0) {
+            setFilterQuadraId(ativas[0].id);
           }
         }
       } catch (err) {
@@ -342,10 +344,11 @@ export function AdminReservas() {
     return () => clearInterval(interval);
   }, [activeModal, selectedReserva]);
 
-  // Se mudar para semanal e não tiver quadra selecionada, força a primeira
+  // Se mudar para semanal e não tiver quadra selecionada, força a primeira quadra ativa
   useEffect(() => {
-    if (scope === 'semanal' && filterQuadraId === '' && quadras.length > 0) {
-      setFilterQuadraId(quadras[0].id);
+    const ativas = quadras.filter(q => q.status === 'Ativa');
+    if (scope === 'semanal' && filterQuadraId === '' && ativas.length > 0) {
+      setFilterQuadraId(ativas[0].id);
     }
   }, [scope, quadras, filterQuadraId]);
 
@@ -728,7 +731,7 @@ export function AdminReservas() {
 
           const novaReservaObj: Reserva = {
             id: reservaCriadaId,
-            cliente_id: nrClienteId,
+            cliente_id: nrClienteId || undefined,
             cliente_nome: nrClienteBusca || 'Cliente',
             cliente_telefone: clientes.find(c => c.id === nrClienteId)?.telefone || '',
             quadra_id: nrQuadraId,
@@ -1395,8 +1398,9 @@ export function AdminReservas() {
               className={`chip ${scope === 'semanal' ? 'active' : ''}`}
               onClick={() => {
                 setScope('semanal');
-                if (filterQuadraId === '' && quadras.length > 0) {
-                  setFilterQuadraId(quadras[0].id);
+                const ativas = quadras.filter(q => q.status === 'Ativa');
+                if (filterQuadraId === '' && ativas.length > 0) {
+                  setFilterQuadraId(ativas[0].id);
                 }
               }}
             >
@@ -1411,7 +1415,7 @@ export function AdminReservas() {
             onChange={(e) => setFilterQuadraId(e.target.value === '' ? '' : Number(e.target.value))}
           >
             {scope === 'diaria' && <option value="">Todas as quadras</option>}
-            {quadras.map(q => (
+            {quadras.filter(q => q.status === 'Ativa').map(q => (
               <option key={q.id} value={q.id}>{q.nome} — {q.tipo}</option>
             ))}
           </select>
@@ -1672,7 +1676,7 @@ export function AdminReservas() {
                     required
                   >
                     <option value="">Selecione a quadra</option>
-                    {quadras.map(q => (
+                    {quadras.filter(q => q.status === 'Ativa').map(q => (
                       <option key={q.id} value={q.id}>{q.nome} ({q.tipo})</option>
                     ))}
                   </select>
@@ -2241,7 +2245,7 @@ export function AdminReservas() {
                   required
                 >
                   <option value="">Selecione a quadra</option>
-                  {quadras.map(q => (
+                  {quadras.filter(q => q.status === 'Ativa').map(q => (
                     <option key={q.id} value={q.id}>{q.nome} ({q.tipo})</option>
                   ))}
                 </select>

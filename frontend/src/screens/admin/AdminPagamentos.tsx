@@ -33,6 +33,23 @@ interface KPIResumo {
   recebidoMes: number;
   totalInadimplencia: number;
   qtdInadimplentes: number;
+  dataFiltro?: string | null;
+  resumoFiltrado?: {
+    data: string;
+    recebido: number;
+    qtdPagamentos: number;
+    pendente: number;
+    qtdPendente: number;
+    faturamentoTotal: number;
+    totalReservas: number;
+    qtdInadimplentes: number;
+  } | null;
+  counts?: {
+    pendentes: number;
+    pagos: number;
+    inadimplentes: number;
+    todos: number;
+  };
   countsGlobais: {
     pendentes: number;
     pagos: number;
@@ -86,10 +103,12 @@ export function AdminPagamentos() {
   };
 
   // Carregar KPIs
-  const carregarKPIs = async () => {
+  const carregarKPIs = async (overrideData?: string) => {
     if (!token) return;
+    const dt = overrideData !== undefined ? overrideData : dataFiltro;
     try {
-      const res = await fetch('/api/pagamentos/resumo', {
+      const url = dt ? `/api/pagamentos/resumo?data=${encodeURIComponent(dt)}` : '/api/pagamentos/resumo';
+      const res = await fetch(url, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -135,8 +154,8 @@ export function AdminPagamentos() {
   };
 
   useEffect(() => {
-    carregarKPIs();
-  }, [token, tabAtiva]); // Recarrega KPIs na carga inicial ou troca de tab
+    carregarKPIs(dataFiltro);
+  }, [token, tabAtiva, dataFiltro]);
 
   useEffect(() => {
     carregarReservas();
@@ -422,6 +441,22 @@ export function AdminPagamentos() {
     }
   };
 
+  const definirData = (tipo: 'hoje' | 'ontem' | 'amanha' | 'limpar') => {
+    if (tipo === 'limpar') {
+      setDataFiltro('');
+      return;
+    }
+    const tzOffset = new Date().getTimezoneOffset() * 60000;
+    const base = new Date(Date.now() - tzOffset);
+    if (tipo === 'ontem') {
+      base.setDate(base.getDate() - 1);
+    } else if (tipo === 'amanha') {
+      base.setDate(base.getDate() + 1);
+    }
+    const str = base.toISOString().split('T')[0];
+    setDataFiltro(str);
+  };
+
   // Limpar Filtros
   const limparFiltros = () => {
     setBusca('');
@@ -476,6 +511,17 @@ export function AdminPagamentos() {
     return dateStr;
   };
 
+  // Totais da listagem atual
+  const totalValor = reservas.reduce((acc, r) => acc + (r.valor_total || 0), 0);
+  const totalPago = reservas.reduce((acc, r) => acc + (r.total_pago || 0), 0);
+  const totalSaldo = reservas.reduce((acc, r) => acc + (r.saldo_devedor || 0), 0);
+
+  // Contagens sincronizadas com o filtro ativo
+  const countPendentes = kpis?.counts?.pendentes ?? kpis?.countsGlobais?.pendentes ?? 0;
+  const countPagos = kpis?.counts?.pagos ?? kpis?.countsGlobais?.pagos ?? 0;
+  const countInadimplentes = kpis?.counts?.inadimplentes ?? kpis?.countsGlobais?.inadimplentes ?? 0;
+  const countTodos = kpis?.counts?.todos ?? kpis?.countsGlobais?.todos ?? 0;
+
   return (
     <div className="admin-pagamentos-page">
       {/* Toast Alert */}
@@ -489,40 +535,101 @@ export function AdminPagamentos() {
         </div>
       )}
 
+      {/* Badge de Filtro Ativo quando há data selecionada */}
+      {dataFiltro && (
+        <div 
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            backgroundColor: '#eff6ff',
+            border: '1px solid #bfdbfe',
+            borderRadius: '10px',
+            padding: '10px 16px',
+            marginBottom: '16px'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13.5px', color: '#1e40af', fontWeight: 600 }}>
+            <span>📅</span>
+            <span>Visualizando dados filtrados para: <strong>{formatData(dataFiltro)}</strong></span>
+          </div>
+          <button
+            onClick={() => definirData('limpar')}
+            style={{
+              padding: '4px 10px',
+              backgroundColor: '#ffffff',
+              border: '1px solid #93c5fd',
+              borderRadius: '6px',
+              color: '#1d4ed8',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+          >
+            ✕ Limpar filtro de data
+          </button>
+        </div>
+      )}
 
-
-      {/* KPI strip */}
+      {/* KPI strip Adaptativo */}
       <section className="kpi-row mb-6" aria-label="Resumo financeiro">
-        <div className="kpi-card">
-          <div className="kpi-label">Recebido Hoje</div>
-          <div className="kpi-value">{formatCurrency(kpis?.recebidoHoje || 0)}</div>
-          <div className="kpi-sub positive">{kpis?.qtdPagamentosHoje || 0} pagamento(s)</div>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-label">Pendente Hoje</div>
-          <div className="kpi-value">{formatCurrency(kpis?.pendenteHoje || 0)}</div>
-          <div className="kpi-sub warning">{kpis?.qtdPendenteHoje || 0} reserva(s)</div>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-label">Recebido no Mês</div>
-          <div className="kpi-value">{formatCurrency(kpis?.recebidoMes || 0)}</div>
-          <div className="kpi-sub positive">mês atual</div>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-label">Inadimplência</div>
-          <div className="kpi-value" style={{ color: 'var(--danger)' }}>{formatCurrency(kpis?.totalInadimplencia || 0)}</div>
-          <div className="kpi-sub warning">{kpis?.qtdInadimplentes || 0} reserva(s) vencidas</div>
-        </div>
+        {dataFiltro && kpis?.resumoFiltrado ? (
+          <>
+            <div className="kpi-card" style={{ borderLeft: '4px solid #16a34a' }}>
+              <div className="kpi-label">Recebido em {formatData(dataFiltro)}</div>
+              <div className="kpi-value">{formatCurrency(kpis.resumoFiltrado.recebido)}</div>
+              <div className="kpi-sub positive">{kpis.resumoFiltrado.qtdPagamentos} pagamento(s)</div>
+            </div>
+            <div className="kpi-card" style={{ borderLeft: '4px solid #f59e0b' }}>
+              <div className="kpi-label">Pendente em {formatData(dataFiltro)}</div>
+              <div className="kpi-value">{formatCurrency(kpis.resumoFiltrado.pendente)}</div>
+              <div className="kpi-sub warning">{kpis.resumoFiltrado.qtdPendente} reserva(s)</div>
+            </div>
+            <div className="kpi-card" style={{ borderLeft: '4px solid #2563eb' }}>
+              <div className="kpi-label">Faturado no Dia</div>
+              <div className="kpi-value">{formatCurrency(kpis.resumoFiltrado.faturamentoTotal)}</div>
+              <div className="kpi-sub" style={{ color: '#2563eb' }}>{kpis.resumoFiltrado.totalReservas} reserva(s) agendadas</div>
+            </div>
+            <div className="kpi-card" style={{ borderLeft: '4px solid #dc2626' }}>
+              <div className="kpi-label">Inadimplência Geral</div>
+              <div className="kpi-value" style={{ color: 'var(--danger)' }}>{formatCurrency(kpis?.totalInadimplencia || 0)}</div>
+              <div className="kpi-sub warning">{kpis?.qtdInadimplentes || 0} reserva(s) vencidas</div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="kpi-card" style={{ borderLeft: '4px solid #16a34a' }}>
+              <div className="kpi-label">Recebido Hoje</div>
+              <div className="kpi-value">{formatCurrency(kpis?.recebidoHoje || 0)}</div>
+              <div className="kpi-sub positive">{kpis?.qtdPagamentosHoje || 0} pagamento(s)</div>
+            </div>
+            <div className="kpi-card" style={{ borderLeft: '4px solid #f59e0b' }}>
+              <div className="kpi-label">Pendente Hoje</div>
+              <div className="kpi-value">{formatCurrency(kpis?.pendenteHoje || 0)}</div>
+              <div className="kpi-sub warning">{kpis?.qtdPendenteHoje || 0} reserva(s)</div>
+            </div>
+            <div className="kpi-card" style={{ borderLeft: '4px solid #2563eb' }}>
+              <div className="kpi-label">Recebido no Mês</div>
+              <div className="kpi-value">{formatCurrency(kpis?.recebidoMes || 0)}</div>
+              <div className="kpi-sub positive">mês atual</div>
+            </div>
+            <div className="kpi-card" style={{ borderLeft: '4px solid #dc2626' }}>
+              <div className="kpi-label">Inadimplência</div>
+              <div className="kpi-value" style={{ color: 'var(--danger)' }}>{formatCurrency(kpis?.totalInadimplencia || 0)}</div>
+              <div className="kpi-sub warning">{kpis?.qtdInadimplentes || 0} reserva(s) vencidas</div>
+            </div>
+          </>
+        )}
       </section>
 
-      {/* Toolbar / Filtros */}
+      {/* Toolbar / Filtros com Atalhos Rápidos */}
       <div className="page-toolbar mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="filter-bar flex items-center gap-3">
+        <div className="filter-bar flex items-center flex-wrap gap-2">
           <input 
             type="text" 
             className="search-input" 
             placeholder="Buscar por cliente ou ID..." 
-            style={{ width: '240px' }}
+            style={{ width: '220px' }}
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
           />
@@ -532,41 +639,74 @@ export function AdminPagamentos() {
             value={dataFiltro}
             onChange={(e) => setDataFiltro(e.target.value)}
           />
-          <button className="btn-ghost" onClick={limparFiltros} style={{ fontSize: '12px' }}>Limpar</button>
+          <div style={{ display: 'flex', gap: '4px' }}>
+            <button 
+              type="button" 
+              className={`btn-ghost ${dataFiltro === new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0] ? 'active' : ''}`}
+              onClick={() => definirData('hoje')} 
+              style={{ fontSize: '11.5px', padding: '6px 10px' }}
+            >
+              Hoje
+            </button>
+            <button 
+              type="button" 
+              className="btn-ghost" 
+              onClick={() => definirData('ontem')} 
+              style={{ fontSize: '11.5px', padding: '6px 10px' }}
+            >
+              Ontem
+            </button>
+            <button 
+              type="button" 
+              className="btn-ghost" 
+              onClick={() => definirData('amanha')} 
+              style={{ fontSize: '11.5px', padding: '6px 10px' }}
+            >
+              Amanhã
+            </button>
+            <button 
+              type="button" 
+              className="btn-ghost" 
+              onClick={limparFiltros} 
+              style={{ fontSize: '11.5px', padding: '6px 10px' }}
+            >
+              Limpar
+            </button>
+          </div>
         </div>
         <button className="btn-ghost" onClick={exportarCSV}>↓ Exportar CSV</button>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs com Contadores Sincronizados */}
       <div className="tab-bar mb-4" role="tablist">
         <button 
           className={`tab-btn ${tabAtiva === 'Pendente' ? 'active' : ''}`}
           onClick={() => setTabAtiva('Pendente')}
         >
-          Pendentes {kpis?.countsGlobais ? `(${kpis.countsGlobais.pendentes})` : ''}
+          Pendentes ({countPendentes})
         </button>
         <button 
           className={`tab-btn ${tabAtiva === 'Pago' ? 'active' : ''}`}
           onClick={() => setTabAtiva('Pago')}
         >
-          Pagos {kpis?.countsGlobais ? `(${kpis.countsGlobais.pagos})` : ''}
+          Pagos ({countPagos})
         </button>
         <button 
           className={`tab-btn ${tabAtiva === 'inadimplentes' ? 'active' : ''}`}
           onClick={() => setTabAtiva('inadimplentes')}
         >
-          Inadimplência {kpis?.countsGlobais ? `(${kpis.countsGlobais.inadimplentes})` : ''}
+          Inadimplência ({countInadimplentes})
         </button>
         <button 
           className={`tab-btn ${tabAtiva === 'todos' ? 'active' : ''}`}
           onClick={() => setTabAtiva('todos')}
         >
-          Todos {kpis?.countsGlobais ? `(${kpis.countsGlobais.todos})` : ''}
+          Todos ({countTodos})
         </button>
       </div>
 
       {/* Tabela de Pagamentos */}
-      <div className="table-card">
+      <div className="table-card" style={{ overflow: 'hidden' }}>
         <div className="table-wrap">
           <table>
             <thead>
@@ -627,6 +767,41 @@ export function AdminPagamentos() {
             </tbody>
           </table>
         </div>
+
+        {/* Rodapé Totalizador da Tabela */}
+        {!loading && reservas.length > 0 && (
+          <div 
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '16px',
+              padding: '14px 20px',
+              backgroundColor: '#f8fafc',
+              borderTop: '1px solid #e2e8f0',
+              fontSize: '13px'
+            }}
+          >
+            <div style={{ color: '#64748b', fontWeight: 500 }}>
+              Listando <strong>{reservas.length}</strong> reserva(s)
+            </div>
+            <div style={{ display: 'flex', gap: '24px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div>
+                <span style={{ color: '#64748b', fontSize: '11px', fontWeight: 600, display: 'block', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Valor Total</span>
+                <strong style={{ color: '#0f172a', fontSize: '14px' }}>{formatCurrency(totalValor)}</strong>
+              </div>
+              <div>
+                <span style={{ color: '#16a34a', fontSize: '11px', fontWeight: 600, display: 'block', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total Pago</span>
+                <strong style={{ color: '#16a34a', fontSize: '14px' }}>{formatCurrency(totalPago)}</strong>
+              </div>
+              <div>
+                <span style={{ color: totalSaldo > 0 ? '#dc2626' : '#64748b', fontSize: '11px', fontWeight: 600, display: 'block', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Saldo a Receber</span>
+                <strong style={{ color: totalSaldo > 0 ? '#dc2626' : '#64748b', fontSize: '14px' }}>{formatCurrency(totalSaldo)}</strong>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* MODAL: REGISTRAR PAGAMENTO */}

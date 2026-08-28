@@ -61,12 +61,15 @@ const criarReserva = async (req, res) => {
 
     const tenant_id = req.user.tenant_id;
 
-    // 1. Buscar a quadra para checar limites reais de horário e preços
+    // 1. Buscar a quadra para checar limites reais de horário, preços e status ativo
     const quadra = await db.getAsync(
-      'SELECT preco_base, modalidades, tipo, hora_abertura, hora_fechamento FROM Quadras WHERE id = ? AND tenant_id = ?',
+      'SELECT preco_base, modalidades, tipo, hora_abertura, hora_fechamento, status FROM Quadras WHERE id = ? AND tenant_id = ?',
       [quadra_id, tenant_id]
     );
     if (!quadra) return res.status(404).json({ error: 'Quadra não encontrada ou não pertence a esta arena.' });
+    if (quadra.status !== 'Ativa') {
+      return res.status(400).json({ error: 'Não é possível criar agendamentos em quadras inativas ou desativadas.' });
+    }
 
     // 2. RN-002: Validar horário de expediente dinâmico da quadra/arena
     const horaAbertura = quadra.hora_abertura || '08:00';

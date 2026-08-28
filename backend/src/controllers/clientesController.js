@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const logAuditEvent = require('../utils/auditLogger');
 
 const listarClientes = async (req, res) => {
   try {
@@ -49,6 +50,8 @@ const criarCliente = async (req, res) => {
       'INSERT INTO Clientes (tenant_id, nome, email, telefone, ativo) VALUES (?, ?, ?, ?, 1)',
       [tenant_id, nome, email || null, telefone]
     );
+
+    logAuditEvent(req.user?.id || null, 'Criação de Cliente', `Criou o cliente "${nome}" (${telefone}${email ? ' · ' + email : ''})`, req.ip);
 
     res.status(201).json({ id: result.lastID, nome, email, telefone, ativo: 1 });
   } catch (error) {
@@ -129,6 +132,8 @@ const atualizarCliente = async (req, res) => {
 
     if (result.changes === 0) return res.status(404).json({ error: 'Cliente não encontrado.' });
 
+    logAuditEvent(req.user.id, 'Edição de Cliente', `Atualizou dados do cliente "${nome}" (ID ${id})`, req.ip);
+
     res.json({ message: 'Cliente atualizado com sucesso.' });
   } catch (error) {
     console.error('Erro ao atualizar cliente:', error);
@@ -149,6 +154,9 @@ const arquivarCliente = async (req, res) => {
 
     if (result.changes === 0) return res.status(404).json({ error: 'Cliente não encontrado.' });
 
+    const cliente = await db.getAsync('SELECT nome FROM Clientes WHERE id = ?', [id]);
+    logAuditEvent(req.user.id, 'Arquivamento de Cliente', `Arquivou o cliente "${cliente ? cliente.nome : id}" (preservando histórico financeiro)`, req.ip);
+
     res.json({ message: 'Cliente arquivado com sucesso. O histórico de reservas e pagamentos foi preservado.' });
   } catch (error) {
     console.error('Erro ao arquivar cliente:', error);
@@ -168,6 +176,9 @@ const desarquivarCliente = async (req, res) => {
     );
 
     if (result.changes === 0) return res.status(404).json({ error: 'Cliente não encontrado.' });
+
+    const cliente = await db.getAsync('SELECT nome FROM Clientes WHERE id = ?', [id]);
+    logAuditEvent(req.user.id, 'Reativação de Cliente', `Reativou o cliente "${cliente ? cliente.nome : id}"`, req.ip);
 
     res.json({ message: 'Cliente reativado com sucesso!' });
   } catch (error) {
@@ -190,6 +201,8 @@ const excluirCliente = async (req, res) => {
     const result = await db.runAsync('DELETE FROM Clientes WHERE id = ? AND tenant_id = ?', [id, tenant_id]);
     
     if (result.changes === 0) return res.status(404).json({ error: 'Cliente não encontrado.' });
+
+    logAuditEvent(req.user.id, 'Exclusão de Cliente', `Excluiu definitivamente o cliente ID ${id}`, req.ip);
 
     res.json({ message: 'Cliente excluído com sucesso.' });
   } catch (error) {

@@ -285,71 +285,92 @@ img {
   color: var(--muted);
 }
 
-/* --- Inputs --- */
+/* --- Inputs & Form Controls (Lovable Design Inspired) --- */
 input,
 select,
 textarea {
   font-family: var(--font);
   font-size: 13.5px;
-  font-weight: 500;
-  color: var(--charcoal);
+  line-height: 20px;
+  font-weight: 400;
+  color: var(--charcoal, #1c1c1c);
   background: #ffffff;
-  border: 1.5px solid #ded8ce;
-  border-radius: var(--r-md);
-  padding: 9px 12px;
+  border: 1px solid #e0ded7;
+  border-radius: 6px;
+  padding: 8px 12px;
+  height: 38px;
   outline: none;
-  transition: all 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
   width: 100%;
-  resize: none !important;
-  box-shadow: 0 1px 2px rgba(28, 28, 28, 0.03);
+  box-shadow: 0 1px 2px rgba(28, 28, 28, 0.02);
+}
+
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%235f5f5d' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px;
+  padding-right: 32px;
+  cursor: pointer;
 }
 
 textarea {
   resize: none !important;
-  min-height: 54px;
-  max-height: 70px;
+  height: auto !important;
+  min-height: 60px;
+  max-height: 120px;
+  line-height: 1.45;
+  padding: 8px 12px;
 }
 
 input::placeholder,
 textarea::placeholder {
-  color: #8c8983;
+  color: #5f5f5d;
+  font-weight: 400;
+  opacity: 0.75;
 }
 
 input:hover:not(:disabled):not(:focus),
 select:hover:not(:disabled):not(:focus),
 textarea:hover:not(:disabled):not(:focus) {
-  border-color: #beb7a8;
+  border-color: rgba(28, 28, 28, 0.35);
 }
 
 input:focus,
+input:focus-visible,
 select:focus,
-textarea:focus {
-  border-color: var(--charcoal);
+select:focus-visible,
+textarea:focus,
+textarea:focus-visible {
+  outline: none !important;
+  border-color: #3b82f6;
   background: #ffffff;
-  box-shadow: 0 0 0 3px rgba(28, 28, 28, 0.08);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15), 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 input:disabled,
 select:disabled,
 textarea:disabled {
-  background: #f0ede6;
-  color: #9e9a91;
+  background: #f7f4ed;
+  color: #5f5f5d;
   cursor: not-allowed;
-  border-color: #e4dfd6;
-  opacity: 0.8;
+  border-color: #eceae4;
+  opacity: 0.75;
 }
 
 label {
   display: block;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #2e2c2a;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--charcoal, #1c1c1c);
   margin-bottom: 5px;
   letter-spacing: -0.1px;
 }
 
 .form-group {
-  margin-bottom: var(--s-4);
+  margin-bottom: 14px;
 }
 
 /* --- Modal overlay --- */
@@ -365,6 +386,7 @@ label {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s ease;
+  padding: 16px;
 }
 
 .modal-overlay.open {
@@ -379,9 +401,19 @@ label {
   padding: var(--s-6);
   width: 100%;
   max-width: 480px;
+  max-height: calc(100vh - 36px);
+  display: flex;
+  flex-direction: column;
   box-shadow: 0 20px 45px -10px rgba(28, 26, 24, 0.2), 0 0 1px 1px rgba(28, 26, 24, 0.05);
   transform: translateY(8px);
   transition: transform 0.2s ease;
+  overflow: hidden;
+}
+
+.modal--flush,
+.modal.has-custom-padding,
+.modal:has(.modal-header[style*="padding"]) {
+  padding: 0;
 }
 
 .modal-overlay.open .modal {
@@ -393,6 +425,11 @@ label {
   align-items: center;
   justify-content: space-between;
   margin-bottom: var(--s-5);
+  flex-shrink: 0;
+}
+
+.modal:has(.modal-header[style*="padding"]) .modal-header {
+  margin-bottom: 0;
 }
 
 .modal-title {
@@ -417,11 +454,38 @@ label {
   opacity: 0.6;
 }
 
+.modal-body {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.modal-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.modal-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.modal-body::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 4px;
+}
+
 .modal-footer {
   display: flex;
   gap: var(--s-3);
   margin-top: var(--s-5);
   justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.modal:has(.modal-footer[style*="padding"]) .modal-footer {
+  margin-top: 0;
 }
 
 /* --- Tables --- */
