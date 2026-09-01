@@ -107,6 +107,10 @@ router.get('/status/:reserva_id', verifyToken, async (req, res) => {
 
 // Simular pagamento (Útil apenas para desenvolvimento/testes e demonstração)
 router.post('/simular-pagamento', verifyToken, async (req, res) => {
+  if (process.env.NODE_ENV === 'production' && req.user.perfil !== 'SuperAdmin') {
+    return res.status(403).json({ error: 'A simulação de pagamentos está desabilitada em ambiente de produção.' });
+  }
+
   try {
     const { gateway_ref, device_id, valor_pago } = req.body;
     if (!gateway_ref) {

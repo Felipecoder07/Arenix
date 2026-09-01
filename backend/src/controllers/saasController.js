@@ -2,6 +2,7 @@ const db = require('../config/database');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const logAuditEvent = require('../utils/auditLogger');
+const saasBillingService = require('../services/saasBillingService');
 
 const getArenas = async (req, res) => {
   try {
@@ -170,11 +171,19 @@ const createArena = async (req, res) => {
 
   try {
     const planoIdFinal = parseInt(plano_id, 10) || 1;
-    const diaVencimentoFinal = parseInt(dia_vencimento, 10) || 10;
     const diasTrialFinal = trial_dias !== undefined ? parseInt(trial_dias, 10) : 14;
     const trialExpiraEm = diasTrialFinal > 0
       ? new Date(Date.now() + diasTrialFinal * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
       : null;
+
+    let diaVencimentoFinal = parseInt(dia_vencimento, 10);
+    if (!diaVencimentoFinal || isNaN(diaVencimentoFinal)) {
+      if (trialExpiraEm) {
+        diaVencimentoFinal = parseInt(trialExpiraEm.split('-')[2], 10);
+      } else {
+        diaVencimentoFinal = new Date().getUTCDate();
+      }
+    }
 
     const cleanSlug = (nome || '')
       .toLowerCase()
@@ -184,8 +193,8 @@ const createArena = async (req, res) => {
     const finalSlug = cleanSlug || `arena-${Date.now()}`;
 
     const resArena = await db.runAsync(`
-      INSERT INTO Arenas (nome, slug, telefone, endereco, plano_id, dia_vencimento, trial_expira_em, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+      INSERT INTO Arenas (nome, slug, telefone, endereco, plano_id, dia_vencimento, trial_expira_em, status, ciclo_cobranca)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'mensal')
     `, [nome.trim(), finalSlug, telefone || null, endereco || null, planoIdFinal, diaVencimentoFinal, trialExpiraEm]);
 
     const tenantId = resArena.lastID;
@@ -453,18 +462,103 @@ const payFaturaSaaS = async (req, res) => {
 };
 
 /**
+ * Obtém o segredo do Webhook do Mercado Pago Master configurado no banco ou .env.
+ */
+const getMasterWebhookSecret = async () => {
+  const row = await db.getAsync("SELECT valor FROM ConfiguracoesSaaS WHERE chave = 'mp_webhook_secret'");
+  if (row && row.valor && row.valor.trim() !== '') {
+    return row.valor.trim();
+  }
+  if (process.env.MERCADO_PAGO_WEBHOOK_SECRET && process.env.MERCADO_PAGO_WEBHOOK_SECRET.trim() !== '') {
+    return process.env.MERCADO_PAGO_WEBHOOK_SECRET.trim();
+  }
+  if (process.env.MP_WEBHOOK_SECRET && process.env.MP_WEBHOOK_SECRET.trim() !== '') {
+    return process.env.MP_WEBHOOK_SECRET.trim();
+  }
+  return null;
+};
+
+/**
+ * Valida a autenticidade da notificação de Webhook do Mercado Pago via HMAC-SHA256.
+ * Utiliza crypto.timingSafeEqual para prevenção contra timing attacks.
+ */
+function verificarAssinaturaMP(req, secret) {
+  if (!secret) return false;
+  const xSignature = req.headers['x-signature'];
+  const xRequestId = req.headers['x-request-id'] || '';
+
+  if (!xSignature) return false;
+
+  const parts = {};
+  xSignature.split(',').forEach(part => {
+    const [k, ...v] = part.trim().split('=');
+    if (k && v.length) {
+      parts[k.trim()] = v.join('=').trim();
+    }
+  });
+
+  const ts = parts['ts'] || parts['t'];
+  const v1 = parts['v1'];
+  if (!ts || !v1) return false;
+
+  // Proteção contra Replay Attacks: tolerância máxima de 15 minutos (900 segundos)
+  const nowSec = Math.floor(Date.now() / 1000);
+  const tsNum = parseInt(ts, 10);
+  if (isNaN(tsNum) || Math.abs(nowSec - tsNum) > 900) {
+    console.warn(`[SaaS Webhook] Rejeitado por Replay Attack / Timestamp expirado: ts=${ts}, now=${nowSec}`);
+    return false;
+  }
+
+  const dataId = req.body?.data?.id || req.query?.id || req.query?.['data.id'] || req.body?.id || '';
+  const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts};`;
+
+  const hmac = crypto.createHmac('sha256', secret)
+    .update(manifest)
+    .digest('hex');
+
+  try {
+    const hmacBuf = Buffer.from(hmac, 'hex');
+    const v1Buf = Buffer.from(v1, 'hex');
+    if (hmacBuf.length !== v1Buf.length) {
+      return false;
+    }
+    return crypto.timingSafeEqual(hmacBuf, v1Buf);
+  } catch (err) {
+    return false;
+  }
+}
+
+/**
  * Webhook público do Mercado Pago para notificação de pagamentos de mensalidade do SaaS Master.
  * Rota: POST /api/saas/webhook-pagamento
  */
 const handleSaaSWebhook = async (req, res) => {
   try {
-    const paymentId = req.body?.data?.id || req.query?.id || req.query?.['data.id'];
+    const paymentId = req.body?.data?.id || req.query?.id || req.query?.['data.id'] || req.body?.id;
 
     if (!paymentId) {
       return res.status(200).send('OK (sem payment_id)');
     }
 
     console.log(`[SaaS Webhook] Recebida notificação para paymentId: ${paymentId}`);
+
+    // Validação de Segurança: HMAC Webhook Signature
+    const webhookSecret = await getMasterWebhookSecret();
+    if (webhookSecret) {
+      const isValid = verificarAssinaturaMP(req, webhookSecret);
+      if (!isValid) {
+        console.warn(`[SaaS Webhook] Rejeitado: Assinatura HMAC inválida para paymentId ${paymentId} (IP: ${req.ip})`);
+        logAuditEvent(
+          0,
+          'SaaS: Webhook Forjado Rejeitado',
+          `Tentativa de notificação de webhook com assinatura HMAC inválida (IP: ${req.ip}, Payment ID: ${paymentId})`,
+          req.ip
+        );
+        return res.status(400).json({ error: 'Assinatura de webhook HMAC inválida.' });
+      }
+    } else {
+      console.warn('[SaaS Webhook] Aviso: mp_webhook_secret não configurado. Processando notificação em modo de compatibilidade/desenvolvimento.');
+    }
 
     const token = await saasBillingService.getMasterAccessToken();
     if (!token) {
@@ -877,6 +971,7 @@ const getConfiguracoesSaaS = async (req, res) => {
     const dbClientId = configMap['mp_client_id'] || process.env.MERCADO_PAGO_CLIENT_ID || '';
     const dbClientSecret = configMap['mp_client_secret'] || process.env.MERCADO_PAGO_CLIENT_SECRET || '';
     const dbMasterToken = configMap['mp_master_access_token'] || process.env.MERCADO_PAGO_ACCESS_TOKEN || '';
+    const dbWebhookSecret = configMap['mp_webhook_secret'] || process.env.MERCADO_PAGO_WEBHOOK_SECRET || process.env.MP_WEBHOOK_SECRET || '';
 
     res.json({
       dias_trial: configMap['dias_trial'] || '14',
@@ -886,8 +981,10 @@ const getConfiguracoesSaaS = async (req, res) => {
       mp_client_id: dbClientId,
       mp_client_secret: dbClientSecret,
       mp_master_access_token: dbMasterToken,
+      mp_webhook_secret: dbWebhookSecret,
       has_mp_client_secret: Boolean(dbClientSecret),
       has_mp_master_access_token: Boolean(dbMasterToken),
+      has_mp_webhook_secret: Boolean(dbWebhookSecret),
       reasons: reasonsRows.map(r => r.motivo)
     });
   } catch (err) {
@@ -897,7 +994,7 @@ const getConfiguracoesSaaS = async (req, res) => {
 };
 
 const updateConfiguracoesSaaS = async (req, res) => {
-  const { dias_trial, trial_ativo, dias_abandono_cadastro, manutencao_ativa, manutencao_mensagem, reasons, mp_client_id, mp_client_secret, mp_master_access_token } = req.body;
+  const { dias_trial, trial_ativo, dias_abandono_cadastro, manutencao_ativa, manutencao_mensagem, reasons, mp_client_id, mp_client_secret, mp_master_access_token, mp_webhook_secret } = req.body;
   try {
     const envUpdates = {};
 
@@ -938,6 +1035,11 @@ const updateConfiguracoesSaaS = async (req, res) => {
       const cleanToken = String(mp_master_access_token).trim();
       await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['mp_master_access_token', cleanToken]);
       envUpdates['MERCADO_PAGO_ACCESS_TOKEN'] = cleanToken;
+    }
+    if (mp_webhook_secret !== undefined) {
+      const cleanWebhookSecret = String(mp_webhook_secret).trim();
+      await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['mp_webhook_secret', cleanWebhookSecret]);
+      envUpdates['MERCADO_PAGO_WEBHOOK_SECRET'] = cleanWebhookSecret;
     }
 
     if (Object.keys(envUpdates).length > 0) {

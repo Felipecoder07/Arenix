@@ -8,6 +8,8 @@ interface PlanoDados {
   arena_status: number; // 1 = Ativa, 0 = Inadimplente/Bloqueada
   dia_vencimento: number;
   trial_expira_em: string | null;
+  em_trial?: boolean;
+  dias_restantes_trial?: number;
   ciclo_cobranca?: string;
   cobertura_ate?: string | null;
   proximo_vencimento?: string | null;
@@ -129,6 +131,7 @@ export function AdminAssinatura() {
   const [gerandoPix, setGerandoPix] = useState(false);
   const [pixCopiado, setPixCopiado] = useState(false);
   const [pixPagoComSucesso, setPixPagoComSucesso] = useState(false);
+  const [pixExpirado, setPixExpirado] = useState(false);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ message, type });
@@ -176,9 +179,23 @@ export function AdminAssinatura() {
 
   // Polling automático do Pix (a cada 4s quando o modal Pix estiver aberto)
   useEffect(() => {
-    if (!modalPixOpen || !pixData || !pixData.gateway_ref || pixPagoComSucesso) return;
+    if (!modalPixOpen || !pixData || !pixData.gateway_ref || pixPagoComSucesso || pixExpirado) return;
+
+    // Se a data de expiração já tiver passado no momento da abertura, encerra imediatamente
+    if (pixData.expira_em && new Date() >= new Date(pixData.expira_em)) {
+      setPixExpirado(true);
+      return;
+    }
 
     const interval = setInterval(async () => {
+      // Checar se expirou durante a sessão
+      if (pixData.expira_em && new Date() >= new Date(pixData.expira_em)) {
+        clearInterval(interval);
+        setPixExpirado(true);
+        showToast('O prazo de validade deste QR Code Pix expirou. Gere uma nova cobrança.', 'info');
+        return;
+      }
+
       try {
         const res = await fetch(`/api/tenant/assinatura/status-pagamento/${pixData.gateway_ref}`, {
           headers: { Authorization: `Bearer ${token}` }
@@ -197,7 +214,7 @@ export function AdminAssinatura() {
     }, 4000);
 
     return () => clearInterval(interval);
-  }, [modalPixOpen, pixData, pixPagoComSucesso]);
+  }, [modalPixOpen, pixData, pixPagoComSucesso, pixExpirado]);
 
   // Ação: Abrir modal de seleção de planos
   const abrirModalPlanos = async () => {
@@ -255,6 +272,7 @@ export function AdminAssinatura() {
       setModalPixOpen(true);
       setPixPagoComSucesso(false);
       setPixCopiado(false);
+      setPixExpirado(false);
       showToast(`Cobrança Pix gerada para o Plano ${resData.plano_nome} (${resData.ciclo === 'anual' ? 'Anual' : 'Mensal'}). Realize o pagamento para ativar!`, 'info');
     } catch (err: any) {
       showToast(err.message || 'Erro ao processar upgrade de plano.', 'error');
@@ -285,12 +303,222 @@ export function AdminAssinatura() {
     }
   };
 
+  // Ação: Imprimir/Salvar PDF do recibo através de iframe isolado de impressão
+  const handleImprimirRecibo = () => {
+    if (!reciboSelecionado) return;
+
+    const dataPagamentoFormatada = formatarDataBR(reciboSelecionado.fatura.data_pagamento);
+    const dataVencimentoFormatada = formatarDataBR(reciboSelecionado.fatura.data_vencimento);
+    const valorFormatado = Number(reciboSelecionado.fatura.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const printHtml = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Comprovante - ${reciboSelecionado.recibo_numero}</title>
+          <style>
+            @page {
+              margin: 15mm;
+              size: portrait;
+            }
+            * {
+              box-sizing: border-box;
+              margin: 0;
+              padding: 0;
+            }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+              color: #0f172a;
+              background: #ffffff;
+              padding: 24px;
+              display: flex;
+              justify-content: center;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .recibo-card {
+              width: 100%;
+              max-width: 520px;
+              border: 1px solid #e2e8f0;
+              border-radius: 12px;
+              padding: 28px;
+              background: #ffffff;
+            }
+            .header {
+              border-bottom: 2px dashed #cbd5e1;
+              padding-bottom: 16px;
+              margin-bottom: 18px;
+              text-align: center;
+            }
+            .icon {
+              font-size: 32px;
+              line-height: 1;
+              margin-bottom: 6px;
+            }
+            .title {
+              font-size: 16px;
+              font-weight: 800;
+              color: #0f172a;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              margin-bottom: 2px;
+            }
+            .subtitle {
+              font-size: 12px;
+              color: #64748b;
+              margin-bottom: 8px;
+            }
+            .badge {
+              display: inline-block;
+              padding: 3px 12px;
+              border-radius: 12px;
+              background-color: #dcfce7;
+              color: #166534;
+              font-weight: 700;
+              font-size: 11.5px;
+            }
+            .details {
+              display: flex;
+              flex-direction: column;
+              gap: 8px;
+              font-size: 12.5px;
+              margin-bottom: 18px;
+            }
+            .row {
+              display: flex;
+              justify-content: space-between;
+              border-bottom: 1px solid #f1f5f9;
+              padding-bottom: 6px;
+            }
+            .row-label {
+              color: #64748b;
+            }
+            .row-val {
+              color: #0f172a;
+              font-weight: 600;
+              text-align: right;
+            }
+            .row-mono {
+              font-family: monospace;
+              font-size: 11px;
+              color: #475569;
+            }
+            .total-box {
+              background-color: #f8fafc;
+              border-radius: 8px;
+              padding: 14px 18px;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              border: 1px solid #e2e8f0;
+              margin-bottom: 16px;
+            }
+            .total-label {
+              font-size: 14px;
+              font-weight: 700;
+              color: #334155;
+            }
+            .total-val {
+              font-size: 20px;
+              font-weight: 800;
+              color: #16a34a;
+            }
+            .footer {
+              text-align: center;
+              font-size: 11px;
+              color: #94a3b8;
+              border-top: 1px solid #f1f5f9;
+              padding-top: 12px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="recibo-card">
+            <div class="header">
+              <div class="icon">🧾</div>
+              <h2 class="title">Comprovante de Pagamento</h2>
+              <p class="subtitle">${reciboSelecionado.emissor.empresa}</p>
+              <span class="badge">${reciboSelecionado.recibo_numero} — LIQUIDADO</span>
+            </div>
+
+            <div class="details">
+              <div class="row">
+                <span class="row-label">Arena / Cliente:</span>
+                <span class="row-val">${reciboSelecionado.arena.nome}</span>
+              </div>
+              <div class="row">
+                <span class="row-label">Descrição:</span>
+                <span class="row-val">${reciboSelecionado.fatura.descricao}</span>
+              </div>
+              <div class="row">
+                <span class="row-label">Ciclo / Período:</span>
+                <span class="row-val" style="text-transform: capitalize;">${reciboSelecionado.fatura.ciclo}</span>
+              </div>
+              <div class="row">
+                <span class="row-label">Vencimento:</span>
+                <span class="row-val">${dataVencimentoFormatada}</span>
+              </div>
+              <div class="row">
+                <span class="row-label">Data do Pagamento:</span>
+                <span class="row-val">${dataPagamentoFormatada}</span>
+              </div>
+              <div class="row">
+                <span class="row-label">Método:</span>
+                <span class="row-val">${reciboSelecionado.fatura.metodo_pagamento}</span>
+              </div>
+              <div class="row">
+                <span class="row-label">Autenticação Gateway:</span>
+                <span class="row-val row-mono">${reciboSelecionado.fatura.gateway_ref}</span>
+              </div>
+            </div>
+
+            <div class="total-box">
+              <span class="total-label">Valor Total Pago:</span>
+              <span class="total-val">R$ ${valorFormatado}</span>
+            </div>
+
+            <div class="footer">
+              <p>Autenticação emitida eletronicamente por ${reciboSelecionado.emissor.sistema}</p>
+              <p>Dúvidas e suporte: ${reciboSelecionado.emissor.suporte}</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) return;
+
+    doc.open();
+    doc.write(printHtml);
+    doc.close();
+
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      setTimeout(() => {
+        iframe.remove();
+      }, 1500);
+    }, 300);
+  };
+
   // Ação: Abrir modal e gerar Pix para fatura existente
   const handlePagarPix = async (fatura: Fatura) => {
     setFaturaSelecionada(fatura);
     setPixData(null);
     setPixPagoComSucesso(false);
     setPixCopiado(false);
+    setPixExpirado(false);
     setModalPixOpen(true);
     setGerandoPix(true);
 
@@ -352,6 +580,7 @@ export function AdminAssinatura() {
       setModalPixOpen(true);
       setPixPagoComSucesso(false);
       setPixCopiado(false);
+      setPixExpirado(false);
       showToast(`Cobrança Pix da próxima mensalidade gerada com sucesso!`, 'info');
       // Recarregar dados para refletir a nova fatura na tabela
       carregarDados();
@@ -362,12 +591,24 @@ export function AdminAssinatura() {
     }
   };
 
-  // Formatar data no padrão brasileiro DD/MM/AAAA
+  // Formatar data no padrão brasileiro DD/MM/AAAA de forma ultra-segura
   const formatarDataBR = (dataStr?: string | null) => {
     if (!dataStr) return '-';
-    const parts = dataStr.split('T')[0].split('-');
-    if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
-    return dataStr;
+    try {
+      const str = String(dataStr).trim();
+      const datePart = str.split('T')[0].split(' ')[0];
+      const parts = datePart.split('-');
+      if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+      const d = new Date(str);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString('pt-BR');
+      }
+    } catch {
+      // fallback
+    }
+    return String(dataStr);
   };
 
   // Obter texto amigável do próximo vencimento ou data de renovação
@@ -433,7 +674,12 @@ export function AdminAssinatura() {
             position: 'fixed',
             bottom: '24px',
             right: '24px',
-            backgroundColor: toast.type === 'success' ? '#2e7d32' : '#c62828',
+            backgroundColor:
+              toast.type === 'success'
+                ? '#16a34a'
+                : toast.type === 'info'
+                ? '#2563eb'
+                : '#dc2626',
             color: '#fff',
             padding: '12px 24px',
             borderRadius: '8px',
@@ -531,7 +777,7 @@ export function AdminAssinatura() {
         </div>
       )}
 
-      {dados?.trial_expira_em && !isBloqueada && (
+      {dados?.trial_expira_em && dados?.em_trial && !isBloqueada && (
         <div
           style={{
             backgroundColor: '#eff6ff',
@@ -541,18 +787,45 @@ export function AdminAssinatura() {
             marginBottom: '24px',
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
             gap: '12px'
           }}
         >
-          <span style={{ fontSize: '24px' }}>✨</span>
-          <div>
-            <h4 style={{ margin: 0, color: '#1e40af', fontSize: '15px', fontWeight: 700 }}>
-              Período de Testes (Trial) Ativo
-            </h4>
-            <p style={{ margin: '2px 0 0 0', color: '#1e3a8a', fontSize: '13px' }}>
-              Aproveite todos os recursos da plataforma gratuitamente até {new Date(dados.trial_expira_em).toLocaleDateString('pt-BR')}.
-            </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{ fontSize: '28px' }}>🎉</span>
+            <div>
+              <h4 style={{ margin: 0, color: '#1e40af', fontSize: '15px', fontWeight: 700 }}>
+                Período de Teste Gratuito (Trial) Ativo
+              </h4>
+              <p style={{ margin: '2px 0 0 0', color: '#1e3a8a', fontSize: '13px' }}>
+                Aproveite todos os recursos da plataforma gratuitamente até{' '}
+                <strong>{formatarDataBR(dados.trial_expira_em)}</strong>
+                {dados.dias_restantes_trial !== undefined && (
+                  <span style={{ marginLeft: '6px', fontWeight: 600, color: '#2563eb' }}>
+                    ({dados.dias_restantes_trial} {dados.dias_restantes_trial === 1 ? 'dia restante' : 'dias restantes'})
+                  </span>
+                )}.
+              </p>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={abrirModalPlanos}
+            style={{
+              backgroundColor: '#2563eb',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '8px',
+              padding: '8px 16px',
+              fontSize: '12.5px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
+            }}
+          >
+            ⭐ Efetivar Assinatura
+          </button>
         </div>
       )}
 
@@ -827,10 +1100,10 @@ export function AdminAssinatura() {
                         </div>
                       </td>
                       <td style={{ padding: '14px 16px', color: '#475569' }}>
-                        {fat.data_vencimento ? new Date(fat.data_vencimento + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
+                        {formatarDataBR(fat.data_vencimento)}
                       </td>
                       <td style={{ padding: '14px 16px', fontWeight: 700, color: '#0f172a' }}>
-                        R$ {fat.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        R$ {Number(fat.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                       <td style={{ padding: '14px 16px', color: '#64748b' }}>
                         {fat.metodo_pagamento || '-'}
@@ -873,7 +1146,7 @@ export function AdminAssinatura() {
                         ) : (
                           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
                             <span style={{ fontSize: '12px', color: '#16a34a', fontWeight: 500 }}>
-                              Pago em {fat.data_pagamento ? new Date(fat.data_pagamento + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
+                              Pago em {formatarDataBR(fat.data_pagamento)}
                             </span>
                             <button
                               type="button"
@@ -985,6 +1258,37 @@ export function AdminAssinatura() {
                   }}
                 >
                   Concluir
+                </button>
+              </div>
+            ) : pixExpirado ? (
+              <div style={{ padding: '24px 8px', textAlign: 'center' }}>
+                <span style={{ fontSize: '48px', display: 'block', marginBottom: '12px' }}>⏰</span>
+                <h4 style={{ fontSize: '18px', fontWeight: 700, color: '#991b1b', margin: '0 0 8px 0' }}>
+                  Cobrança Pix Expirada
+                </h4>
+                <p style={{ fontSize: '14px', color: '#64748b', lineHeight: 1.5, margin: '0 0 24px 0' }}>
+                  O prazo limite deste código Pix encerrou. Clique no botão abaixo para gerar uma nova cobrança atualizada.
+                </p>
+                <button
+                  type="button"
+                  disabled={gerandoPix}
+                  onClick={() => faturaSelecionada && handlePagarPix(faturaSelecionada)}
+                  style={{
+                    backgroundColor: '#2563eb',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '12px 24px',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    cursor: gerandoPix ? 'wait' : 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    boxShadow: '0 2px 6px rgba(37,99,235,0.25)'
+                  }}
+                >
+                  <span>🔄</span> {gerandoPix ? 'Gerando Novo Pix...' : 'Gerar Novo Pix'}
                 </button>
               </div>
             ) : pixData ? (
@@ -1521,6 +1825,7 @@ export function AdminAssinatura() {
             onClick={(e) => e.stopPropagation()}
           >
             <button
+              className="no-print"
               onClick={() => setModalReciboOpen(false)}
               style={{
                 position: 'absolute',
@@ -1542,67 +1847,73 @@ export function AdminAssinatura() {
               </div>
             ) : reciboSelecionado ? (
               <div>
-                {/* Cabeçalho do Recibo */}
-                <div style={{ borderBottom: '2px dashed #cbd5e1', paddingBottom: '20px', marginBottom: '20px', textAlign: 'center' }}>
-                  <span style={{ fontSize: '36px' }}>🧾</span>
-                  <h2 style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a', margin: '8px 0 2px 0', textTransform: 'uppercase' }}>
-                    Comprovante de Pagamento
-                  </h2>
-                  <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>
-                    {reciboSelecionado.emissor.empresa}
-                  </p>
-                  <span style={{ display: 'inline-block', marginTop: '8px', padding: '3px 12px', borderRadius: '12px', backgroundColor: '#dcfce7', color: '#166534', fontWeight: 700, fontSize: '12px' }}>
-                    {reciboSelecionado.recibo_numero} — LIQUIDADO
-                  </span>
-                </div>
-
-                {/* Detalhes da Cobrança */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '13px', marginBottom: '20px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
-                    <span style={{ color: '#64748b' }}>Arena / Cliente:</span>
-                    <strong style={{ color: '#0f172a' }}>{reciboSelecionado.arena.nome}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
-                    <span style={{ color: '#64748b' }}>Descrição:</span>
-                    <strong style={{ color: '#0f172a' }}>{reciboSelecionado.fatura.descricao}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
-                    <span style={{ color: '#64748b' }}>Ciclo / Período:</span>
-                    <strong style={{ color: '#0f172a', textTransform: 'capitalize' }}>{reciboSelecionado.fatura.ciclo}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
-                    <span style={{ color: '#64748b' }}>Data do Pagamento:</span>
-                    <strong style={{ color: '#0f172a' }}>
-                      {reciboSelecionado.fatura.data_pagamento
-                        ? new Date(reciboSelecionado.fatura.data_pagamento + 'T00:00:00').toLocaleDateString('pt-BR')
-                        : '-'}
-                    </strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
-                    <span style={{ color: '#64748b' }}>Método:</span>
-                    <strong style={{ color: '#0f172a' }}>{reciboSelecionado.fatura.metodo_pagamento}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
-                    <span style={{ color: '#64748b' }}>Autenticação / Gateway Ref:</span>
-                    <span style={{ color: '#475569', fontFamily: 'monospace', fontSize: '11px' }}>
-                      {reciboSelecionado.fatura.gateway_ref}
+                <div id="recibo-print-area">
+                  {/* Cabeçalho do Recibo */}
+                  <div style={{ borderBottom: '2px dashed #cbd5e1', paddingBottom: '20px', marginBottom: '20px', textAlign: 'center' }}>
+                    <span style={{ fontSize: '36px' }}>🧾</span>
+                    <h2 style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a', margin: '8px 0 2px 0', textTransform: 'uppercase' }}>
+                      Comprovante de Pagamento
+                    </h2>
+                    <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>
+                      {reciboSelecionado.emissor.empresa}
+                    </p>
+                    <span style={{ display: 'inline-block', marginTop: '8px', padding: '3px 12px', borderRadius: '12px', backgroundColor: '#dcfce7', color: '#166534', fontWeight: 700, fontSize: '12px' }}>
+                      {reciboSelecionado.recibo_numero} — LIQUIDADO
                     </span>
                   </div>
-                </div>
 
-                {/* Total */}
-                <div style={{ backgroundColor: '#f8fafc', borderRadius: '10px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', border: '1px solid #e2e8f0' }}>
-                  <span style={{ fontSize: '15px', fontWeight: 700, color: '#334155' }}>Valor Total Pago:</span>
-                  <span style={{ fontSize: '22px', fontWeight: 800, color: '#16a34a' }}>
-                    R$ {reciboSelecionado.fatura.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
+                  {/* Detalhes da Cobrança */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '13px', marginBottom: '20px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
+                      <span style={{ color: '#64748b' }}>Arena / Cliente:</span>
+                      <strong style={{ color: '#0f172a' }}>{reciboSelecionado.arena.nome}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
+                      <span style={{ color: '#64748b' }}>Descrição:</span>
+                      <strong style={{ color: '#0f172a' }}>{reciboSelecionado.fatura.descricao}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
+                      <span style={{ color: '#64748b' }}>Ciclo / Período:</span>
+                      <strong style={{ color: '#0f172a', textTransform: 'capitalize' }}>{reciboSelecionado.fatura.ciclo}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
+                      <span style={{ color: '#64748b' }}>Vencimento Original:</span>
+                      <strong style={{ color: '#0f172a' }}>
+                        {formatarDataBR(reciboSelecionado.fatura.data_vencimento)}
+                      </strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
+                      <span style={{ color: '#64748b' }}>Data do Pagamento:</span>
+                      <strong style={{ color: '#16a34a' }}>
+                        {formatarDataBR(reciboSelecionado.fatura.data_pagamento)}
+                      </strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
+                      <span style={{ color: '#64748b' }}>Método:</span>
+                      <strong style={{ color: '#0f172a' }}>{reciboSelecionado.fatura.metodo_pagamento}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
+                      <span style={{ color: '#64748b' }}>Autenticação / Gateway Ref:</span>
+                      <span style={{ color: '#475569', fontFamily: 'monospace', fontSize: '11px' }}>
+                        {reciboSelecionado.fatura.gateway_ref}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Total */}
+                  <div style={{ backgroundColor: '#f8fafc', borderRadius: '10px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', border: '1px solid #e2e8f0' }}>
+                    <span style={{ fontSize: '15px', fontWeight: 700, color: '#334155' }}>Valor Total Pago:</span>
+                    <span style={{ fontSize: '22px', fontWeight: 800, color: '#16a34a' }}>
+                      R$ {Number(reciboSelecionado.fatura.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Botões de Ação */}
                 <div style={{ display: 'flex', gap: '12px' }}>
                   <button
                     type="button"
-                    onClick={() => window.print()}
+                    onClick={handleImprimirRecibo}
                     style={{
                       flex: 1,
                       backgroundColor: '#0f172a',

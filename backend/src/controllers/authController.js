@@ -163,12 +163,16 @@ const register = async (req, res) => {
 
       let trialExpiraEm = null;
       let arenaStatus = 1;
+      let diaVencimento = new Date().getUTCDate();
 
       if (isTrialAtivo && diasTrial > 0) {
-        trialExpiraEm = new Date(Date.now() + diasTrial * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const trialDate = new Date(Date.now() + diasTrial * 24 * 60 * 60 * 1000);
+        trialExpiraEm = trialDate.toISOString().split('T')[0];
+        diaVencimento = parseInt(trialExpiraEm.split('-')[2], 10);
         arenaStatus = 1; // Ativa durante o trial grátis
       } else {
         trialExpiraEm = null;
+        diaVencimento = new Date().getUTCDate();
         arenaStatus = 0; // Suspenso / Pendente de pagamento imediato
       }
 
@@ -187,8 +191,8 @@ const register = async (req, res) => {
       }
 
       db.run(
-        'INSERT INTO Arenas (nome, slug, email, telefone, endereco, plano_id, trial_expira_em, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', 
-        [arenaNomeFinal, finalSlug, email.trim().toLowerCase(), telefone || null, arena_cidade || null, planoIdFinal, trialExpiraEm, arenaStatus], 
+        'INSERT INTO Arenas (nome, slug, email, telefone, endereco, plano_id, dia_vencimento, trial_expira_em, status, ciclo_cobranca) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', 
+        [arenaNomeFinal, finalSlug, email.trim().toLowerCase(), telefone || null, arena_cidade || null, planoIdFinal, diaVencimento, trialExpiraEm, arenaStatus, 'mensal'], 
         async function(err) {
           if (err) {
             console.error('Erro ao criar arena no register:', err);
@@ -199,14 +203,15 @@ const register = async (req, res) => {
           // Se cadastrada como pendente (sem trial), gerar fatura imediata para o primeiro pagamento
           if (arenaStatus === 0) {
             try {
-              const planoInfo = await db.getAsync('SELECT valor_mensal FROM PlanosSaaS WHERE id = ?', [planoIdFinal]);
+              const planoInfo = await db.getAsync('SELECT nome, valor_mensal FROM PlanosSaaS WHERE id = ?', [planoIdFinal]);
               const valorFatura = planoInfo ? planoInfo.valor_mensal : 0;
               const todayStr = new Date().toISOString().split('T')[0];
+              const planoNome = planoInfo?.nome || 'Pro';
 
               await db.runAsync(`
-                INSERT INTO FaturasSaaS (tenant_id, plano_id, valor, data_vencimento, status)
-                VALUES (?, ?, ?, ?, 'Pendente')
-              `, [tenant_id, planoIdFinal, valorFatura, todayStr]);
+                INSERT INTO FaturasSaaS (tenant_id, plano_id, valor, ciclo, descricao, data_vencimento, status)
+                VALUES (?, ?, ?, 'mensal', ?, ?, 'Pendente')
+              `, [tenant_id, planoIdFinal, valorFatura, `Assinatura Inicial Plano ${planoNome}`, todayStr]);
             } catch (fatErr) {
               console.error('Erro ao gerar fatura inicial para arena sem trial:', fatErr);
             }

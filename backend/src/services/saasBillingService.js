@@ -17,6 +17,7 @@ const crypto = require('crypto');
 const db = require('../config/database');
 const logAuditEvent = require('../utils/auditLogger');
 const { gerarPixEMV } = require('../utils/pixPayload');
+const { sendEmail } = require('./emailService');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. OBTER ACCESS TOKEN DO MASTER
@@ -263,14 +264,79 @@ const liquidarFaturaSaaS = async (gatewayRef) => {
 // 4. ENVIAR AVISOS DE VENCIMENTO (CRON DIÁRIO)
 // ─────────────────────────────────────────────────────────────────────────────
 
+const formatarDataBR = (dataStr) => {
+  if (!dataStr) return '-';
+  const parts = dataStr.split('T')[0].split('-');
+  if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  return dataStr;
+};
+
+const gerarHtmlAvisoVencimento = (fatura) => {
+  const dataFormatada = formatarDataBR(fatura.data_vencimento);
+  const valorFormatado = Number(fatura.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  return `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+      <div style="background-color: #0f172a; padding: 24px; text-align: center;">
+        <h1 style="color: #ffffff; margin: 0; font-size: 20px; font-weight: 700; letter-spacing: 0.5px;">Arenix CourtManager</h1>
+        <p style="color: #94a3b8; margin: 4px 0 0 0; font-size: 13px;">Gestão Inteligente de Arenas Esportivas</p>
+      </div>
+      <div style="padding: 32px 24px;">
+        <div style="display: inline-block; background-color: #fef3c7; color: #92400e; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; margin-bottom: 16px;">
+          ⚠️ AVISO DE VENCIMENTO PRÓXIMO
+        </div>
+        <h2 style="color: #1e293b; margin: 0 0 12px 0; font-size: 18px; font-weight: 700;">Olá, ${fatura.arena_nome || 'Gestor'}!</h2>
+        <p style="color: #475569; font-size: 14px; line-height: 1.6; margin: 0 0 20px 0;">
+          Informamos que a fatura de mensalidade da sua arena está próxima do vencimento. Mantenha seus pagamentos em dia para garantir a continuidade dos serviços e o agendamento de quadras sem interrupções.
+        </p>
+
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px; margin-bottom: 24px;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+            <tr>
+              <td style="color: #64748b; padding-bottom: 8px;">Fatura:</td>
+              <td style="text-align: right; color: #0f172a; font-weight: 600; padding-bottom: 8px;">#${fatura.id}</td>
+            </tr>
+            <tr>
+              <td style="color: #64748b; padding-bottom: 8px;">Valor:</td>
+              <td style="text-align: right; color: #16a34a; font-weight: 700; font-size: 16px; padding-bottom: 8px;">R$ ${valorFormatado}</td>
+            </tr>
+            <tr>
+              <td style="color: #64748b;">Data de Vencimento:</td>
+              <td style="text-align: right; color: #dc2626; font-weight: 700;">${dataFormatada}</td>
+            </tr>
+          </table>
+        </div>
+
+        <p style="color: #475569; font-size: 13.5px; line-height: 1.5; margin: 0 0 24px 0;">
+          Você pode pagar instantaneamente via <strong>Pix</strong> diretamente no painel administrativo da arena com liberação automática em segundos.
+        </p>
+
+        <div style="text-align: center; margin-bottom: 24px;">
+          <a href="https://app.arenix.com.br" target="_blank" style="display: inline-block; background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 14px; box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);">
+            Acessar Painel & Pagar com Pix
+          </a>
+        </div>
+
+        <p style="color: #94a3b8; font-size: 12px; line-height: 1.4; margin: 0; border-top: 1px solid #f1f5f9; padding-top: 16px;">
+          Caso o pagamento já tenha sido efetuado, por favor desconsidere esta mensagem.
+        </p>
+      </div>
+      <div style="background-color: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0;">
+        <p style="color: #94a3b8; margin: 0; font-size: 12px;">© ${new Date().getFullYear()} Arenix SaaS. Todos os direitos reservados.</p>
+      </div>
+    </div>
+  `;
+};
+
 /**
- * Busca arenas com faturas vencendo nos próximos 3 dias e loga os avisos.
+ * Busca arenas com faturas vencendo nos próximos 3 dias, envia e-mails e registra logs de auditoria.
  * @returns {Promise<{avisadas: number}>}
  */
 const enviarAvisosVencimento = async () => {
   try {
     const faturasProximas = await db.allAsync(`
-      SELECT f.id, f.valor, f.data_vencimento, a.nome as arena_nome, a.email as arena_email
+      SELECT f.id, f.valor, f.data_vencimento, a.nome as arena_nome,
+             COALESCE(a.email, (SELECT email FROM Usuarios WHERE tenant_id = a.id AND perfil = 'Administrador' AND ativo = 1 LIMIT 1)) as arena_email
       FROM FaturasSaaS f
       JOIN Arenas a ON f.tenant_id = a.id
       WHERE f.status IN ('Pendente', 'Atrasada')
@@ -278,20 +344,35 @@ const enviarAvisosVencimento = async () => {
         AND date(f.data_vencimento) <= date('now', '+3 days')
     `);
 
+    let enviadosCount = 0;
+
     for (const fatura of faturasProximas) {
       console.log(
         `[SaaS Billing] AVISO: Fatura #${fatura.id} de R$${Number(fatura.valor).toFixed(2)} ` +
-        `para '${fatura.arena_nome}' vence em ${fatura.data_vencimento}. E-mail: ${fatura.arena_email}`
+        `para '${fatura.arena_nome}' vence em ${fatura.data_vencimento}. E-mail: ${fatura.arena_email || 'Nenhum'}`
       );
-      logAuditEvent(0, 'SaaS Billing: Aviso de Vencimento',
-        `Aviso enviado para Arena '${fatura.arena_nome}' — Fatura #${fatura.id} vence em ${fatura.data_vencimento}`,
-        '127.0.0.1');
+
+      if (fatura.arena_email) {
+        const assunto = `⚠️ Aviso de Vencimento: Fatura #${fatura.id} vence em ${formatarDataBR(fatura.data_vencimento)} — Arenix`;
+        const html = gerarHtmlAvisoVencimento(fatura);
+        const enviado = await sendEmail(fatura.arena_email, assunto, html);
+        if (enviado) {
+          enviadosCount++;
+        }
+      }
+
+      logAuditEvent(
+        0,
+        'SaaS Billing: Aviso de Vencimento',
+        `Aviso enviado para Arena '${fatura.arena_nome}' (E-mail: ${fatura.arena_email || 'Não informado'}) — Fatura #${fatura.id} vence em ${fatura.data_vencimento}`,
+        '127.0.0.1'
+      );
     }
 
-    return { avisadas: faturasProximas.length };
+    return { avisadas: faturasProximas.length, enviados: enviadosCount };
   } catch (err) {
     console.error('[SaaS Billing] Erro ao enviar avisos de vencimento:', err);
-    return { avisadas: 0 };
+    return { avisadas: 0, enviados: 0 };
   }
 };
 

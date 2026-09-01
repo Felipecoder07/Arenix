@@ -4,81 +4,11 @@ const db = require('../config/database');
 const { verifyToken, requireRole } = require('../middlewares/auth');
 const saasBillingService = require('../services/saasBillingService');
 const logAuditEvent = require('../utils/auditLogger');
+const { formatarCompetencia, calcularProximaDataVencimento, calcularDiasRestantesTrial, NOMES_MESES } = require('../utils/dateUtils');
 
 // Todas as rotas requerem usuário autenticado com perfil Administrador ou Gerente da Arena
 router.use(verifyToken);
 router.use(requireRole(['Administrador', 'Gerente']));
-
-// Nomes dos meses em português para competência
-const NOMES_MESES = [
-  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-];
-
-/**
- * Formata a competência amigável da fatura a partir da data de vencimento.
- * Ex: '2026-10-10' -> 'Outubro/2026'
- */
-function formatarCompetencia(dataVencimentoStr, ciclo = 'mensal') {
-  if (!dataVencimentoStr) return 'Mensalidade';
-  const [anoStr, mesStr] = dataVencimentoStr.split('-');
-  const ano = parseInt(anoStr, 10);
-  const mesIdx = parseInt(mesStr, 10) - 1;
-  const mesNome = NOMES_MESES[mesIdx] || mesStr;
-
-  if (ciclo === 'anual') {
-    return `${mesNome}/${ano} a ${mesNome}/${ano + 1}`;
-  }
-  return `${mesNome}/${ano}`;
-}
-
-/**
- * Calcula a próxima data de vencimento avançando exatamente 1 ciclo (+1 mês ou +1 ano).
- */
-function calcularProximaDataVencimento(dataBaseStr, diaVencimento = 10, ciclo = 'mensal') {
-  const diaPadrao = Math.min(Math.max(parseInt(diaVencimento, 10) || 10, 1), 28);
-
-  if (dataBaseStr) {
-    const [anoStr, mesStr] = dataBaseStr.split('-');
-    let ano = parseInt(anoStr, 10);
-    let mes = parseInt(mesStr, 10); // 1 a 12
-
-    if (ciclo === 'anual') {
-      ano += 1;
-    } else {
-      mes += 1;
-      if (mes > 12) {
-        mes = 1;
-        ano += 1;
-      }
-    }
-    const mesFormatado = String(mes).padStart(2, '0');
-    const diaFormatado = String(diaPadrao).padStart(2, '0');
-    return `${ano}-${mesFormatado}-${diaFormatado}`;
-  }
-
-  // Se não há data base anterior:
-  const hoje = new Date();
-  const anoHoje = hoje.getFullYear();
-  const mesHoje = hoje.getMonth() + 1;
-  const diaHoje = hoje.getDate();
-
-  let ano = anoHoje;
-  let mes = mesHoje;
-
-  // Se hoje já passou do dia do vencimento, o próximo vencimento é no mês seguinte
-  if (diaHoje > diaPadrao) {
-    mes += 1;
-    if (mes > 12) {
-      mes = 1;
-      ano += 1;
-    }
-  }
-
-  const mesFormatado = String(mes).padStart(2, '0');
-  const diaFormatado = String(diaPadrao).padStart(2, '0');
-  return `${ano}-${mesFormatado}-${diaFormatado}`;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. GET /api/tenant/assinatura/plano
@@ -164,12 +94,17 @@ router.get('/plano', async (req, res) => {
       proximaCompetencia = formatarCompetencia(dataProx, cicloArena);
     }
 
+    const emTrial = !!(arena.trial_expira_em && arena.trial_expira_em >= hojeStr);
+    const diasRestantesTrial = emTrial ? calcularDiasRestantesTrial(arena.trial_expira_em) : 0;
+
     res.json({
       arena_id: arena.id,
       arena_nome: arena.nome,
       arena_status: arena.arena_status, // 1 = Ativa, 0 = Inadimplente/Bloqueada
       dia_vencimento: arena.dia_vencimento,
       trial_expira_em: arena.trial_expira_em,
+      em_trial: emTrial,
+      dias_restantes_trial: diasRestantesTrial,
       ciclo_cobranca: cicloArena,
       cobertura_ate: coberturaAte,
       proximo_vencimento: proximoVencimento,
@@ -282,6 +217,10 @@ router.post('/faturas/:id/gerar-pix', async (req, res) => {
 //   - Auto-upgrade de plano e auto-desbloqueio da arena
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/faturas/:id/simular-pagamento', async (req, res) => {
+  if (process.env.NODE_ENV === 'production' && req.user.perfil !== 'SuperAdmin') {
+    return res.status(403).json({ error: 'A simulação de pagamentos está desabilitada em ambiente de produção.' });
+  }
+
   const tenantId = req.user.tenant_id;
   const faturaId = parseInt(req.params.id, 10);
 
@@ -695,16 +634,18 @@ router.get('/faturas/:id/recibo', async (req, res) => {
     if (!fatura) {
       return res.status(404).json({ error: 'Fatura não encontrada.' });
     }
-    if (fatura.status !== 'Paga') {
+    if (!fatura.status || fatura.status.toLowerCase() !== 'paga') {
       return res.status(400).json({ error: 'O recibo só fica disponível após a confirmação do pagamento.' });
     }
+
+    const valorNumerico = parseFloat(fatura.valor) || 0;
 
     res.json({
       recibo_numero: `REC-${String(fatura.id).padStart(6, '0')}`,
       data_emissao: new Date().toISOString(),
       fatura: {
         id: fatura.id,
-        valor: fatura.valor,
+        valor: valorNumerico,
         ciclo: fatura.ciclo || 'mensal',
         descricao: fatura.descricao || `Assinatura Plano ${fatura.plano_nome}`,
         data_vencimento: fatura.data_vencimento,
@@ -726,10 +667,10 @@ router.get('/faturas/:id/recibo', async (req, res) => {
         slug: fatura.arena_slug
       },
       emissor: {
-        empresa: 'CourtManager SaaS — Gestão de Arenas Esportivas',
-        sistema: 'CourtManager Platform',
+        empresa: 'Arenix SaaS — Gestão de Arenas Esportivas',
+        sistema: 'Arenix CourtManager Platform',
         cnpj: '00.000.000/0001-00',
-        suporte: 'suporte@courtmanager.com.br'
+        suporte: 'suporte@arenix.com.br'
       }
     });
   } catch (err) {

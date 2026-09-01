@@ -676,7 +676,7 @@ export function AdminReservas() {
       const valPago = parseFloat(nrPagValor.replace(',', '.')) || nrValorPrevisto;
 
       const payload: any = {
-        cliente_id: nrClienteId,
+        cliente_id: finalClienteId,
         quadra_id: nrQuadraId,
         data_reserva: nrData,
         hora_inicio: nrInicio,
@@ -731,9 +731,9 @@ export function AdminReservas() {
 
           const novaReservaObj: Reserva = {
             id: reservaCriadaId,
-            cliente_id: nrClienteId || undefined,
+            cliente_id: finalClienteId,
             cliente_nome: nrClienteBusca || 'Cliente',
-            cliente_telefone: clientes.find(c => c.id === nrClienteId)?.telefone || '',
+            cliente_telefone: clientes.find(c => c.id === finalClienteId)?.telefone || '',
             quadra_id: nrQuadraId,
             quadra_nome: quadras.find(q => q.id === nrQuadraId)?.nome || '',
             data_reserva: nrData,
