@@ -54,11 +54,162 @@ interface Cliente {
   email?: string;
 }
 
-interface GradeData {
+export interface GradeData {
   quadras: Quadra[];
   reservas: Reserva[];
   bloqueios: Bloqueio[];
 }
+
+export interface Coluna {
+  id: string;
+  label: string;
+  subLabel: string;
+  quadra_id: number;
+  data: string;
+  hora_abertura: string;
+  hora_fechamento: string;
+}
+
+const formatCurrencyInput = (value: string) => {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return '';
+  const num = parseInt(digits, 10) / 100;
+  return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+const formatFloatToCurrencyInput = (num: number) => {
+  return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+const parseCurrencyToFloat = (value: string) => {
+  if (!value) return 0;
+  const clean = value.replace(/\./g, '').replace(',', '.');
+  return parseFloat(clean) || 0;
+};
+
+const getWeekRange = (dateStr: string) => {
+  const d = new Date(dateStr + 'T12:00:00');
+  const day = d.getDay(); // 0 = Domingo, 1 = Segunda, etc.
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  const start = new Date(d.setDate(diff));
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+
+  const startStr = start.toISOString().split('T')[0];
+  const endStr = end.toISOString().split('T')[0];
+  return { startStr, endStr, start, end };
+};
+
+interface AdminGradeSlotProps {
+  col: Coluna;
+  idx: number;
+  row: number;
+  hourStr: string;
+  isPast: boolean;
+  res?: Reserva;
+  blq?: Bloqueio;
+  onCellClick: (quadraId: number, dateStr: string, hourStr: string, reserva?: Reserva, bloqueio?: Bloqueio) => void;
+}
+
+export const AdminGradeSlot: React.FC<AdminGradeSlotProps> = ({
+  col,
+  idx,
+  row,
+  hourStr,
+  isPast,
+  res,
+  blq,
+  onCellClick
+}) => {
+  const isOpen = hourStr >= col.hora_abertura && hourStr < col.hora_fechamento;
+
+  if (!isOpen) {
+    return (
+      <div
+        key={col.id}
+        className="gt-slot s-blocked"
+        style={{ gridColumn: idx + 2, gridRow: row, background: 'var(--charcoal-03)', border: '1px solid var(--border-passive)', opacity: 0.5, pointerEvents: 'none' }}
+      >
+        <span className="slot-name" style={{ color: 'var(--muted)' }}>Fechada</span>
+      </div>
+    );
+  }
+
+  if (blq) {
+    return (
+      <div
+        key={col.id}
+        className="gt-slot s-blocked"
+        title={blq.motivo || 'Bloqueado'}
+        style={{ gridColumn: idx + 2, gridRow: row, cursor: 'pointer' }}
+        onClick={() => onCellClick(col.quadra_id, col.data, hourStr, undefined, blq)}
+      >
+        <span className="slot-name">{blq.motivo || 'Bloqueado'}</span>
+      </div>
+    );
+  }
+
+  if (res) {
+    if (res.hora_inicio === hourStr) {
+      const hI = parseInt(res.hora_inicio.split(':')[0], 10);
+      const hF = parseInt(res.hora_fim.split(':')[0], 10);
+      const span = hF - hI;
+
+      let cssClass = 's-pending';
+      let labelStatus = 'Pendente';
+      if (res.status_pagamento === 'Pago') {
+        cssClass = 's-paid';
+        labelStatus = 'Pago';
+      } else if (res.status_pagamento === 'Parcial') {
+        cssClass = 's-partial';
+        labelStatus = 'Parcial';
+      }
+
+      const formatVal = 'R$ ' + res.valor_total.toFixed(2).replace('.', ',');
+
+      return (
+        <div
+          key={col.id}
+          className={`gt-slot ${cssClass}`}
+          style={{ gridColumn: idx + 2, gridRow: `${row} / span ${span}` }}
+          onClick={() => onCellClick(col.quadra_id, col.data, hourStr, res)}
+        >
+          <span className="slot-name">
+            {res.cliente_nome}
+            {res.esporte && res.esporte !== 'Geral' && (
+              <span style={{ fontSize: '10px', marginLeft: '4px', opacity: 0.85, fontWeight: 'normal' }}>
+                · {res.esporte}
+              </span>
+            )}
+          </span>
+          <span className="slot-label">{formatVal} · {labelStatus}</span>
+        </div>
+      );
+    }
+    return null;
+  }
+
+  if (isPast) {
+    return (
+      <div
+        key={col.id}
+        className="gt-slot s-past-empty"
+        style={{ gridColumn: idx + 2, gridRow: row }}
+      />
+    );
+  }
+
+  return (
+    <div
+      key={col.id}
+      className="gt-slot s-available"
+      style={{ gridColumn: idx + 2, gridRow: row }}
+      onClick={() => onCellClick(col.quadra_id, col.data, hourStr)}
+    >
+      <span className="slot-label">Livre</span>
+    </div>
+  );
+};
 
 export function AdminReservas() {
   const token = localStorage.getItem('courtmanager_token');
@@ -216,37 +367,6 @@ export function AdminReservas() {
 
     return () => clearInterval(interval);
   }, [activeModal, selectedReserva, gatewayRef, token]);
-
-  const formatCurrencyInput = (value: string) => {
-    const digits = value.replace(/\D/g, '');
-    if (!digits) return '';
-    const num = parseInt(digits, 10) / 100;
-    return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
-
-  const formatFloatToCurrencyInput = (num: number) => {
-    return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
-
-  const parseCurrencyToFloat = (value: string) => {
-    if (!value) return 0;
-    const clean = value.replace(/\./g, '').replace(',', '.');
-    return parseFloat(clean) || 0;
-  };
-
-  // Helper: Pegar limites da semana (Segunda a Domingo)
-  const getWeekRange = (dateStr: string) => {
-    const d = new Date(dateStr + 'T12:00:00');
-    const day = d.getDay(); // 0 = Domingo, 1 = Segunda, etc.
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-    const start = new Date(d.setDate(diff));
-    const end = new Date(start);
-    end.setDate(end.getDate() + 6);
-
-    const startStr = start.toISOString().split('T')[0];
-    const endStr = end.toISOString().split('T')[0];
-    return { startStr, endStr, start, end };
-  };
 
   // Carregar Grade principal
   const fetchGrade = async () => {
@@ -1179,107 +1299,32 @@ export function AdminReservas() {
 
       const cells = colunas.map((col, idx) => {
         const isPast = col.data < todayStr || (col.data === todayStr && hourStr < currentHourStr);
+        const res = (reservas || []).find(r =>
+          r.quadra_id === col.quadra_id &&
+          r.data_reserva === col.data &&
+          r.hora_inicio <= hourStr &&
+          r.hora_fim > hourStr
+        );
+        const blq = (bloqueios || []).find(b =>
+          b.quadra_id === col.quadra_id &&
+          b.data_bloqueio === col.data &&
+          b.hora_inicio <= hourStr &&
+          b.hora_fim > hourStr
+        );
 
-        // Se a quadra está aberta neste horário
-        if (hourStr >= col.hora_abertura && hourStr < col.hora_fechamento) {
-          const res = (reservas || []).find(r =>
-            r.quadra_id === col.quadra_id &&
-            r.data_reserva === col.data &&
-            r.hora_inicio <= hourStr &&
-            r.hora_fim > hourStr
-          );
-          const blq = (bloqueios || []).find(b =>
-            b.quadra_id === col.quadra_id &&
-            b.data_bloqueio === col.data &&
-            b.hora_inicio <= hourStr &&
-            b.hora_fim > hourStr
-          );
-
-          if (blq) {
-            // Desenha o bloqueio para cada hora individualmente
-            return (
-              <div
-                key={col.id}
-                className="gt-slot s-blocked"
-                title={blq.motivo || 'Bloqueado'}
-                style={{ gridColumn: idx + 2, gridRow: row, cursor: 'pointer' }}
-                onClick={() => handleGridCellClick(col.quadra_id, col.data, hourStr, undefined, blq)}
-              >
-                <span className="slot-name">{blq.motivo || 'Bloqueado'}</span>
-              </div>
-            );
-          } else if (res) {
-            // Só desenha a div se for o início exato da reserva para aplicar o Row Span!
-            if (res.hora_inicio === hourStr) {
-              const hI = parseInt(res.hora_inicio.split(':')[0], 10);
-              const hF = parseInt(res.hora_fim.split(':')[0], 10);
-              const span = hF - hI;
-
-              let cssClass = 's-pending';
-              let labelStatus = 'Pendente';
-              if (res.status_pagamento === 'Pago') {
-                cssClass = 's-paid'; labelStatus = 'Pago';
-              } else if (res.status_pagamento === 'Parcial') {
-                cssClass = 's-partial'; labelStatus = 'Parcial';
-              }
-
-              const formatVal = 'R$ ' + res.valor_total.toFixed(2).replace('.', ',');
-
-              return (
-                <div
-                  key={col.id}
-                  className={`gt-slot ${cssClass}`}
-                  style={{ gridColumn: idx + 2, gridRow: `${row} / span ${span}` }}
-                  onClick={() => handleGridCellClick(col.quadra_id, col.data, hourStr, res)}
-                >
-                  <span className="slot-name">
-                    {res.cliente_nome}
-                    {res.esporte && res.esporte !== 'Geral' && (
-                      <span style={{ fontSize: '10px', marginLeft: '4px', opacity: 0.85, fontWeight: 'normal' }}>
-                        · {res.esporte}
-                      </span>
-                    )}
-                  </span>
-                  <span className="slot-label">{formatVal} · {labelStatus}</span>
-                </div>
-              );
-            }
-            // Se for o meio da reserva, retorna null para não colidir e empurrar células
-            return null;
-          } else {
-            // Slot livre
-            if (isPast) {
-              return (
-                <div
-                  key={col.id}
-                  className="gt-slot s-past-empty"
-                  style={{ gridColumn: idx + 2, gridRow: row }}
-                />
-              );
-            }
-            return (
-              <div
-                key={col.id}
-                className="gt-slot s-available"
-                style={{ gridColumn: idx + 2, gridRow: row }}
-                onClick={() => handleGridCellClick(col.quadra_id, col.data, hourStr)}
-              >
-                <span className="slot-label">Livre</span>
-              </div>
-            );
-          }
-        } else {
-          // Quadra fechada
-          return (
-            <div
-              key={col.id}
-              className="gt-slot s-blocked"
-              style={{ gridColumn: idx + 2, gridRow: row, background: 'var(--charcoal-03)', border: '1px solid var(--border-passive)', opacity: 0.5, pointerEvents: 'none' }}
-            >
-              <span className="slot-name" style={{ color: 'var(--muted)' }}>Fechada</span>
-            </div>
-          );
-        }
+        return (
+          <AdminGradeSlot
+            key={col.id}
+            col={col}
+            idx={idx}
+            row={row}
+            hourStr={hourStr}
+            isPast={isPast}
+            res={res}
+            blq={blq}
+            onCellClick={handleGridCellClick}
+          />
+        );
       });
 
       rows.push(

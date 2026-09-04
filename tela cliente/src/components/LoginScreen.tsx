@@ -140,65 +140,59 @@ export default function LoginScreen({ arena, slug, onAuthed, onClose }: Props) {
     }
   };
 
-  const handleFormSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSuccessMsg(null);
-    setLoading('email');
-
-    if (mode === 'forgot') {
-      try {
-        const res = await fetch(`${BACKEND_URL}/api/public/tenant/${slug}/esqueci-senha`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: email.trim() })
-        });
-        const data = await res.json();
-        if (res.ok) {
-          setSuccessMsg(data.message || 'Código enviado com sucesso! Verifique seu e-mail.');
-          setCode('');
-          setMode('reset');
-        } else {
-          setError(data.error || 'Erro ao solicitar código de recuperação.');
-        }
-      } catch {
-        setError('Falha de conexão com o servidor.');
-      } finally {
-        setLoading(null);
+  const handleForgotSubmit = async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/public/tenant/${slug}/esqueci-senha`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSuccessMsg(data.message || 'Código enviado com sucesso! Verifique seu e-mail.');
+        setCode('');
+        setMode('reset');
+      } else {
+        setError(data.error || 'Erro ao solicitar código de recuperação.');
       }
-      return;
+    } catch {
+      setError('Falha de conexão com o servidor.');
+    } finally {
+      setLoading(null);
     }
+  };
 
-    if (mode === 'reset') {
-      try {
-        const res = await fetch(`${BACKEND_URL}/api/public/tenant/${slug}/redefinir-senha`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: email.trim(), codigo: code.trim(), nova_senha: newPassword })
-        });
-        const data = await res.json();
-        if (res.ok) {
-          setSuccessMsg('Senha redefinida com sucesso! Você já pode entrar com sua nova senha.');
-          setMode('signin');
-          setPassword('');
-          setCode('');
-          setNewPassword('');
-        } else {
-          setError(data.error || 'Código inválido ou erro ao redefinir a senha.');
-        }
-      } catch {
-        setError('Falha de conexão com o servidor.');
-      } finally {
-        setLoading(null);
+  const handleResetSubmit = async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/public/tenant/${slug}/redefinir-senha`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), codigo: code.trim(), nova_senha: newPassword })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSuccessMsg('Senha redefinida com sucesso! Você já pode entrar com sua nova senha.');
+        setMode('signin');
+        setPassword('');
+        setCode('');
+        setNewPassword('');
+      } else {
+        setError(data.error || 'Código inválido ou erro ao redefinir a senha.');
       }
-      return;
+    } catch {
+      setError('Falha de conexão com o servidor.');
+    } finally {
+      setLoading(null);
     }
+  };
 
-    const endpoint = mode === 'signup'
+  const handleAuthSubmit = async () => {
+    const isSignup = mode === 'signup';
+    const endpoint = isSignup
       ? `${BACKEND_URL}/api/public/tenant/${slug}/cadastro`
       : `${BACKEND_URL}/api/public/tenant/${slug}/login`;
 
-    const bodyData = mode === 'signup'
+    const bodyData = isSignup
       ? { nome: name.trim(), email: email.trim(), senha: password, telefone: phone.trim() }
       : { email: email.trim(), senha: password };
 
@@ -208,9 +202,7 @@ export default function LoginScreen({ arena, slug, onAuthed, onClose }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(bodyData)
       });
-
       const data = await res.json();
-
       if (res.ok && data.usuario) {
         if (data.token) localStorage.setItem('atleta_token', data.token);
         onAuthed({
@@ -222,12 +214,27 @@ export default function LoginScreen({ arena, slug, onAuthed, onClose }: Props) {
       } else {
         setError(data.error || 'Erro ao realizar operação. Tente novamente.');
       }
-    } catch (err: any) {
-      console.error('[LoginScreen Error]', err);
-      setError(`Falha de conexão (${err?.message || 'erro de rede'}). Verifique o servidor.`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'erro de rede';
+      setError(`Falha de conexão (${msg}). Verifique o servidor.`);
     } finally {
       setLoading(null);
     }
+  };
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccessMsg(null);
+    setLoading('email');
+
+    if (mode === 'forgot') {
+      return handleForgotSubmit();
+    }
+    if (mode === 'reset') {
+      return handleResetSubmit();
+    }
+    return handleAuthSubmit();
   };
 
 

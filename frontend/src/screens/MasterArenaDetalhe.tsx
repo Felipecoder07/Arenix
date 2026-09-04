@@ -14,6 +14,186 @@ const TABS: { id: Tab; label: string; icon: typeof FileText }[] = [
   { id: 'logs', label: 'Logs de auditoria', icon: History },
 ];
 
+interface ArenaTabDadosProps {
+  arena: any;
+  nome: string;
+  setNome: (v: string) => void;
+  email: string;
+  setEmail: (v: string) => void;
+  telefone: string;
+  setTelefone: (v: string) => void;
+  endereco: string;
+  setEndereco: (v: string) => void;
+  planoId: number;
+  setPlanoId: (v: number) => void;
+  diaVencimento: number;
+  setDiaVencimento: (v: number) => void;
+  planosSaaS: any[];
+  editing: boolean;
+  setEditing: (v: boolean) => void;
+  adminResponsavel: string;
+  onSave: () => void;
+  onCancelEdit: () => void;
+}
+
+const ArenaTabDados: React.FC<ArenaTabDadosProps> = ({
+  arena,
+  nome,
+  setNome,
+  email,
+  setEmail,
+  telefone,
+  setTelefone,
+  endereco,
+  setEndereco,
+  planoId,
+  setPlanoId,
+  diaVencimento,
+  setDiaVencimento,
+  planosSaaS,
+  editing,
+  adminResponsavel,
+  onSave,
+  onCancelEdit
+}) => {
+  return (
+    <Card className="p-6 max-w-2xl">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+        <Field label="Nome da arena"><Input value={nome} onChange={(e) => setNome(e.target.value)} disabled={!editing} /></Field>
+        <Field label="E-mail"><Input value={email} onChange={(e) => setEmail(e.target.value)} disabled={!editing} /></Field>
+        <Field label="Telefone"><Input value={telefone} onChange={(e) => setTelefone(e.target.value)} disabled={!editing} /></Field>
+        <Field label="Endereço"><Input value={endereco} onChange={(e) => setEndereco(e.target.value)} disabled={!editing} /></Field>
+        <Field label="Plano">
+          <Select disabled={!editing} value={String(planoId)} onChange={(e) => setPlanoId(Number(e.target.value))}>
+            {planosSaaS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nome} — {p.valor_mensal > 0 ? `${formatBRL(p.valor_mensal)}/mês` : 'Sob consulta'}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Dia de vencimento da fatura">
+          <Input type="number" value={String(diaVencimento)} onChange={(e) => setDiaVencimento(Number(e.target.value))} disabled={!editing} min={1} max={28} />
+        </Field>
+        <Field label="Admin responsável (Criador)"><Input value={adminResponsavel} disabled /></Field>
+        <Field label="Quadras cadastradas"><Input value={String(arena.quadras)} disabled /></Field>
+      </div>
+      {editing && (
+        <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border-passive">
+          <Button variant="ghost" onClick={onCancelEdit}>Cancelar</Button>
+          <Button variant="primary" onClick={onSave}>Salvar alterações</Button>
+        </div>
+      )}
+    </Card>
+  );
+};
+
+interface ArenaTabFinanceiroProps {
+  arena: any;
+  faturas: any[];
+}
+
+const ArenaTabFinanceiro: React.FC<ArenaTabFinanceiroProps> = ({ arena, faturas }) => {
+  return (
+    <Card className="overflow-hidden">
+      <div className="px-5 py-4 border-b border-border-passive flex items-center justify-between">
+        <h3 className="text-sm font-semibold">Histórico de faturamento</h3>
+        <Badge status={arena.status === 1 ? 'success' : 'neutral'}>{arena.status === 1 ? 'Contrato ativo' : 'Contrato inativo'}</Badge>
+      </div>
+      {faturas.length === 0 ? <EmptyState message="Sem faturas registradas." /> : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-cream/60 text-left text-xs text-muted uppercase tracking-wide">
+              <th className="px-5 py-3 font-medium">Fatura ID</th>
+              <th className="px-5 py-3 font-medium">Plano</th>
+              <th className="px-5 py-3 font-medium">Valor</th>
+              <th className="px-5 py-3 font-medium">Status</th>
+              <th className="px-5 py-3 font-medium">Vencimento</th>
+              <th className="px-5 py-3 font-medium">Pago em</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border-passive">
+            {faturas.map((inv) => {
+              const finSt = inv.status === 'Paga' ? 'pago' : inv.status === 'Atrasada' ? 'atrasado' : 'pendente';
+              return (
+                <tr key={inv.id} className="hover:bg-cream/50 transition-colors">
+                  <td className="px-5 py-3 font-mono text-xs text-muted">#{inv.id}</td>
+                  <td className="px-5 py-3 tabular">{inv.plano_nome}</td>
+                  <td className="px-5 py-3 font-medium tabular">{formatBRL(inv.valor)}</td>
+                  <td className="px-5 py-3"><Badge status={finSt as any}>{inv.status}</Badge></td>
+                  <td className="px-5 py-3 text-muted tabular">{formatDate(inv.data_vencimento)}</td>
+                  <td className="px-5 py-3 text-muted tabular">{inv.data_pagamento ? formatDate(inv.data_pagamento) : '—'}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </Card>
+  );
+};
+
+interface ArenaTabUsuariosProps {
+  usuarios?: any[];
+}
+
+const ArenaTabUsuarios: React.FC<ArenaTabUsuariosProps> = ({ usuarios }) => {
+  return (
+    <Card className="overflow-hidden">
+      {(!usuarios || usuarios.length === 0) ? <EmptyState message="Nenhum usuário vinculado a esta arena." /> : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-cream/60 text-left text-xs text-muted uppercase tracking-wide">
+              <th className="px-5 py-3 font-medium">Nome</th>
+              <th className="px-5 py-3 font-medium">E-mail</th>
+              <th className="px-5 py-3 font-medium">Perfil</th>
+              <th className="px-5 py-3 font-medium">Status</th>
+              <th className="px-5 py-3 font-medium">Último acesso</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border-passive">
+            {usuarios.map((u: any) => (
+              <tr key={u.id} className="hover:bg-cream/50 transition-colors">
+                <td className="px-5 py-3 font-medium text-charcoal">{u.name}</td>
+                <td className="px-5 py-3 text-muted">{u.email}</td>
+                <td className="px-5 py-3"><span className="capitalize">{u.role}</span></td>
+                <td className="px-5 py-3"><Badge status={u.status}>{u.status === 'ativa' ? 'Ativo' : 'Bloqueado'}</Badge></td>
+                <td className="px-5 py-3 text-muted">{relativeTime(u.lastAccess)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Card>
+  );
+};
+
+interface ArenaTabLogsProps {
+  logs?: any[];
+}
+
+const ArenaTabLogs: React.FC<ArenaTabLogsProps> = ({ logs }) => {
+  return (
+    <Card className="p-5">
+      <h3 className="text-sm font-semibold mb-4">Últimos acessos e ações nesta arena</h3>
+      {(!logs || logs.length === 0) ? <EmptyState message="Nenhum log registrado para esta arena." /> : (
+        <ol className="relative border-l border-border-passive ml-2 space-y-4">
+          {logs.map((l: any) => (
+            <li key={l.id} className="pl-4">
+              <span className="absolute -left-[5px] w-2.5 h-2.5 rounded-full bg-charcoal/40 border-2 border-cream" />
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm text-charcoal">{l.action}</span>
+                <span className="text-xs text-muted tabular">{formatDateTime(l.at)}</span>
+              </div>
+              <div className="text-xs text-muted mt-0.5">por {l.actor} · IP: {l.ip}</div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Card>
+  );
+};
+
 export function MasterArenaDetalhe({ onNavigate }: Props) {
   const [searchParams] = useSearchParams();
   const arenaId = searchParams.get('id');
@@ -95,6 +275,16 @@ export function MasterArenaDetalhe({ onNavigate }: Props) {
       </div>
     );
   }
+
+  const cancelEdit = () => {
+    setEditing(false);
+    setNome(arena.nome || '');
+    setEmail(arena.email || '');
+    setTelefone(arena.telefone || '');
+    setEndereco(arena.endereco || '');
+    setPlanoId(arena.plano_id || 1);
+    setDiaVencimento(arena.dia_vencimento || 10);
+  };
 
   const handleSave = async () => {
     try {
@@ -227,14 +417,7 @@ export function MasterArenaDetalhe({ onNavigate }: Props) {
             )}
             <Button variant="secondary" onClick={() => {
               if (editing) {
-                // Cancel
-                setEditing(false);
-                setNome(arena.nome || '');
-                setEmail(arena.email || '');
-                setTelefone(arena.telefone || '');
-                setEndereco(arena.endereco || '');
-                setPlanoId(arena.plano_id || 1);
-                setDiaVencimento(arena.dia_vencimento || 10);
+                cancelEdit();
               } else {
                 setEditing(true);
               }
@@ -276,125 +459,39 @@ export function MasterArenaDetalhe({ onNavigate }: Props) {
 
       {/* Tab content */}
       {tab === 'dados' && (
-        <Card className="p-6 max-w-2xl">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            <Field label="Nome da arena"><Input value={nome} onChange={(e) => setNome(e.target.value)} disabled={!editing} /></Field>
-            <Field label="E-mail"><Input value={email} onChange={(e) => setEmail(e.target.value)} disabled={!editing} /></Field>
-            <Field label="Telefone"><Input value={telefone} onChange={(e) => setTelefone(e.target.value)} disabled={!editing} /></Field>
-            <Field label="Endereço"><Input value={endereco} onChange={(e) => setEndereco(e.target.value)} disabled={!editing} /></Field>
-            <Field label="Plano">
-              <Select disabled={!editing} value={String(planoId)} onChange={(e) => setPlanoId(Number(e.target.value))}>
-                {planosSaaS.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.nome} — {p.valor_mensal > 0 ? `${formatBRL(p.valor_mensal)}/mês` : 'Sob consulta'}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Dia de vencimento da fatura">
-              <Input type="number" value={String(diaVencimento)} onChange={(e) => setDiaVencimento(Number(e.target.value))} disabled={!editing} min={1} max={28} />
-            </Field>
-            <Field label="Admin responsável (Criador)"><Input value={adminResponsavel} disabled /></Field>
-            <Field label="Quadras cadastradas"><Input value={String(arena.quadras)} disabled /></Field>
-          </div>
-          {editing && (
-            <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border-passive">
-              <Button variant="ghost" onClick={() => {
-                setEditing(false);
-                setNome(arena.nome || '');
-                setEmail(arena.email || '');
-                setTelefone(arena.telefone || '');
-                setEndereco(arena.endereco || '');
-                setPlanoId(arena.plano_id || 1);
-                setDiaVencimento(arena.dia_vencimento || 10);
-              }}>Cancelar</Button>
-              <Button variant="primary" onClick={handleSave}>Salvar alterações</Button>
-            </div>
-          )}
-        </Card>
+        <ArenaTabDados
+          arena={arena}
+          nome={nome}
+          setNome={setNome}
+          email={email}
+          setEmail={setEmail}
+          telefone={telefone}
+          setTelefone={setTelefone}
+          endereco={endereco}
+          setEndereco={setEndereco}
+          planoId={planoId}
+          setPlanoId={setPlanoId}
+          diaVencimento={diaVencimento}
+          setDiaVencimento={setDiaVencimento}
+          planosSaaS={planosSaaS}
+          editing={editing}
+          setEditing={setEditing}
+          adminResponsavel={adminResponsavel}
+          onSave={handleSave}
+          onCancelEdit={cancelEdit}
+        />
       )}
 
       {tab === 'financeiro' && (
-        <Card className="overflow-hidden">
-          <div className="px-5 py-4 border-b border-border-passive flex items-center justify-between">
-            <h3 className="text-sm font-semibold">Histórico de faturamento</h3>
-            <Badge status={arena.status === 1 ? 'success' : 'neutral'}>{arena.status === 1 ? 'Contrato ativo' : 'Contrato inativo'}</Badge>
-          </div>
-          {faturas.length === 0 ? <EmptyState message="Sem faturas registradas." /> : (
-            <table className="w-full text-sm">
-              <thead><tr className="bg-cream/60 text-left text-xs text-muted uppercase tracking-wide">
-                <th className="px-5 py-3 font-medium">Fatura ID</th>
-                <th className="px-5 py-3 font-medium">Plano</th>
-                <th className="px-5 py-3 font-medium">Valor</th>
-                <th className="px-5 py-3 font-medium">Status</th>
-                <th className="px-5 py-3 font-medium">Vencimento</th>
-                <th className="px-5 py-3 font-medium">Pago em</th>
-              </tr></thead>
-              <tbody className="divide-y divide-border-passive">
-                {faturas.map((inv) => {
-                  const finSt = inv.status === 'Paga' ? 'pago' : inv.status === 'Atrasada' ? 'atrasado' : 'pendente';
-                  return (
-                    <tr key={inv.id} className="hover:bg-cream/50 transition-colors">
-                      <td className="px-5 py-3 font-mono text-xs text-muted">#{inv.id}</td>
-                      <td className="px-5 py-3 tabular">{inv.plano_nome}</td>
-                      <td className="px-5 py-3 font-medium tabular">{formatBRL(inv.valor)}</td>
-                      <td className="px-5 py-3"><Badge status={finSt as any}>{inv.status}</Badge></td>
-                      <td className="px-5 py-3 text-muted tabular">{formatDate(inv.data_vencimento)}</td>
-                      <td className="px-5 py-3 text-muted tabular">{inv.data_pagamento ? formatDate(inv.data_pagamento) : '—'}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </Card>
+        <ArenaTabFinanceiro arena={arena} faturas={faturas} />
       )}
 
       {tab === 'usuarios' && (
-        <Card className="overflow-hidden">
-          {(!arena.usuarios || arena.usuarios.length === 0) ? <EmptyState message="Nenhum usuário vinculado a esta arena." /> : (
-            <table className="w-full text-sm">
-              <thead><tr className="bg-cream/60 text-left text-xs text-muted uppercase tracking-wide">
-                <th className="px-5 py-3 font-medium">Nome</th>
-                <th className="px-5 py-3 font-medium">E-mail</th>
-                <th className="px-5 py-3 font-medium">Perfil</th>
-                <th className="px-5 py-3 font-medium">Status</th>
-                <th className="px-5 py-3 font-medium">Último acesso</th>
-              </tr></thead>
-              <tbody className="divide-y divide-border-passive">
-                {arena.usuarios.map((u: any) => (
-                  <tr key={u.id} className="hover:bg-cream/50 transition-colors">
-                    <td className="px-5 py-3 font-medium text-charcoal">{u.name}</td>
-                    <td className="px-5 py-3 text-muted">{u.email}</td>
-                    <td className="px-5 py-3"><span className="capitalize">{u.role}</span></td>
-                    <td className="px-5 py-3"><Badge status={u.status}>{u.status === 'ativa' ? 'Ativo' : 'Bloqueado'}</Badge></td>
-                    <td className="px-5 py-3 text-muted">{relativeTime(u.lastAccess)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </Card>
+        <ArenaTabUsuarios usuarios={arena.usuarios} />
       )}
 
       {tab === 'logs' && (
-        <Card className="p-5">
-          <h3 className="text-sm font-semibold mb-4">Últimos acessos e ações nesta arena</h3>
-          {(!arena.logs || arena.logs.length === 0) ? <EmptyState message="Nenhum log registrado para esta arena." /> : (
-            <ol className="relative border-l border-border-passive ml-2 space-y-4">
-              {arena.logs.map((l: any) => (
-                <li key={l.id} className="pl-4">
-                  <span className="absolute -left-[5px] w-2.5 h-2.5 rounded-full bg-charcoal/40 border-2 border-cream" />
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm text-charcoal">{l.action}</span>
-                    <span className="text-xs text-muted tabular">{formatDateTime(l.at)}</span>
-                  </div>
-                  <div className="text-xs text-muted mt-0.5">por {l.actor} · IP: {l.ip}</div>
-                </li>
-              ))}
-            </ol>
-          )}
-        </Card>
+        <ArenaTabLogs logs={arena.logs} />
       )}
 
       <ConfirmModal open={blockOpen} onClose={() => setBlockOpen(false)} onConfirm={handleToggleStatus}

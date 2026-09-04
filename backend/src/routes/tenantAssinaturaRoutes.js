@@ -14,6 +14,51 @@ router.use(requireRole(['Administrador', 'Gerente']));
 // 1. GET /api/tenant/assinatura/plano
 // Retorna os dados do plano atual da arena, limites, uso e cálculo de vigência/cobertura.
 // ─────────────────────────────────────────────────────────────────────────────
+function calcularMetricasCoberturaEAssinatura({ arena, todasFaturas, faturasPagas, faturasPendentes, diaVenc, cicloArena, hojeStr }) {
+  let coberturaAte = null;
+  let proximoVencimento = null;
+  let mesesAdiantados = 0;
+  let proximaCompetencia = null;
+
+  if (faturasPagas.length > 0) {
+    const ultimaPaga = faturasPagas[faturasPagas.length - 1];
+    coberturaAte = calcularProximaDataVencimento(ultimaPaga.data_vencimento, diaVenc, ultimaPaga.ciclo || cicloArena);
+    proximoVencimento = coberturaAte;
+
+    const [anoHoje, mesHoje] = hojeStr.split('-').map(Number);
+    const [anoCob, mesCob] = coberturaAte.split('-').map(Number);
+    const diffMeses = (anoCob - anoHoje) * 12 + (mesCob - mesHoje);
+    mesesAdiantados = Math.max(0, diffMeses - 1);
+  } else if (arena.trial_expira_em && arena.trial_expira_em >= hojeStr) {
+    coberturaAte = arena.trial_expira_em;
+    proximoVencimento = arena.trial_expira_em;
+    mesesAdiantados = 0;
+  } else {
+    proximoVencimento = calcularProximaDataVencimento(null, diaVenc, cicloArena);
+    coberturaAte = null;
+    mesesAdiantados = 0;
+  }
+
+  let faturaAtual = null;
+  if (faturasPendentes.length > 0) {
+    faturaAtual = faturasPendentes[0];
+    proximoVencimento = faturaAtual.data_vencimento;
+    proximaCompetencia = formatarCompetencia(faturaAtual.data_vencimento, faturaAtual.ciclo || cicloArena);
+  } else {
+    const ultimaFatura = todasFaturas.length > 0 ? todasFaturas[todasFaturas.length - 1] : null;
+    const dataProx = ultimaFatura 
+      ? calcularProximaDataVencimento(ultimaFatura.data_vencimento, diaVenc, ultimaFatura.ciclo || cicloArena)
+      : calcularProximaDataVencimento(null, diaVenc, cicloArena);
+    proximaCompetencia = formatarCompetencia(dataProx, cicloArena);
+  }
+
+  return { coberturaAte, proximoVencimento, mesesAdiantados, proximaCompetencia, faturaAtual };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 1. GET /api/tenant/assinatura/plano
+// Retorna os dados do plano atual da arena, limites, uso e cálculo de vigência/cobertura.
+// ─────────────────────────────────────────────────────────────────────────────
 router.get('/plano', async (req, res) => {
   const tenantId = req.user.tenant_id;
   if (!tenantId) {
@@ -21,7 +66,6 @@ router.get('/plano', async (req, res) => {
   }
 
   try {
-    // 1. Buscar arena e dados do plano
     const arena = await db.getAsync(`
       SELECT a.id, a.nome, a.status as arena_status, a.dia_vencimento, a.trial_expira_em, a.ciclo_cobranca,
              p.id as plano_id, p.nome as plano_nome, p.max_quadras, p.max_usuarios, p.valor_mensal, p.valor_anual
@@ -34,11 +78,9 @@ router.get('/plano', async (req, res) => {
       return res.status(404).json({ error: 'Arena não encontrada.' });
     }
 
-    // 2. Contar recursos utilizados em tempo real
     const countQuadras = await db.getAsync('SELECT COUNT(*) as total FROM Quadras WHERE tenant_id = ? AND status != "Excluida"', [tenantId]);
     const countUsuarios = await db.getAsync("SELECT COUNT(*) as total FROM Usuarios WHERE tenant_id = ? AND ativo = 1 AND (perfil IS NULL OR (perfil != 'Cliente' AND perfil != 'cliente'))", [tenantId]);
 
-    // 3. Buscar todas as faturas para calcular cobertura real e meses adiantados
     const todasFaturas = await db.allAsync(`
       SELECT id, valor, data_vencimento, data_pagamento, status, ciclo, descricao
       FROM FaturasSaaS
@@ -53,46 +95,15 @@ router.get('/plano', async (req, res) => {
     const cicloArena = arena.ciclo_cobranca || 'mensal';
     const hojeStr = new Date().toISOString().split('T')[0];
 
-    let coberturaAte = null;
-    let proximoVencimento = null;
-    let mesesAdiantados = 0;
-    let proximaCompetencia = null;
-
-    if (faturasPagas.length > 0) {
-      // A última fatura paga determina até quando o plano está coberto
-      const ultimaPaga = faturasPagas[faturasPagas.length - 1];
-      coberturaAte = calcularProximaDataVencimento(ultimaPaga.data_vencimento, diaVenc, ultimaPaga.ciclo || cicloArena);
-      proximoVencimento = coberturaAte;
-
-      // Calcular quantos meses pagos à frente do mês corrente
-      const [anoHoje, mesHoje] = hojeStr.split('-').map(Number);
-      const [anoCob, mesCob] = coberturaAte.split('-').map(Number);
-      const diffMeses = (anoCob - anoHoje) * 12 + (mesCob - mesHoje);
-      mesesAdiantados = Math.max(0, diffMeses - 1);
-    } else if (arena.trial_expira_em && arena.trial_expira_em >= hojeStr) {
-      coberturaAte = arena.trial_expira_em;
-      proximoVencimento = arena.trial_expira_em;
-      mesesAdiantados = 0;
-    } else {
-      proximoVencimento = calcularProximaDataVencimento(null, diaVenc, cicloArena);
-      coberturaAte = null;
-      mesesAdiantados = 0;
-    }
-
-    // Se houver fatura pendente, ela define o vencimento imediato
-    let faturaAtual = null;
-    if (faturasPendentes.length > 0) {
-      faturaAtual = faturasPendentes[0];
-      proximoVencimento = faturaAtual.data_vencimento;
-      proximaCompetencia = formatarCompetencia(faturaAtual.data_vencimento, faturaAtual.ciclo || cicloArena);
-    } else {
-      // Próxima competência a adiantar é a que virá após a última fatura existente
-      const ultimaFatura = todasFaturas.length > 0 ? todasFaturas[todasFaturas.length - 1] : null;
-      const dataProx = ultimaFatura 
-        ? calcularProximaDataVencimento(ultimaFatura.data_vencimento, diaVenc, ultimaFatura.ciclo || cicloArena)
-        : calcularProximaDataVencimento(null, diaVenc, cicloArena);
-      proximaCompetencia = formatarCompetencia(dataProx, cicloArena);
-    }
+    const { coberturaAte, proximoVencimento, mesesAdiantados, proximaCompetencia, faturaAtual } = calcularMetricasCoberturaEAssinatura({
+      arena,
+      todasFaturas,
+      faturasPagas,
+      faturasPendentes,
+      diaVenc,
+      cicloArena,
+      hojeStr
+    });
 
     const emTrial = !!(arena.trial_expira_em && arena.trial_expira_em >= hojeStr);
     const diasRestantesTrial = emTrial ? calcularDiasRestantesTrial(arena.trial_expira_em) : 0;
@@ -100,7 +111,7 @@ router.get('/plano', async (req, res) => {
     res.json({
       arena_id: arena.id,
       arena_nome: arena.nome,
-      arena_status: arena.arena_status, // 1 = Ativa, 0 = Inadimplente/Bloqueada
+      arena_status: arena.arena_status,
       dia_vencimento: arena.dia_vencimento,
       trial_expira_em: arena.trial_expira_em,
       em_trial: emTrial,
@@ -190,7 +201,6 @@ router.post('/faturas/:id/gerar-pix', async (req, res) => {
   }
 
   try {
-    // Validação de Tenant Isolation: Garante que o Admin da Arena A não gere Pix de faturas da Arena B
     const fatura = await db.getAsync('SELECT tenant_id FROM FaturasSaaS WHERE id = ?', [faturaId]);
     if (!fatura) {
       return res.status(404).json({ error: 'Fatura não encontrada.' });
@@ -199,7 +209,6 @@ router.post('/faturas/:id/gerar-pix', async (req, res) => {
       return res.status(403).json({ error: 'Acesso negado. Esta fatura não pertence à sua arena.' });
     }
 
-    // Gerar Pix via saasBillingService (gera no Mercado Pago com credencial Master)
     const pixData = await saasBillingService.gerarPixFaturaSaaS(faturaId);
     res.json(pixData);
   } catch (err) {
@@ -211,10 +220,6 @@ router.post('/faturas/:id/gerar-pix', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // 3.1 POST /api/tenant/assinatura/faturas/:id/simular-pagamento
 // Simula a liquidação imediata da fatura para fins de teste/demonstração.
-// Validações de segurança:
-//   - Multi-tenant Isolation: A fatura DEVE pertencer ao tenant_id do usuário logado
-//   - Idempotência: Se já estiver paga, retorna sucesso sem duplicar ações
-//   - Auto-upgrade de plano e auto-desbloqueio da arena
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/faturas/:id/simular-pagamento', async (req, res) => {
   if (process.env.NODE_ENV === 'production' && req.user.perfil !== 'SuperAdmin') {
@@ -232,7 +237,6 @@ router.post('/faturas/:id/simular-pagamento', async (req, res) => {
   }
 
   try {
-    // 1. Validar existência da fatura
     const fatura = await db.getAsync(`
       SELECT f.id, f.tenant_id, f.plano_id, f.valor, f.status, f.gateway_ref,
              a.nome as arena_nome, a.status as arena_status, p.nome as plano_nome
@@ -246,7 +250,6 @@ router.post('/faturas/:id/simular-pagamento', async (req, res) => {
       return res.status(404).json({ error: 'Fatura não encontrada.' });
     }
 
-    // 2. Blindagem Multi-tenant: Garante que a arena só pode simular faturas próprias
     if (fatura.tenant_id !== tenantId) {
       logAuditEvent(
         req.user.id,
@@ -257,7 +260,6 @@ router.post('/faturas/:id/simular-pagamento', async (req, res) => {
       return res.status(403).json({ error: 'Acesso negado. Esta fatura não pertence à sua arena.' });
     }
 
-    // 3. Garantir referência de gateway para a fatura
     let gatewayRef = fatura.gateway_ref;
     if (!gatewayRef) {
       gatewayRef = `SIM_SAAS_FATURA_${fatura.id}_${Date.now()}`;
@@ -268,10 +270,8 @@ router.post('/faturas/:id/simular-pagamento', async (req, res) => {
       `, [gatewayRef, fatura.id]);
     }
 
-    // 4. Liquidar fatura via saasBillingService (idempotente e atualiza plano/desbloqueio)
     const liquidacaoResult = await saasBillingService.liquidarFaturaSaaS(gatewayRef);
 
-    // 5. Registrar log de auditoria
     logAuditEvent(
       req.user.id,
       'SaaS: Simulação de Pagamento',
@@ -293,6 +293,35 @@ router.post('/faturas/:id/simular-pagamento', async (req, res) => {
     res.status(400).json({ error: err.message || 'Erro ao processar simulação de pagamento.' });
   }
 });
+
+async function verificarStatusMercadoPagoAoVivo(fatura) {
+  if (fatura.status === 'Paga' || !fatura.gateway_ref) return null;
+  try {
+    const token = await saasBillingService.getMasterAccessToken();
+    if (token) {
+      const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${fatura.gateway_ref}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (mpRes.ok) {
+        const mpData = await mpRes.json();
+        if (mpData.status === 'approved') {
+          const resLiquida = await saasBillingService.liquidarFaturaSaaS(fatura.gateway_ref);
+          return {
+            fatura_id: fatura.id,
+            status: 'Paga',
+            data_pagamento: new Date().toISOString().split('T')[0],
+            pago: true,
+            arena_ativa: true,
+            arena_desbloqueada: resLiquida.arena_desbloqueada
+          };
+        }
+      }
+    }
+  } catch (mpErr) {
+    console.error('[Status Polling MP Live Check Error]', mpErr.message);
+  }
+  return null;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 4. GET /api/tenant/assinatura/status-pagamento/:gateway_ref
@@ -321,32 +350,9 @@ router.get('/status-pagamento/:gateway_ref', async (req, res) => {
       return res.status(403).json({ error: 'Acesso negado.' });
     }
 
-    // Se ainda não consta como Paga no banco local, verifica na API do Mercado Pago em tempo real
-    if (fatura.status !== 'Paga' && fatura.gateway_ref) {
-      try {
-        const token = await saasBillingService.getMasterAccessToken();
-        if (token) {
-          const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${fatura.gateway_ref}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          if (mpRes.ok) {
-            const mpData = await mpRes.json();
-            if (mpData.status === 'approved') {
-              const resLiquida = await saasBillingService.liquidarFaturaSaaS(fatura.gateway_ref);
-              return res.json({
-                fatura_id: fatura.id,
-                status: 'Paga',
-                data_pagamento: new Date().toISOString().split('T')[0],
-                pago: true,
-                arena_ativa: true,
-                arena_desbloqueada: resLiquida.arena_desbloqueada
-              });
-            }
-          }
-        }
-      } catch (mpErr) {
-        console.error('[Status Polling MP Live Check Error]', mpErr.message);
-      }
+    const liveApproved = await verificarStatusMercadoPagoAoVivo(fatura);
+    if (liveApproved) {
+      return res.json(liveApproved);
     }
 
     const recheckArena = await db.getAsync('SELECT status FROM Arenas WHERE id = ?', [tenantId]);
@@ -382,10 +388,68 @@ router.get('/planos-disponiveis', async (req, res) => {
   }
 });
 
+async function validarCapacidadeNovoPlano(tenantId, novoPlano) {
+  const [countQuadras, countUsuarios] = await Promise.all([
+    db.getAsync('SELECT COUNT(*) as total FROM Quadras WHERE tenant_id = ? AND status != "Excluida"', [tenantId]),
+    db.getAsync("SELECT COUNT(*) as total FROM Usuarios WHERE tenant_id = ? AND ativo = 1 AND (perfil IS NULL OR (perfil != 'Cliente' AND perfil != 'cliente'))", [tenantId])
+  ]);
+
+  const quadrasAtuais = countQuadras ? countQuadras.total : 0;
+  const usuariosAtuais = countUsuarios ? countUsuarios.total : 0;
+
+  if (novoPlano.max_quadras > 0 && quadrasAtuais > novoPlano.max_quadras) {
+    throw new Error(`Sua arena possui ${quadrasAtuais} quadras ativas, excedendo o limite de ${novoPlano.max_quadras} do plano ${novoPlano.nome}. Remova ou arquive quadras excedentes antes de migrar para este plano.`);
+  }
+
+  if (novoPlano.max_usuarios > 0 && usuariosAtuais > novoPlano.max_usuarios) {
+    throw new Error(`Sua arena possui ${usuariosAtuais} funcionários ativos, excedendo o limite de ${novoPlano.max_usuarios} do plano ${novoPlano.nome}. Remova ou desative funcionários excedentes antes de migrar para este plano.`);
+  }
+}
+
+function calcularValoresUpgradePlano(novoPlano, ciclo) {
+  const cicloEscolhido = ciclo === 'anual' ? 'anual' : 'mensal';
+  let valorFinal = novoPlano.valor_mensal;
+  let descricaoFinal = `Assinatura Plano ${novoPlano.nome} (Mensal)`;
+
+  if (cicloEscolhido === 'anual') {
+    const precoMensalAnual = (novoPlano.valor_anual && novoPlano.valor_anual > 0)
+      ? novoPlano.valor_anual
+      : (novoPlano.valor_mensal * 0.8);
+    valorFinal = parseFloat((precoMensalAnual * 12).toFixed(2));
+    descricaoFinal = `Assinatura Plano ${novoPlano.nome} (Anual - 12 meses)`;
+  }
+
+  return { cicloEscolhido, valorFinal, descricaoFinal };
+}
+
+async function obterOuCriarFaturaUpgrade({ tenantId, novoPlano, valorFinal, cicloEscolhido, descricaoFinal, hoje }) {
+  let faturaPendente = await db.getAsync(`
+    SELECT id, valor, plano_id, status
+    FROM FaturasSaaS
+    WHERE tenant_id = ? AND status IN ('Pendente', 'Atrasada')
+    ORDER BY id DESC
+    LIMIT 1
+  `, [tenantId]);
+
+  if (faturaPendente) {
+    await db.runAsync(`
+      UPDATE FaturasSaaS
+      SET plano_id = ?, valor = ?, ciclo = ?, descricao = ?, gateway_ref = NULL, copia_cola = NULL, qr_expira_em = NULL
+      WHERE id = ?
+    `, [novoPlano.id, valorFinal, cicloEscolhido, descricaoFinal, faturaPendente.id]);
+    return faturaPendente.id;
+  }
+
+  const result = await db.runAsync(`
+    INSERT INTO FaturasSaaS (tenant_id, plano_id, valor, ciclo, descricao, data_vencimento, status)
+    VALUES (?, ?, ?, ?, ?, ?, 'Pendente')
+  `, [tenantId, novoPlano.id, valorFinal, cicloEscolhido, descricaoFinal, hoje]);
+  return result.lastID;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 7. POST /api/tenant/assinatura/solicitar-upgrade
 // Processa a solicitação de upgrade/troca de plano feita pelo gestor da arena.
-// Valida limites de quadras/equipe, cria a fatura e gera o Pix instantâneo.
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/solicitar-upgrade', async (req, res) => {
   const tenantId = req.user.tenant_id;
@@ -399,7 +463,6 @@ router.post('/solicitar-upgrade', async (req, res) => {
   }
 
   try {
-    // 1. Obter informações da arena e do plano de destino
     const [arena, novoPlano] = await Promise.all([
       db.getAsync('SELECT id, nome, plano_id, status FROM Arenas WHERE id = ?', [tenantId]),
       db.getAsync('SELECT * FROM PlanosSaaS WHERE id = ?', [plano_id])
@@ -412,72 +475,22 @@ router.post('/solicitar-upgrade', async (req, res) => {
       return res.status(404).json({ error: 'Plano solicitado não encontrado.' });
     }
 
-    // 2. Validação de capacidade atual vs limites do novo plano
-    const [countQuadras, countUsuarios] = await Promise.all([
-      db.getAsync('SELECT COUNT(*) as total FROM Quadras WHERE tenant_id = ? AND status != "Excluida"', [tenantId]),
-      db.getAsync("SELECT COUNT(*) as total FROM Usuarios WHERE tenant_id = ? AND ativo = 1 AND (perfil IS NULL OR (perfil != 'Cliente' AND perfil != 'cliente'))", [tenantId])
-    ]);
+    await validarCapacidadeNovoPlano(tenantId, novoPlano);
 
-    const quadrasAtuais = countQuadras ? countQuadras.total : 0;
-    const usuariosAtuais = countUsuarios ? countUsuarios.total : 0;
-
-    if (novoPlano.max_quadras > 0 && quadrasAtuais > novoPlano.max_quadras) {
-      return res.status(400).json({
-        error: `Sua arena possui ${quadrasAtuais} quadras ativas, excedendo o limite de ${novoPlano.max_quadras} do plano ${novoPlano.nome}. Remova ou arquive quadras excedentes antes de migrar para este plano.`
-      });
-    }
-
-    if (novoPlano.max_usuarios > 0 && usuariosAtuais > novoPlano.max_usuarios) {
-      return res.status(400).json({
-        error: `Sua arena possui ${usuariosAtuais} funcionários ativos, excedendo o limite de ${novoPlano.max_usuarios} do plano ${novoPlano.nome}. Remova ou desative funcionários excedentes antes de migrar para este plano.`
-      });
-    }
-
-    // 3. Definir ciclo e valor da fatura
-    const cicloEscolhido = ciclo === 'anual' ? 'anual' : 'mensal';
-    let valorFinal = novoPlano.valor_mensal;
-    let descricaoFinal = `Assinatura Plano ${novoPlano.nome} (Mensal)`;
-
-    if (cicloEscolhido === 'anual') {
-      const precoMensalAnual = (novoPlano.valor_anual && novoPlano.valor_anual > 0)
-        ? novoPlano.valor_anual
-        : (novoPlano.valor_mensal * 0.8);
-      valorFinal = parseFloat((precoMensalAnual * 12).toFixed(2));
-      descricaoFinal = `Assinatura Plano ${novoPlano.nome} (Anual - 12 meses)`;
-    }
-
-    // 4. Obter ou criar fatura pendente para o novo plano
+    const { cicloEscolhido, valorFinal, descricaoFinal } = calcularValoresUpgradePlano(novoPlano, ciclo);
     const hoje = new Date().toISOString().split('T')[0];
-    let faturaPendente = await db.getAsync(`
-      SELECT id, valor, plano_id, status
-      FROM FaturasSaaS
-      WHERE tenant_id = ? AND status IN ('Pendente', 'Atrasada')
-      ORDER BY id DESC
-      LIMIT 1
-    `, [tenantId]);
 
-    let faturaId;
-    if (faturaPendente) {
-      // Atualiza a fatura pendente existente para o novo plano, ciclo e valor
-      await db.runAsync(`
-        UPDATE FaturasSaaS
-        SET plano_id = ?, valor = ?, ciclo = ?, descricao = ?, gateway_ref = NULL, copia_cola = NULL, qr_expira_em = NULL
-        WHERE id = ?
-      `, [novoPlano.id, valorFinal, cicloEscolhido, descricaoFinal, faturaPendente.id]);
-      faturaId = faturaPendente.id;
-    } else {
-      // Cria nova fatura pendente
-      const result = await db.runAsync(`
-        INSERT INTO FaturasSaaS (tenant_id, plano_id, valor, ciclo, descricao, data_vencimento, status)
-        VALUES (?, ?, ?, ?, ?, ?, 'Pendente')
-      `, [tenantId, novoPlano.id, valorFinal, cicloEscolhido, descricaoFinal, hoje]);
-      faturaId = result.lastID;
-    }
+    const faturaId = await obterOuCriarFaturaUpgrade({
+      tenantId,
+      novoPlano,
+      valorFinal,
+      cicloEscolhido,
+      descricaoFinal,
+      hoje
+    });
 
-    // 5. Gerar cobrança Pix através do saasBillingService
     const pixData = await saasBillingService.gerarPixFaturaSaaS(faturaId);
 
-    // 6. Registrar log de auditoria da solicitação de upgrade
     logAuditEvent(
       req.user.id,
       'SaaS: Solicitação de Upgrade',

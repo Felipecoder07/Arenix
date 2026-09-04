@@ -28,6 +28,44 @@ import { AdminAssinatura } from './screens/admin/AdminAssinatura';
 import { AdminConfiguracoes } from './screens/admin/AdminConfiguracoes';
 import { AdminAuditoria } from './screens/admin/AdminAuditoria';
 
+interface AdminSessionResult {
+  blockedMsg?: string;
+  maintMsg?: string;
+  user?: any;
+  error?: string;
+}
+
+async function fetchAdminSession(token: string): Promise<AdminSessionResult> {
+  const res = await fetch('/api/auth/me', {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  const data = await res.json();
+
+  if (res.status === 403 && data.blocked) {
+    return { blockedMsg: data.error || 'Acesso suspenso. Entre em contato com o suporte.' };
+  }
+
+  if (res.status === 503 && data.maintenance) {
+    return { maintMsg: data.error || 'O sistema está em manutenção programada.' };
+  }
+
+  if (res.status === 401) {
+    return { error: 'Sessão expirada. Faça login novamente.' };
+  }
+
+  if (!res.ok) {
+    return { error: data.error || 'Erro ao validar sessão.' };
+  }
+
+  const user = data.usuario;
+  const roles = ['Administrador', 'Gerente', 'Recepcionista', 'Colaborador'];
+  if (!roles.includes(user?.perfil)) {
+    return { error: 'Acesso não permitido para este perfil' };
+  }
+
+  return { user };
+}
+
 // Componente Wrapper para proteger as rotas do Admin da Arena
 function AdminGuard({ children }: { children: React.ReactNode }) {
   const [isAuth, setIsAuth] = useState(false);
@@ -46,54 +84,36 @@ function AdminGuard({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        const res = await fetch('/api/auth/me', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const result = await fetchAdminSession(token);
 
-        const data = await res.json();
-
-        if (res.status === 403 && data.blocked) {
+        if (result.blockedMsg) {
           if (active) {
-            setBlockedMsg(data.error || 'Acesso suspenso. Entre em contato com o suporte.');
+            setBlockedMsg(result.blockedMsg);
             setChecking(false);
           }
           return;
         }
 
-        if (res.status === 503 && data.maintenance) {
+        if (result.maintMsg) {
           if (active) {
-            setMaintMsg(data.error || 'O sistema está em manutenção programada.');
+            setMaintMsg(result.maintMsg);
             setChecking(false);
           }
           return;
         }
 
-        if (res.status === 401) {
-          throw new Error('Sessão expirada. Faça login novamente.');
+        if (result.error || !result.user) {
+          throw new Error(result.error || 'Sessão inválida');
         }
 
-        if (!res.ok) {
-          console.warn('[AdminGuard] Erro ao validar sessão:', data);
+        if (active) {
+          localStorage.setItem('courtmanager_user', JSON.stringify(result.user));
+          setIsAuth(true);
           setChecking(false);
-          return;
-        }
 
-        const user = data.usuario;
-
-        const roles = ['Administrador', 'Gerente', 'Recepcionista', 'Colaborador'];
-        if (roles.includes(user.perfil)) {
-          if (active) {
-            localStorage.setItem('courtmanager_user', JSON.stringify(user));
-            setIsAuth(true);
-            setChecking(false);
-
-            // Se a arena está suspensa (status = 0), garante redirecionamento para a tela de Assinatura
-            if (user.arena_status === 0 && window.location.pathname !== '/admin/assinatura') {
-              navigate('/admin/assinatura', { replace: true });
-            }
+          if (result.user.arena_status === 0 && window.location.pathname !== '/admin/assinatura') {
+            navigate('/admin/assinatura', { replace: true });
           }
-        } else {
-          throw new Error('Acesso não permitido para este perfil');
         }
       } catch (err) {
         console.error('Erro na validação do Admin:', err);

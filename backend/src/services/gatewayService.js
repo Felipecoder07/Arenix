@@ -25,6 +25,78 @@ const atualizarStatusReservaInterna = async (reserva_id, tenant_id) => {
   return { totalPago, saldoDevedor, novoStatus };
 };
 
+async function validarSegurançaLiquidacao(transacao, payload) {
+  if (payload.valor_pago !== undefined && Math.abs(parseFloat(payload.valor_pago) - transacao.valor) > 0.01) {
+    throw new Error('O valor pago na maquineta é divergente do saldo registrado na reserva.');
+  }
+
+  const reserva = await db.getAsync('SELECT tenant_id, status, status_pagamento FROM Reservas WHERE id = ?', [transacao.reserva_id]);
+  if (reserva && payload.device_id !== undefined) {
+    const arena = await db.getAsync('SELECT gateway_device_id FROM Arenas WHERE id = ?', [reserva.tenant_id]);
+    if (!arena || arena.gateway_device_id !== payload.device_id) {
+      throw new Error('Terminal de pagamento (device_id) físico inválido para esta Arena.');
+    }
+  }
+  return reserva;
+}
+
+function resolverMetodoPagamentoGateway(metodo) {
+  if (metodo === 'Cartao') return 'Cartão de Crédito Online';
+  if (metodo === 'Maquineta') return 'Cartão (Maquineta)';
+  return 'Pix Online';
+}
+
+async function atualizarStatusReservasAposLiquidacao(reserva, reservaId, tenantId) {
+  const resFull = await db.getAsync('SELECT grupo_id FROM Reservas WHERE id = ?', [reservaId]);
+  if (resFull?.grupo_id) {
+    await db.runAsync(
+      'UPDATE Reservas SET status = "Confirmada", status_pagamento = "Pago" WHERE grupo_id = ? AND tenant_id = ?',
+      [resFull.grupo_id, tenantId]
+    );
+  } else if (reserva.status === 'Pendente') {
+    await db.runAsync('UPDATE Reservas SET status = "Confirmada" WHERE id = ?', [reservaId]);
+  }
+}
+
+async function enviarEmailComprovanteLiquidacao(reservaId, tenantId, transacaoValor, metodoPagamento, saldoDevedor, novoStatus) {
+  try {
+    const details = await db.getAsync(`
+      SELECT r.id, r.data_reserva, r.hora_inicio, r.hora_fim, q.nome as quadra_nome, c.nome as cliente_nome, c.email
+      FROM Reservas r
+      JOIN Quadras q ON r.quadra_id = q.id
+      JOIN Clientes c ON r.cliente_id = c.id
+      WHERE r.id = ?
+    `, [reservaId]);
+
+    if (details?.email) {
+      const arena = await db.getAsync('SELECT nome FROM Arenas WHERE id = ?', [tenantId]);
+      const subject = 'Comprovante de Pagamento — Arenix 🎾';
+      const html = `
+        <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; line-height: 1.6;">
+          <h2 style="color: #2F855A; border-bottom: 2px solid #E2E8F0; padding-bottom: 10px;">Pagamento Confirmado! 💠</h2>
+          <p>Olá, <strong>${details.cliente_nome}</strong>!</p>
+          <p>Confirmamos o recebimento do seu pagamento online para a reserva <strong>#${details.id}</strong>.</p>
+          <div style="background-color: #F7FAFC; border: 1px solid #E2E8F0; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            📅 <strong>Data:</strong> ${details.data_reserva.split('-').reverse().join('/')}<br />
+            ⏰ <strong>Horário:</strong> ${details.hora_inicio} às ${details.hora_fim}<br />
+            🎾 <strong>Quadra:</strong> ${details.quadra_nome}<br />
+            💳 <strong>Método:</strong> ${metodoPagamento}<br />
+            💵 <strong>Valor Pago:</strong> R$ ${transacaoValor.toFixed(2).replace('.', ',')}<br />
+            📉 <strong>Saldo Devedor Restante:</strong> R$ ${saldoDevedor.toFixed(2).replace('.', ',')}<br />
+            📊 <strong>Status do Pagamento:</strong> ${novoStatus === 'Pago' ? 'Pago (Quitado) ✅' : 'Pagamento Parcial ⚠️'}
+          </div>
+          <p>Bom jogo!</p>
+          <hr style="border: 0; border-top: 1px solid #E2E8F0; margin: 20px 0;" />
+          <p style="font-size: 0.8em; color: #A0AEC0;">Esta é uma mensagem automática enviada por Arenix CourtManager em nome de ${arena ? arena.nome : 'sua Arena'}.</p>
+        </div>
+      `;
+      await sendEmail(details.email, subject, html);
+    }
+  } catch (e) {
+    console.error('[SMTP] Erro ao disparar e-mail de recibo no gateway:', e.message);
+  }
+}
+
 const processarLiquidacao = async (gateway_ref, payload = {}) => {
   const transacao = await db.getAsync('SELECT * FROM TransacoesGateway WHERE gateway_ref = ?', [gateway_ref]);
   if (!transacao) {
@@ -35,91 +107,21 @@ const processarLiquidacao = async (gateway_ref, payload = {}) => {
     return { status: 'already_paid', reserva_id: transacao.reserva_id };
   }
 
-  // Validação de segurança 1: Valor Pago batendo com a transação
-  if (payload.valor_pago !== undefined && Math.abs(parseFloat(payload.valor_pago) - transacao.valor) > 0.01) {
-    throw new Error('O valor pago na maquineta é divergente do saldo registrado na reserva.');
-  }
+  const reserva = await validarSegurançaLiquidacao(transacao, payload);
 
-  // Validação de segurança 2: Device ID batendo com o cadastrado na Arena
-  const reserva = await db.getAsync('SELECT tenant_id, status, status_pagamento FROM Reservas WHERE id = ?', [transacao.reserva_id]);
-  if (reserva && payload.device_id !== undefined) {
-    const arena = await db.getAsync('SELECT gateway_device_id FROM Arenas WHERE id = ?', [reserva.tenant_id]);
-    if (!arena || arena.gateway_device_id !== payload.device_id) {
-      throw new Error('Terminal de pagamento (device_id) físico inválido para esta Arena.');
-    }
-  }
-
-  // 1. Atualizar transação de gateway para Pago
   await db.runAsync('UPDATE TransacoesGateway SET status = "Pago", atualizado_em = CURRENT_TIMESTAMP WHERE id = ?', [transacao.id]);
 
-  // 2. Inserir registro na tabela Pagamentos
-  let metodoPagamento = 'Pix Online';
-  if (transacao.metodo === 'Cartao') {
-    metodoPagamento = 'Cartão de Crédito Online';
-  } else if (transacao.metodo === 'Maquineta') {
-    metodoPagamento = 'Cartão (Maquineta)';
-  }
+  const metodoPagamento = resolverMetodoPagamentoGateway(transacao.metodo);
   
   await db.runAsync(`
     INSERT INTO Pagamentos (reserva_id, valor, metodo, registrado_por)
     VALUES (?, ?, ?, NULL)
   `, [transacao.reserva_id, transacao.valor, metodoPagamento]);
 
-  // 3. Atualizar status de pagamento e agendamento da reserva (e todo o grupo/lote se existir)
   if (reserva) {
-    const resFull = await db.getAsync('SELECT grupo_id FROM Reservas WHERE id = ?', [transacao.reserva_id]);
-    if (resFull && resFull.grupo_id) {
-      await db.runAsync(
-        'UPDATE Reservas SET status = "Confirmada", status_pagamento = "Pago" WHERE grupo_id = ? AND tenant_id = ?',
-        [resFull.grupo_id, reserva.tenant_id]
-      );
-    } else {
-      if (reserva.status === 'Pendente') {
-        await db.runAsync('UPDATE Reservas SET status = "Confirmada" WHERE id = ?', [transacao.reserva_id]);
-      }
-    }
-
+    await atualizarStatusReservasAposLiquidacao(reserva, transacao.reserva_id, reserva.tenant_id);
     const { saldoDevedor, novoStatus } = await atualizarStatusReservaInterna(transacao.reserva_id, reserva.tenant_id);
-
-    // 4. Dispara e-mail SMTP de recibo em background
-    (async () => {
-      try {
-        const details = await db.getAsync(`
-          SELECT r.id, r.data_reserva, r.hora_inicio, r.hora_fim, q.nome as quadra_nome, c.nome as cliente_nome, c.email
-          FROM Reservas r
-          JOIN Quadras q ON r.quadra_id = q.id
-          JOIN Clientes c ON r.cliente_id = c.id
-          WHERE r.id = ?
-        `, [transacao.reserva_id]);
-
-        if (details && details.email) {
-          const arena = await db.getAsync('SELECT nome FROM Arenas WHERE id = ?', [reserva.tenant_id]);
-          const subject = 'Comprovante de Pagamento — Arenix 🎾';
-          const html = `
-            <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; line-height: 1.6;">
-              <h2 style="color: #2F855A; border-bottom: 2px solid #E2E8F0; padding-bottom: 10px;">Pagamento Confirmado! 💠</h2>
-              <p>Olá, <strong>${details.cliente_nome}</strong>!</p>
-              <p>Confirmamos o recebimento do seu pagamento online para a reserva <strong>#${details.id}</strong>.</p>
-              <div style="background-color: #F7FAFC; border: 1px solid #E2E8F0; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                📅 <strong>Data:</strong> ${details.data_reserva.split('-').reverse().join('/')}<br />
-                ⏰ <strong>Horário:</strong> ${details.hora_inicio} às ${details.hora_fim}<br />
-                🎾 <strong>Quadra:</strong> ${details.quadra_nome}<br />
-                💳 <strong>Método:</strong> ${metodoPagamento}<br />
-                💵 <strong>Valor Pago:</strong> R$ ${transacao.valor.toFixed(2).replace('.', ',')}<br />
-                📉 <strong>Saldo Devedor Restante:</strong> R$ ${saldoDevedor.toFixed(2).replace('.', ',')}<br />
-                📊 <strong>Status do Pagamento:</strong> ${novoStatus === 'Pago' ? 'Pago (Quitado) ✅' : 'Pagamento Parcial ⚠️'}
-              </div>
-              <p>Bom jogo!</p>
-              <hr style="border: 0; border-top: 1px solid #E2E8F0; margin: 20px 0;" />
-              <p style="font-size: 0.8em; color: #A0AEC0;">Esta é uma mensagem automática enviada por Arenix CourtManager em nome de ${arena ? arena.nome : 'sua Arena'}.</p>
-            </div>
-          `;
-          await sendEmail(details.email, subject, html);
-        }
-      } catch (e) {
-        console.error('[SMTP] Erro ao disparar e-mail de recibo no gateway:', e.message);
-      }
-    })();
+    enviarEmailComprovanteLiquidacao(transacao.reserva_id, reserva.tenant_id, transacao.valor, metodoPagamento, saldoDevedor, novoStatus);
   }
 
   return { status: 'success', reserva_id: transacao.reserva_id };

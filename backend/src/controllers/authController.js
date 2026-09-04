@@ -103,6 +103,117 @@ const logout = async (req, res) => {
   res.json({ message: 'Logout registrado com sucesso.' });
 };
 
+async function resolvePlanoId(planoReq) {
+  if (!planoReq) return 1;
+  const parsedId = Number.parseInt(planoReq, 10);
+  if (!Number.isNaN(parsedId)) {
+    const planoRow = await db.getAsync('SELECT id FROM PlanosSaaS WHERE id = ?', [parsedId]);
+    if (planoRow) return planoRow.id;
+  }
+  if (typeof planoReq === 'string') {
+    let searchName = planoReq.toLowerCase();
+    if (searchName === 'starter') searchName = 'basic';
+    const planoRow = await db.getAsync('SELECT id FROM PlanosSaaS WHERE LOWER(nome) = ?', [searchName]);
+    if (planoRow) return planoRow.id;
+  }
+  return 1;
+}
+
+async function calculateTrialConfig() {
+  const trialRow = await db.getAsync("SELECT valor FROM ConfiguracoesSaaS WHERE chave = 'dias_trial'");
+  const trialAtivoRow = await db.getAsync("SELECT valor FROM ConfiguracoesSaaS WHERE chave = 'trial_ativo'");
+
+  const isTrialAtivo = trialAtivoRow ? trialAtivoRow.valor === '1' : true;
+  const diasTrial = Number.parseInt(trialRow?.valor || '14', 10);
+
+  if (isTrialAtivo && diasTrial > 0) {
+    const trialDate = new Date(Date.now() + diasTrial * 24 * 60 * 60 * 1000);
+    const trialExpiraEm = trialDate.toISOString().split('T')[0];
+    const diaVencimento = Number.parseInt(trialExpiraEm.split('-')[2], 10);
+    return { trialExpiraEm, diaVencimento, arenaStatus: 1 };
+  }
+
+  return { trialExpiraEm: null, diaVencimento: new Date().getUTCDate(), arenaStatus: 0 };
+}
+
+async function generateUniqueSlug(arenaNomeFinal) {
+  let cleanSlug = (arenaNomeFinal || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  if (!cleanSlug) cleanSlug = `arena-${Date.now()}`;
+
+  let finalSlug = cleanSlug;
+  let counter = 1;
+  while (await db.getAsync('SELECT id FROM Arenas WHERE slug = ?', [finalSlug])) {
+    counter++;
+    finalSlug = `${cleanSlug}-${counter}`;
+  }
+  return finalSlug;
+}
+
+async function handleRegisterCliente({ nome, email, senha_hash, perfil, ip, res }) {
+  db.run('INSERT INTO Clientes (nome, email) VALUES (?, ?)', [nome, email], function(err) {
+    if (err) {
+      if (err.message.includes('UNIQUE')) return res.status(400).json({ error: 'E-mail já cadastrado.' });
+      return res.status(500).json({ error: 'Erro ao cadastrar cliente.' });
+    }
+    const cliente_id = this.lastID;
+    db.run('INSERT INTO Usuarios (nome, email, senha_hash, perfil, cliente_id) VALUES (?, ?, ?, ?, ?)', 
+      [nome, email, senha_hash, perfil, cliente_id], function(errUser) {
+        if (errUser) return res.status(500).json({ error: 'Erro ao criar usuário.' });
+        logAuditEvent(this.lastID, 'Cadastro Cliente', `E-mail: ${email}`, ip);
+        res.status(201).json({ message: 'Cadastro realizado com sucesso!' });
+    });
+  });
+}
+
+async function handleRegisterAdministrador({ req, res, nome, email, senha_hash, perfil, arena_nome, telefone, arena_cidade, ip }) {
+  const arenaNomeFinal = arena_nome || `Arena de ${nome}`;
+  const planoReq = req.body.plano || req.body.plano_id;
+  const planoIdFinal = await resolvePlanoId(planoReq);
+  const { trialExpiraEm, diaVencimento, arenaStatus } = await calculateTrialConfig();
+  const finalSlug = await generateUniqueSlug(arenaNomeFinal);
+
+  db.run(
+    'INSERT INTO Arenas (nome, slug, email, telefone, endereco, plano_id, dia_vencimento, trial_expira_em, status, ciclo_cobranca) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', 
+    [arenaNomeFinal, finalSlug, email.trim().toLowerCase(), telefone || null, arena_cidade || null, planoIdFinal, diaVencimento, trialExpiraEm, arenaStatus, 'mensal'], 
+    async function(err) {
+      if (err) {
+        console.error('Erro ao criar arena no register:', err);
+        return res.status(500).json({ error: 'Erro ao criar arena.' });
+      }
+      const tenant_id = this.lastID;
+
+      if (arenaStatus === 0) {
+        try {
+          const planoInfo = await db.getAsync('SELECT nome, valor_mensal FROM PlanosSaaS WHERE id = ?', [planoIdFinal]);
+          const valorFatura = planoInfo ? planoInfo.valor_mensal : 0;
+          const todayStr = new Date().toISOString().split('T')[0];
+          const planoNome = planoInfo?.nome || 'Pro';
+
+          await db.runAsync(`
+            INSERT INTO FaturasSaaS (tenant_id, plano_id, valor, ciclo, descricao, data_vencimento, status)
+            VALUES (?, ?, ?, 'mensal', ?, ?, 'Pendente')
+          `, [tenant_id, planoIdFinal, valorFatura, `Assinatura Inicial Plano ${planoNome}`, todayStr]);
+        } catch (fatErr) {
+          console.error('Erro ao gerar fatura inicial para arena sem trial:', fatErr);
+        }
+      }
+
+      db.run('INSERT INTO Usuarios (nome, email, senha_hash, perfil, tenant_id) VALUES (?, ?, ?, ?, ?)', 
+        [nome, email, senha_hash, perfil, tenant_id], function(errUser) {
+          if (errUser) {
+            if (errUser.message.includes('UNIQUE')) return res.status(400).json({ error: 'E-mail já cadastrado.' });
+            return res.status(500).json({ error: 'Erro ao criar usuário administrador.' });
+          }
+          logAuditEvent(this.lastID, 'Cadastro Administrador', `E-mail: ${email}, Arena: ${arenaNomeFinal}, Status: ${arenaStatus === 1 ? 'Trial' : 'Pendente'}`, ip);
+          res.status(201).json({ message: 'Cadastro de arena realizado com sucesso!' });
+      });
+  });
+}
+
 const register = async (req, res) => {
   const { nome, email, senha, perfil, arena_nome, telefone, arena_cidade } = req.body;
   const ip = req.headers['x-forwarded-for'] || req.ip;
@@ -119,115 +230,9 @@ const register = async (req, res) => {
     const senha_hash = await bcrypt.hash(senha, 12);
 
     if (perfil === 'Cliente') {
-      db.run('INSERT INTO Clientes (nome, email) VALUES (?, ?)', [nome, email], function(err) {
-        if (err) {
-          if (err.message.includes('UNIQUE')) return res.status(400).json({ error: 'E-mail já cadastrado.' });
-          return res.status(500).json({ error: 'Erro ao cadastrar cliente.' });
-        }
-        const cliente_id = this.lastID;
-        db.run('INSERT INTO Usuarios (nome, email, senha_hash, perfil, cliente_id) VALUES (?, ?, ?, ?, ?)', 
-          [nome, email, senha_hash, perfil, cliente_id], function(err) {
-            if (err) return res.status(500).json({ error: 'Erro ao criar usuário.' });
-            logAuditEvent(this.lastID, 'Cadastro Cliente', `E-mail: ${email}`, ip);
-            res.status(201).json({ message: 'Cadastro realizado com sucesso!' });
-        });
-      });
-    } else if (perfil === 'Administrador') {
-      const arenaNomeFinal = arena_nome || `Arena de ${nome}`;
-      const planoReq = req.body.plano || req.body.plano_id;
-
-      // Buscar plano correspondente no banco (ou fallback para ID 1 'Basic')
-      let planoIdFinal = 1;
-      if (planoReq) {
-        let planoRow = null;
-        if (!isNaN(parseInt(planoReq, 10))) {
-          planoRow = await db.getAsync('SELECT id FROM PlanosSaaS WHERE id = ?', [parseInt(planoReq, 10)]);
-        }
-        if (!planoRow && typeof planoReq === 'string') {
-          // Mapear termos comuns: 'starter' / 'basic' -> Basic, 'pro' -> Pro, 'enterprise' -> Enterprise
-          let searchName = planoReq.toLowerCase();
-          if (searchName === 'starter') searchName = 'basic';
-          planoRow = await db.getAsync('SELECT id FROM PlanosSaaS WHERE LOWER(nome) = ?', [searchName]);
-        }
-        if (planoRow) {
-          planoIdFinal = planoRow.id;
-        }
-      }
-
-      // Buscar configurações de trial no SaaS (dias_trial e trial_ativo)
-      const trialRow = await db.getAsync("SELECT valor FROM ConfiguracoesSaaS WHERE chave = 'dias_trial'");
-      const trialAtivoRow = await db.getAsync("SELECT valor FROM ConfiguracoesSaaS WHERE chave = 'trial_ativo'");
-
-      const isTrialAtivo = trialAtivoRow ? trialAtivoRow.valor === '1' : true;
-      const diasTrial = parseInt(trialRow?.valor || '14', 10);
-
-      let trialExpiraEm = null;
-      let arenaStatus = 1;
-      let diaVencimento = new Date().getUTCDate();
-
-      if (isTrialAtivo && diasTrial > 0) {
-        const trialDate = new Date(Date.now() + diasTrial * 24 * 60 * 60 * 1000);
-        trialExpiraEm = trialDate.toISOString().split('T')[0];
-        diaVencimento = parseInt(trialExpiraEm.split('-')[2], 10);
-        arenaStatus = 1; // Ativa durante o trial grátis
-      } else {
-        trialExpiraEm = null;
-        diaVencimento = new Date().getUTCDate();
-        arenaStatus = 0; // Suspenso / Pendente de pagamento imediato
-      }
-
-      let cleanSlug = (arenaNomeFinal || '')
-        .toLowerCase()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '');
-      if (!cleanSlug) cleanSlug = `arena-${Date.now()}`;
-
-      let finalSlug = cleanSlug;
-      let counter = 1;
-      while (await db.getAsync('SELECT id FROM Arenas WHERE slug = ?', [finalSlug])) {
-        counter++;
-        finalSlug = `${cleanSlug}-${counter}`;
-      }
-
-      db.run(
-        'INSERT INTO Arenas (nome, slug, email, telefone, endereco, plano_id, dia_vencimento, trial_expira_em, status, ciclo_cobranca) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', 
-        [arenaNomeFinal, finalSlug, email.trim().toLowerCase(), telefone || null, arena_cidade || null, planoIdFinal, diaVencimento, trialExpiraEm, arenaStatus, 'mensal'], 
-        async function(err) {
-          if (err) {
-            console.error('Erro ao criar arena no register:', err);
-            return res.status(500).json({ error: 'Erro ao criar arena.' });
-          }
-          const tenant_id = this.lastID;
-
-          // Se cadastrada como pendente (sem trial), gerar fatura imediata para o primeiro pagamento
-          if (arenaStatus === 0) {
-            try {
-              const planoInfo = await db.getAsync('SELECT nome, valor_mensal FROM PlanosSaaS WHERE id = ?', [planoIdFinal]);
-              const valorFatura = planoInfo ? planoInfo.valor_mensal : 0;
-              const todayStr = new Date().toISOString().split('T')[0];
-              const planoNome = planoInfo?.nome || 'Pro';
-
-              await db.runAsync(`
-                INSERT INTO FaturasSaaS (tenant_id, plano_id, valor, ciclo, descricao, data_vencimento, status)
-                VALUES (?, ?, ?, 'mensal', ?, ?, 'Pendente')
-              `, [tenant_id, planoIdFinal, valorFatura, `Assinatura Inicial Plano ${planoNome}`, todayStr]);
-            } catch (fatErr) {
-              console.error('Erro ao gerar fatura inicial para arena sem trial:', fatErr);
-            }
-          }
-
-          db.run('INSERT INTO Usuarios (nome, email, senha_hash, perfil, tenant_id) VALUES (?, ?, ?, ?, ?)', 
-            [nome, email, senha_hash, perfil, tenant_id], function(err) {
-              if (err) {
-                if (err.message.includes('UNIQUE')) return res.status(400).json({ error: 'E-mail já cadastrado.' });
-                return res.status(500).json({ error: 'Erro ao criar usuário administrador.' });
-              }
-              logAuditEvent(this.lastID, 'Cadastro Administrador', `E-mail: ${email}, Arena: ${arenaNomeFinal}, Status: ${arenaStatus === 1 ? 'Trial' : 'Pendente'}`, ip);
-              res.status(201).json({ message: 'Cadastro de arena realizado com sucesso!' });
-          });
-      });
+      return handleRegisterCliente({ nome, email, senha_hash, perfil, ip, res });
     }
+    return handleRegisterAdministrador({ req, res, nome, email, senha_hash, perfil, arena_nome, telefone, arena_cidade, ip });
   } catch (error) {
     res.status(500).json({ error: 'Erro interno durante o cadastro.' });
   }

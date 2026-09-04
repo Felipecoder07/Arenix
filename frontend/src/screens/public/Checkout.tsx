@@ -9,6 +9,92 @@ const DEFAULT_PLANOS = [
   { id: 3, nome: 'Enterprise', max_quadras: 999, max_usuarios: 999, valor_mensal: 0 }
 ];
 
+const formatPhoneNumber = (val: string) => {
+  const digits = val.replace(/\D/g, '');
+  let formatted = digits;
+  if (digits.length > 0) {
+    formatted = '(' + digits.substring(0, 2);
+    if (digits.length > 2) {
+      formatted += ') ' + digits.substring(2, 7);
+    }
+    if (digits.length > 7) {
+      formatted += '-' + digits.substring(7, 11);
+    }
+  }
+  return formatted;
+};
+
+const validateCheckoutForm = (formData: Record<string, string>) => {
+  const newErrors: Record<string, boolean> = {};
+  let hasError = false;
+  let errorMsg = '';
+
+  Object.keys(formData).forEach((key) => {
+    if (key !== 'plano' && !formData[key].trim()) {
+      newErrors[key] = true;
+      hasError = true;
+    }
+  });
+
+  if (!hasError && formData.resp_nome.trim().split(/\s+/).length < 2) {
+    newErrors.resp_nome = true;
+    hasError = true;
+    errorMsg = 'Por favor, informe seu nome completo (nome e sobrenome).';
+  } else if (hasError) {
+    errorMsg = 'Preencha todos os campos obrigatórios.';
+  }
+
+  return { isValid: !hasError, errors: newErrors, errorMsg };
+};
+
+const performRegistrationAndLogin = async (
+  formData: Record<string, string>,
+  navigate: (path: string) => void
+) => {
+  const response = await fetch('/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      nome: formData.resp_nome,
+      email: formData.resp_email,
+      senha: formData.resp_senha,
+      perfil: 'Administrador',
+      arena_nome: formData.arena_nome,
+      telefone: formData.resp_telefone,
+      arena_cidade: formData.arena_cidade,
+      arena_quadras: formData.arena_quadras,
+      plano: formData.plano
+    })
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Erro ao criar conta. Verifique os dados.');
+  }
+
+  const loginResponse = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: formData.resp_email, senha: formData.resp_senha })
+  });
+
+  if (loginResponse.ok) {
+    const loginData = await loginResponse.json();
+    localStorage.setItem('courtmanager_token', loginData.token);
+    localStorage.setItem('courtmanager_user', JSON.stringify(loginData.usuario));
+    if (loginData.usuario.arena_nome) {
+      localStorage.setItem('arena_nome', loginData.usuario.arena_nome);
+    }
+    if (loginData.usuario.arena_slug) {
+      localStorage.setItem('arena_slug', loginData.usuario.arena_slug);
+    }
+    navigate('/admin/dashboard');
+  } else {
+    navigate('/login');
+  }
+};
+
 export function Checkout() {
   const navigate = useNavigate();
 
@@ -61,17 +147,7 @@ export function Checkout() {
   };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let val = e.target.value.replace(/\D/g, '');
-    let formatted = val;
-    if (val.length > 0) {
-      formatted = '(' + val.substring(0, 2);
-      if (val.length > 2) {
-        formatted += ') ' + val.substring(2, 7);
-      }
-      if (val.length > 7) {
-        formatted += '-' + val.substring(7, 11);
-      }
-    }
+    const formatted = formatPhoneNumber(e.target.value);
     setFormData(prev => ({ ...prev, resp_telefone: formatted }));
     if (errors.resp_telefone) {
       setErrors(prev => ({ ...prev, resp_telefone: false }));
@@ -83,27 +159,10 @@ export function Checkout() {
     e.preventDefault();
     setErrorMsg('');
 
-    const newErrors: Record<string, boolean> = {};
-    let hasError = false;
-
-    Object.keys(formData).forEach((key) => {
-      if (key !== 'plano' && !formData[key as keyof typeof formData].trim()) {
-        newErrors[key] = true;
-        hasError = true;
-      }
-    });
-
-    if (!hasError && formData.resp_nome.trim().split(/\s+/).length < 2) {
-      newErrors.resp_nome = true;
-      hasError = true;
-      setErrorMsg('Por favor, informe seu nome completo (nome e sobrenome).');
-    }
-
-    if (hasError) {
-      setErrors(newErrors);
-      if (!formData.resp_nome.trim() || formData.resp_nome.trim().split(/\s+/).length >= 2) {
-        setErrorMsg('Preencha todos os campos obrigatórios.');
-      }
+    const validation = validateCheckoutForm(formData);
+    if (!validation.isValid) {
+      setErrors(validation.errors);
+      setErrorMsg(validation.errorMsg);
       setShake(true);
       setTimeout(() => setShake(false), 500);
       return;
@@ -112,52 +171,9 @@ export function Checkout() {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nome: formData.resp_nome,
-          email: formData.resp_email,
-          senha: formData.resp_senha,
-          perfil: 'Administrador',
-          arena_nome: formData.arena_nome,
-          telefone: formData.resp_telefone,
-          arena_cidade: formData.arena_cidade,
-          arena_quadras: formData.arena_quadras,
-          plano: formData.plano
-        })
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        const loginResponse = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: formData.resp_email, senha: formData.resp_senha })
-        });
-
-        if (loginResponse.ok) {
-          const loginData = await loginResponse.json();
-          localStorage.setItem('courtmanager_token', loginData.token);
-          localStorage.setItem('courtmanager_user', JSON.stringify(loginData.usuario));
-          if (loginData.usuario.arena_nome) {
-            localStorage.setItem('arena_nome', loginData.usuario.arena_nome);
-          }
-          if (loginData.usuario.arena_slug) {
-            localStorage.setItem('arena_slug', loginData.usuario.arena_slug);
-          }
-          navigate('/admin/dashboard');
-        } else {
-          navigate('/login');
-        }
-      } else {
-        setErrorMsg(data.error || 'Erro ao criar conta. Verifique os dados.');
-        setShake(true);
-        setTimeout(() => setShake(false), 500);
-      }
-    } catch {
-      setErrorMsg('Erro de conexão com o servidor.');
+      await performRegistrationAndLogin(formData, navigate);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Erro de conexão com o servidor.');
       setShake(true);
       setTimeout(() => setShake(false), 500);
     } finally {

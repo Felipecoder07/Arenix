@@ -39,6 +39,91 @@ const listarGrade = async (req, res) => {
   }
 };
 
+function calcularPrecoReserva(quadra, esporte, hora_inicio, hora_fim, valorTotalInformado) {
+  if (valorTotalInformado !== undefined && valorTotalInformado !== null && valorTotalInformado !== '') {
+    return Math.max(0, Number(valorTotalInformado));
+  }
+
+  const [hI, mI] = hora_inicio.split(':').map(Number);
+  const [hF, mF] = hora_fim.split(':').map(Number);
+  let precoHora = quadra.preco_base || 80;
+
+  if (quadra.modalidades) {
+    try {
+      const parsed = typeof quadra.modalidades === 'string' ? JSON.parse(quadra.modalidades) : quadra.modalidades;
+      if (Array.isArray(parsed)) {
+        const match = parsed.find(m => (typeof m === 'object' ? m.nome : m) === esporte);
+        if (match && typeof match === 'object' && match.preco != null && Number(match.preco) > 0) {
+          precoHora = Number(match.preco);
+        }
+      }
+    } catch {
+      // Ignorar erro de parsing de modalidades
+    }
+  }
+
+  const duracaoHoras = (hF + mF / 60) - (hI + mI / 60);
+  return precoHora * duracaoHoras;
+}
+
+async function processarPagamentoBalcao(reservaId, valor_total, pagamento, usuario_id, ip) {
+  if (!pagamento || !pagamento.registrar || valor_total <= 0) {
+    return valor_total === 0 ? 'Pago' : 'Pendente';
+  }
+
+  const valorPago = Math.max(0, Number(pagamento.valor || valor_total));
+  const metodoPago = pagamento.metodo || 'Dinheiro';
+  
+  await db.runAsync(`
+    INSERT INTO Pagamentos (reserva_id, valor, metodo, registrado_por)
+    VALUES (?, ?, ?, ?)
+  `, [reservaId, valorPago, metodoPago, usuario_id]);
+
+  const statusPagamento = valorPago >= valor_total ? 'Pago' : 'Parcial';
+  await db.runAsync(`UPDATE Reservas SET status_pagamento = ? WHERE id = ?`, [statusPagamento, reservaId]);
+
+  logAuditEvent(
+    usuario_id,
+    'Pagamento Balcão',
+    `Pagamento de R$ ${valorPago.toFixed(2)} registrado via '${metodoPago}' para Reserva ID #${reservaId}.`,
+    ip
+  );
+
+  return statusPagamento;
+}
+
+async function dispararEmailConfirmacao(tenant_id, cliente_id, quadra_id, data_reserva, hora_inicio, hora_fim, valor_total) {
+  try {
+    const client = await db.getAsync('SELECT nome, email FROM Clientes WHERE id = ?', [cliente_id]);
+    const arena = await db.getAsync('SELECT nome FROM Arenas WHERE id = ?', [tenant_id]);
+    const quadraObj = await db.getAsync('SELECT nome FROM Quadras WHERE id = ?', [quadra_id]);
+    
+    if (client && client.email) {
+      const { sendEmail } = require('../services/emailService');
+      const subject = `Reserva Confirmada - ${arena ? arena.nome : 'Arenix'}`;
+      const html = `
+        <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; line-height: 1.6;">
+          <h2 style="color: #2F855A;">Olá, ${client.nome}! 🎉</h2>
+          <p>Temos uma ótima notícia! Sua reserva foi agendada e confirmada com sucesso.</p>
+          <div style="background-color: #F7FAFC; border: 1px solid #E2E8F0; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            <strong>Detalhes do agendamento:</strong><br />
+            📅 <strong>Data:</strong> ${data_reserva.split('-').reverse().join('/')}<br />
+            🕒 <strong>Horário:</strong> ${hora_inicio} às ${hora_fim}<br />
+            🎾 <strong>Quadra:</strong> ${quadraObj ? quadraObj.nome : 'Quadra Principal'}<br />
+            💰 <strong>Valor Total:</strong> R$ ${valor_total.toFixed(2).replace('.', ',')}
+          </div>
+          <p>Agradecemos a preferência! Nos vemos na quadra.</p>
+          <hr style="border: 0; border-top: 1px solid #E2E8F0; margin: 20px 0;" />
+          <p style="font-size: 0.8em; color: #A0AEC0;">Esta é uma mensagem automática enviada por Arenix CourtManager em nome de ${arena ? arena.nome : 'sua Arena'}.</p>
+        </div>
+      `;
+      await sendEmail(client.email, subject, html);
+    }
+  } catch (e) {
+    console.error('[SMTP] Erro ao disparar e-mail de confirmação:', e.message);
+  }
+}
+
 const criarReserva = async (req, res) => {
   try {
     const { cliente_id, quadra_id, data_reserva, hora_inicio, hora_fim } = req.body;
@@ -61,7 +146,7 @@ const criarReserva = async (req, res) => {
 
     const tenant_id = req.user.tenant_id;
 
-    // 1. Buscar a quadra para checar limites reais de horário, preços e status ativo
+    // 1. Buscar quadra
     const quadra = await db.getAsync(
       'SELECT preco_base, modalidades, tipo, hora_abertura, hora_fechamento, status FROM Quadras WHERE id = ? AND tenant_id = ?',
       [quadra_id, tenant_id]
@@ -71,7 +156,7 @@ const criarReserva = async (req, res) => {
       return res.status(400).json({ error: 'Não é possível criar agendamentos em quadras inativas ou desativadas.' });
     }
 
-    // 2. RN-002: Validar horário de expediente dinâmico da quadra/arena
+    // 2. RN-002: Validar horário de funcionamento
     const horaAbertura = quadra.hora_abertura || '08:00';
     const horaFechamento = quadra.hora_fechamento || '22:00';
     if (hora_inicio < horaAbertura || hora_fim > horaFechamento) {
@@ -80,7 +165,7 @@ const criarReserva = async (req, res) => {
       });
     }
 
-    // 3a. Limpa previamente reservas pendentes expiradas para evitar falso conflito
+    // 3. Limpar reservas pendentes expiradas
     await db.runAsync(
       `UPDATE Reservas 
        SET status = 'Cancelada', status_pagamento = 'Expirado' 
@@ -88,7 +173,7 @@ const criarReserva = async (req, res) => {
          AND datetime(criado_em, '+15 minutes') < datetime('now')`
     );
 
-    // 3b. RN-001: Validar sobreposição de reservas
+    // 4. RN-001: Validar sobreposição de reservas
     const conflitoReservas = await db.getAsync(`
       SELECT id FROM Reservas 
       WHERE quadra_id = ? AND data_reserva = ? AND status != 'Cancelada'
@@ -99,7 +184,7 @@ const criarReserva = async (req, res) => {
       return res.status(409).json({ error: 'A quadra já possui uma reserva neste horário.' });
     }
 
-    // 4. RN-003, RN-012: Validar conflito com bloqueios
+    // 5. RN-003, RN-012: Validar conflito com bloqueios
     const conflitoBloqueios = await db.getAsync(`
       SELECT id FROM Bloqueios
       WHERE quadra_id = ? AND data_bloqueio = ?
@@ -110,34 +195,13 @@ const criarReserva = async (req, res) => {
       return res.status(409).json({ error: 'A quadra está bloqueada para manutenção/evento neste horário.' });
     }
 
-    // 5. RN-004: Calcular valor da reserva
-    const [hI, mI] = hora_inicio.split(':').map(Number);
-    const [hF, mF] = hora_fim.split(':').map(Number);
-
+    // 6. Calcular valor e status inicial
     const esporte = req.body.esporte || 'Geral';
-    let precoHora = quadra.preco_base || 80;
-    if (quadra.modalidades) {
-      try {
-        const parsed = typeof quadra.modalidades === 'string' ? JSON.parse(quadra.modalidades) : quadra.modalidades;
-        if (Array.isArray(parsed)) {
-          const match = parsed.find(m => (typeof m === 'object' ? m.nome : m) === esporte);
-          if (match && typeof match === 'object' && match.preco != null && Number(match.preco) > 0) {
-            precoHora = Number(match.preco);
-          }
-        }
-      } catch {}
-    }
-
-    const duracaoHoras = (hF + mF / 60) - (hI + mI / 60);
-    const valor_total = (req.body.valor_total !== undefined && req.body.valor_total !== null && req.body.valor_total !== '')
-      ? Math.max(0, Number(req.body.valor_total))
-      : (precoHora * duracaoHoras);
-
-    const { pagamento } = req.body;
-    let statusInicial = 'Confirmada';
+    const valor_total = calcularPrecoReserva(quadra, esporte, hora_inicio, hora_fim, req.body.valor_total);
+    const statusInicial = 'Confirmada';
     let statusPagamentoInicial = valor_total === 0 ? 'Pago' : 'Pendente';
 
-    // 6. Salvar a reserva
+    // 7. Salvar a reserva
     const insert = await db.runAsync(`
       INSERT INTO Reservas (tenant_id, cliente_id, quadra_id, data_reserva, hora_inicio, hora_fim, valor_total, status, status_pagamento, criado_por, esporte)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -145,61 +209,13 @@ const criarReserva = async (req, res) => {
 
     const reservaId = insert.lastID;
 
-    // Processa pagamento imediato no balcão se solicitado
-    if (pagamento && pagamento.registrar && valor_total > 0) {
-      const valorPago = Math.max(0, Number(pagamento.valor || valor_total));
-      const metodoPago = pagamento.metodo || 'Dinheiro';
-      
-      await db.runAsync(`
-        INSERT INTO Pagamentos (reserva_id, valor, metodo, registrado_por)
-        VALUES (?, ?, ?, ?)
-      `, [reservaId, valorPago, metodoPago, usuario_id]);
-
-      statusPagamentoInicial = valorPago >= valor_total ? 'Pago' : 'Parcial';
-      await db.runAsync(`UPDATE Reservas SET status_pagamento = ? WHERE id = ?`, [statusPagamentoInicial, reservaId]);
-
-      logAuditEvent(
-        usuario_id,
-        'Pagamento Balcão',
-        `Pagamento de R$ ${valorPago.toFixed(2)} registrado via '${metodoPago}' para Reserva ID #${reservaId}.`,
-        ip
-      );
-    }
+    // 8. Processar pagamento imediato no balcão se solicitado
+    statusPagamentoInicial = await processarPagamentoBalcao(reservaId, valor_total, req.body.pagamento, usuario_id, ip);
 
     logAuditEvent(usuario_id, 'Criação de reserva', `Reserva ID: ${reservaId}, Quadra: ${quadra_id}, Data: ${data_reserva} ${hora_inicio}, StatusPagamento: ${statusPagamentoInicial}`, ip);
 
-    // Dispara e-mail de confirmação em background (defensivo)
-    (async () => {
-      try {
-        const client = await db.getAsync('SELECT nome, email FROM Clientes WHERE id = ?', [cliente_id]);
-        const arena = await db.getAsync('SELECT nome FROM Arenas WHERE id = ?', [tenant_id]);
-        const quadraObj = await db.getAsync('SELECT nome FROM Quadras WHERE id = ?', [quadra_id]);
-        
-        if (client && client.email) {
-          const { sendEmail } = require('../services/emailService');
-          const subject = `Reserva Confirmada - ${arena ? arena.nome : 'Arenix'}`;
-          const html = `
-            <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; line-height: 1.6;">
-              <h2 style="color: #2F855A;">Olá, ${client.nome}! 🎉</h2>
-              <p>Temos uma ótima notícia! Sua reserva foi agendada e confirmada com sucesso.</p>
-              <div style="background-color: #F7FAFC; border: 1px solid #E2E8F0; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                <strong>Detalhes do agendamento:</strong><br />
-                📅 <strong>Data:</strong> ${data_reserva.split('-').reverse().join('/')}<br />
-                🕒 <strong>Horário:</strong> ${hora_inicio} às ${hora_fim}<br />
-                🎾 <strong>Quadra:</strong> ${quadraObj ? quadraObj.nome : 'Quadra Principal'}<br />
-                💰 <strong>Valor Total:</strong> R$ ${valor_total.toFixed(2).replace('.', ',')}
-              </div>
-              <p>Agradecemos a preferência! Nos vemos na quadra.</p>
-              <hr style="border: 0; border-top: 1px solid #E2E8F0; margin: 20px 0;" />
-              <p style="font-size: 0.8em; color: #A0AEC0;">Esta é uma mensagem automática enviada por Arenix CourtManager em nome de ${arena ? arena.nome : 'sua Arena'}.</p>
-            </div>
-          `;
-          await sendEmail(client.email, subject, html);
-        }
-      } catch (e) {
-        console.error('[SMTP] Erro ao disparar e-mail de confirmação:', e.message);
-      }
-    })();
+    // 9. E-mail de confirmação em background
+    dispararEmailConfirmacao(tenant_id, cliente_id, quadra_id, data_reserva, hora_inicio, hora_fim, valor_total);
 
     res.status(201).json({
       message: 'Reserva criada com sucesso.',

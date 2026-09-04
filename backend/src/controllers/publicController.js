@@ -351,12 +351,135 @@ function gerarPixEMV({ chave, nome, cidade = 'SAO PAULO', valor, txid = '***' })
   return `${payloadString}${crcHex}`;
 }
 
+async function validateBookingItems(listaItens) {
+  const todayStr = getTodayString();
+  const currentTimeStr = getLocalTimeString();
+
+  for (const item of listaItens) {
+    if (item.data_reserva < todayStr) {
+      return 'Não é permitido criar agendamentos em datas passadas.';
+    }
+    if (item.data_reserva === todayStr && item.hora_inicio <= currentTimeStr) {
+      return `Ops! O horário das ${item.hora_inicio} do dia de hoje já encerrou. Escolha um horário futuro.`;
+    }
+  }
+  return null;
+}
+
+async function checkBookingConflicts(listaItens) {
+  await db.runAsync(
+    `UPDATE Reservas 
+     SET status = 'Cancelada', status_pagamento = 'Expirado' 
+     WHERE status = 'Pendente' AND status_pagamento = 'Pendente' 
+       AND datetime(criado_em, '+15 minutes') < datetime('now')`
+  );
+
+  for (const item of listaItens) {
+    const conflito = await db.getAsync(
+      `SELECT id FROM Reservas 
+       WHERE quadra_id = ? AND data_reserva = ? AND status != 'Cancelada'
+         AND (hora_inicio < ? AND hora_fim > ?)`,
+      [item.quadra_id, item.data_reserva, item.hora_fim, item.hora_inicio]
+    );
+    if (conflito) {
+      return `Ops! O horário das ${item.hora_inicio} do dia ${item.data_reserva} já foi reservado por outro atleta.`;
+    }
+  }
+  return null;
+}
+
+async function findOrCreateTenantClient(tenantId, { nome, email, telefone, cpf }) {
+  const cleanEmail = email && email.trim() ? email.trim().toLowerCase() : null;
+  const cleanPhone = telefone && telefone.trim() ? telefone.trim() : null;
+  const cleanCpf = cpf && cpf.trim() ? cpf.trim() : null;
+
+  let cliente = null;
+  if (cleanEmail) {
+    cliente = await db.getAsync('SELECT id FROM Clientes WHERE LOWER(email) = ?', [cleanEmail]);
+  }
+  if (!cliente && cleanPhone && cleanPhone !== '(00) 00000-0000') {
+    cliente = await db.getAsync('SELECT id FROM Clientes WHERE tenant_id = ? AND telefone = ?', [tenantId, cleanPhone]);
+  }
+  if (!cliente && cleanCpf) {
+    cliente = await db.getAsync('SELECT id FROM Clientes WHERE cpf = ?', [cleanCpf]);
+  }
+
+  if (cliente) {
+    await db.runAsync(
+      `UPDATE Clientes 
+       SET nome = ?, telefone = COALESCE(?, telefone), email = COALESCE(?, email), cpf = COALESCE(?, cpf) 
+       WHERE id = ?`,
+      [nome.trim(), cleanPhone, cleanEmail, cleanCpf, cliente.id]
+    );
+    return cliente;
+  }
+
+  try {
+    const rCliente = await db.runAsync(
+      'INSERT INTO Clientes (tenant_id, nome, email, telefone, cpf) VALUES (?, ?, ?, ?, ?)',
+      [tenantId, nome.trim(), cleanEmail, cleanPhone, cleanCpf]
+    );
+    return { id: rCliente.lastID };
+  } catch (insertErr) {
+    if (cleanEmail) {
+      cliente = await db.getAsync('SELECT id FROM Clientes WHERE LOWER(email) = ?', [cleanEmail]);
+    }
+    if (!cliente && cleanCpf) {
+      cliente = await db.getAsync('SELECT id FROM Clientes WHERE cpf = ?', [cleanCpf]);
+    }
+    if (cliente) {
+      await db.runAsync(
+        `UPDATE Clientes SET nome = ?, telefone = COALESCE(?, telefone) WHERE id = ?`,
+        [nome.trim(), cleanPhone, cliente.id]
+      );
+      return cliente;
+    }
+    throw insertErr;
+  }
+}
+
+async function insertMultiSlotReservations(tenantId, clienteId, listaItens) {
+  let valorTotalGeral = 0;
+  const reservasCriadasIds = [];
+  const grupoId = `GRUPO_${clienteId}_${Date.now()}`;
+
+  for (const item of listaItens) {
+    const quadra = await db.getAsync('SELECT preco_base, modalidades, tipo FROM Quadras WHERE id = ? AND tenant_id = ?', [item.quadra_id, tenantId]);
+    let precoItem = (quadra && typeof quadra.preco_base === 'number' && quadra.preco_base > 0) ? quadra.preco_base : 80.0;
+    
+    const esporteItem = item.esporte || 'Geral';
+    if (quadra && quadra.modalidades) {
+      try {
+        const parsed = typeof quadra.modalidades === 'string' ? JSON.parse(quadra.modalidades) : quadra.modalidades;
+        if (Array.isArray(parsed)) {
+          const match = parsed.find(m => (typeof m === 'object' ? m.nome : m) === esporteItem);
+          if (match && typeof match === 'object' && match.preco != null && Number(match.preco) > 0) {
+            precoItem = Number(match.preco);
+          }
+        }
+      } catch {
+        // Ignorar parsing
+      }
+    }
+
+    valorTotalGeral += precoItem;
+
+    const rReserva = await db.runAsync(
+      `INSERT INTO Reservas (tenant_id, cliente_id, quadra_id, data_reserva, hora_inicio, hora_fim, valor_total, status, status_pagamento, grupo_id, esporte)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'Pendente', 'Pendente', ?, ?)`,
+      [tenantId, clienteId, item.quadra_id, item.data_reserva, item.hora_inicio, item.hora_fim, precoItem, grupoId, esporteItem]
+    );
+    reservasCriadasIds.push(rReserva.lastID);
+  }
+
+  return { valorTotalGeral, reservasCriadasIds };
+}
+
 // 4. Checkout Rápido sem Senha — Agendamento (Único ou Múltiplos Horários) + Gerar Pix
 const agendarReservaPublica = async (req, res) => {
   const { slug } = req.params;
   const { nome, telefone, cpf, email, quadra_id, data_reserva, hora_inicio, hora_fim, itens } = req.body;
 
-  // Normaliza lista de itens a reservar (suporta 1 único item ou múltiplos itens no carrinho)
   let listaItens = [];
   if (Array.isArray(itens) && itens.length > 0) {
     listaItens = itens;
@@ -370,6 +493,7 @@ const agendarReservaPublica = async (req, res) => {
     return res.status(400).json({ error: 'Nome e WhatsApp são obrigatórios.' });
   }
 
+  let reservasCriadasIds = [];
   try {
     const arena = await db.getAsync(
       'SELECT id, nome, email, telefone, chave_pix, titular_pix, cidade_pix, gateway_access_token FROM Arenas WHERE slug = ? AND status = 1',
@@ -378,8 +502,6 @@ const agendarReservaPublica = async (req, res) => {
     if (!arena) {
       return res.status(404).json({ error: 'Arena não encontrada ou indisponível.' });
     }
-
-    const tenantId = arena.id;
 
     const hasGateway = !!(arena.gateway_access_token?.trim());
     const hasChavePix = !!(arena.chave_pix?.trim());
@@ -392,95 +514,19 @@ const agendarReservaPublica = async (req, res) => {
       });
     }
 
-    const todayStr = getTodayString();
-    const currentTimeStr = getLocalTimeString();
-
-    // Validação de datas passadas ou horários retroativos do dia atual
-    for (const item of listaItens) {
-      if (item.data_reserva < todayStr) {
-        return res.status(400).json({ error: 'Não é permitido criar agendamentos em datas passadas.' });
-      }
-      if (item.data_reserva === todayStr && item.hora_inicio <= currentTimeStr) {
-        return res.status(400).json({
-          error: `Ops! O horário das ${item.hora_inicio} do dia de hoje já encerrou. Escolha um horário futuro.`
-        });
-      }
+    const validationError = await validateBookingItems(listaItens);
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
     }
 
-    // 4a. Cancela automaticamente reservas pendentes expiradas antes da checagem
-    await db.runAsync(
-      `UPDATE Reservas 
-       SET status = 'Cancelada', status_pagamento = 'Expirado' 
-       WHERE status = 'Pendente' AND status_pagamento = 'Pendente' 
-         AND datetime(criado_em, '+15 minutes') < datetime('now')`
-    );
-
-    // Validação de Conflitos para TODOS os horários solicitados
-    for (const item of listaItens) {
-      const conflito = await db.getAsync(
-        `SELECT id FROM Reservas 
-         WHERE quadra_id = ? AND data_reserva = ? AND status != 'Cancelada'
-           AND (hora_inicio < ? AND hora_fim > ?)`,
-        [item.quadra_id, item.data_reserva, item.hora_fim, item.hora_inicio]
-      );
-
-      if (conflito) {
-        return res.status(400).json({
-          error: `Ops! O horário das ${item.hora_inicio} do dia ${item.data_reserva} já foi reservado por outro atleta.`
-        });
-      }
+    const conflictError = await checkBookingConflicts(listaItens);
+    if (conflictError) {
+      return res.status(400).json({ error: conflictError });
     }
 
-    // 4b. Buscar ou Cadastrar/Atualizar Cliente no Tenant (Reconciliação por E-mail, Telefone ou CPF)
-    const cleanEmail = email && email.trim() ? email.trim().toLowerCase() : null;
-    const cleanPhone = telefone && telefone.trim() ? telefone.trim() : null;
-    const cleanCpf = cpf && cpf.trim() ? cpf.trim() : null;
+    const cliente = await findOrCreateTenantClient(arena.id, { nome, email, telefone, cpf });
 
-    let cliente = null;
-
-    if (cleanEmail) {
-      cliente = await db.getAsync('SELECT id FROM Clientes WHERE LOWER(email) = ?', [cleanEmail]);
-    }
-    if (!cliente && cleanPhone && cleanPhone !== '(00) 00000-0000') {
-      cliente = await db.getAsync('SELECT id FROM Clientes WHERE tenant_id = ? AND telefone = ?', [tenantId, cleanPhone]);
-    }
-    if (!cliente && cleanCpf) {
-      cliente = await db.getAsync('SELECT id FROM Clientes WHERE cpf = ?', [cleanCpf]);
-    }
-
-    if (cliente) {
-      await db.runAsync(
-        `UPDATE Clientes 
-         SET nome = ?, telefone = COALESCE(?, telefone), email = COALESCE(?, email), cpf = COALESCE(?, cpf) 
-         WHERE id = ?`,
-        [nome.trim(), cleanPhone, cleanEmail, cleanCpf, cliente.id]
-      );
-    } else {
-      try {
-        const rCliente = await db.runAsync(
-          'INSERT INTO Clientes (tenant_id, nome, email, telefone, cpf) VALUES (?, ?, ?, ?, ?)',
-          [tenantId, nome.trim(), cleanEmail, cleanPhone, cleanCpf]
-        );
-        cliente = { id: rCliente.lastID };
-      } catch (insertErr) {
-        if (cleanEmail) {
-          cliente = await db.getAsync('SELECT id FROM Clientes WHERE LOWER(email) = ?', [cleanEmail]);
-        }
-        if (!cliente && cleanCpf) {
-          cliente = await db.getAsync('SELECT id FROM Clientes WHERE cpf = ?', [cleanCpf]);
-        }
-        if (cliente) {
-          await db.runAsync(
-            `UPDATE Clientes SET nome = ?, telefone = COALESCE(?, telefone) WHERE id = ?`,
-            [nome.trim(), cleanPhone, cliente.id]
-          );
-        } else {
-          throw insertErr;
-        }
-      }
-    }
-
-    // 4c-1. Trava Idempotente: Se a exata mesma reserva foi criada para este cliente nos últimos 15 segundos, reutiliza-a ao invés de duplicar
+    // Trava idempotente para 15 segundos
     const itemPrimeiro = listaItens[0];
     const reservaRecente = await db.getAsync(
       `SELECT id, valor_total FROM Reservas
@@ -490,16 +536,7 @@ const agendarReservaPublica = async (req, res) => {
     );
 
     if (reservaRecente) {
-      const primeiraReservaId = reservaRecente.id;
-      // Segurança: só gera Pix se a arena tiver chave Pix explicitamente configurada
-      if (!hasChavePix && !hasGateway) {
-        return res.status(400).json({
-          payment_not_configured: true,
-          telefone_arena: arena.telefone || null,
-          error: 'Esta arena ainda não configurou o recebimento de pagamentos online via Pix.'
-        });
-      }
-      const chavePixArena = arena.chave_pix.trim();
+      const chavePixArena = arena.chave_pix?.trim() || '';
       const titularArena = arena.titular_pix || arena.nome || 'Arena';
       const cidadeArena = arena.cidade_pix || 'SAO PAULO';
       const copiaCola = gerarPixEMV({
@@ -507,74 +544,37 @@ const agendarReservaPublica = async (req, res) => {
         nome: titularArena,
         cidade: cidadeArena,
         valor: reservaRecente.valor_total,
-        txid: `RESERVA${primeiraReservaId}`
+        txid: `RESERVA${reservaRecente.id}`
       });
 
       return res.json({
-        reserva_id: primeiraReservaId,
-        reservas_ids: [primeiraReservaId],
+        reserva_id: reservaRecente.id,
+        reservas_ids: [reservaRecente.id],
         valor_total: reservaRecente.valor_total,
         copia_cola: copiaCola,
         qr_code: `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(copiaCola)}`,
-        gateway_ref: `PIX_MULTI_${primeiraReservaId}`
+        gateway_ref: `PIX_MULTI_${reservaRecente.id}`
       });
     }
 
-    // 4c-2. Inserir Reservas e calcular valor total somado com grupo_id único
-    let valorTotalGeral = 0;
-    const reservasCriadasIds = [];
-    const grupoId = `GRUPO_${cliente.id}_${Date.now()}`;
-
-    for (const item of listaItens) {
-      // Segurança: busca SEMPRE o preço oficial do esporte/quadra no banco de dados (ignora adulterações do cliente)
-      const quadra = await db.getAsync('SELECT preco_base, modalidades, tipo FROM Quadras WHERE id = ? AND tenant_id = ?', [item.quadra_id, tenantId]);
-      let precoItem = (quadra && typeof quadra.preco_base === 'number' && quadra.preco_base > 0) ? quadra.preco_base : 80.0;
-      
-      const esporteItem = item.esporte || 'Geral';
-      if (quadra && quadra.modalidades) {
-        try {
-          const parsed = typeof quadra.modalidades === 'string' ? JSON.parse(quadra.modalidades) : quadra.modalidades;
-          if (Array.isArray(parsed)) {
-            const match = parsed.find(m => (typeof m === 'object' ? m.nome : m) === esporteItem);
-            if (match && typeof match === 'object' && match.preco != null && Number(match.preco) > 0) {
-              precoItem = Number(match.preco);
-            }
-          }
-        } catch {}
-      }
-
-      valorTotalGeral += precoItem;
-
-      const rReserva = await db.runAsync(
-        `INSERT INTO Reservas (tenant_id, cliente_id, quadra_id, data_reserva, hora_inicio, hora_fim, valor_total, status, status_pagamento, grupo_id, esporte)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'Pendente', 'Pendente', ?, ?)`,
-        [tenantId, cliente.id, item.quadra_id, item.data_reserva, item.hora_inicio, item.hora_fim, precoItem, grupoId, esporteItem]
-      );
-      reservasCriadasIds.push(rReserva.lastID);
-    }
-
+    const inserted = await insertMultiSlotReservations(arena.id, cliente.id, listaItens);
+    const valorTotalGeral = inserted.valorTotalGeral;
+    reservasCriadasIds = inserted.reservasCriadasIds;
     const primeiraReservaId = reservasCriadasIds[0];
 
-    // 4d. Tentar gerar Cobrança Pix via Gateway para o valor total
     let pixData = null;
     try {
       if (arena.gateway_access_token) {
-        pixData = await criarCobrancaPix(primeiraReservaId, valorTotalGeral, tenantId);
+        pixData = await criarCobrancaPix(primeiraReservaId, valorTotalGeral, arena.id);
       }
     } catch (eGateway) {
       console.warn('[Public Checkout Warning] Falha ao gerar Pix no gateway:', eGateway.message);
     }
 
-    // Gera o código Copia e Cola EMV padrão Banco Central utilizando a Chave Pix Real do Dono da Arena
-    // Segurança: se não tiver chave Pix real configurada e o gateway falhou, faz rollback das reservas criadas e bloqueia
     if (!pixData && !hasChavePix) {
       if (reservasCriadasIds.length > 0) {
-        try {
-          const placeholders = reservasCriadasIds.map(() => '?').join(',');
-          await db.runAsync(`DELETE FROM Reservas WHERE id IN (${placeholders})`, reservasCriadasIds);
-        } catch (rErr) {
-          console.warn('[Public Controller Rollback Warning]:', rErr.message);
-        }
+        const placeholders = reservasCriadasIds.map(() => '?').join(',');
+        await db.runAsync(`DELETE FROM Reservas WHERE id IN (${placeholders})`, reservasCriadasIds);
       }
       return res.status(400).json({
         payment_not_configured: true,
@@ -627,6 +627,61 @@ const agendarReservaPublica = async (req, res) => {
   }
 };
 
+async function conectarAtletaExistente({ existente, senha, tenantId, arena, telefone, req, res, JWT_SECRET, bcrypt, jwt }) {
+  if (existente.ativo === 0) {
+    return res.status(403).json({ error: 'Sua conta de usuário está desativada. Entre em contato com a arena.' });
+  }
+
+  const senhaValida = await bcrypt.compare(senha, existente.senha_hash);
+  if (!senhaValida) {
+    return res.status(400).json({ error: 'Este e-mail já está cadastrado em nossa plataforma. Verifique a senha ou faça login.' });
+  }
+
+  let clienteExistente = await db.getAsync(
+    'SELECT id, telefone FROM Clientes WHERE tenant_id = ? AND LOWER(email) = ?',
+    [tenantId, existente.email.trim().toLowerCase()]
+  );
+
+  if (!clienteExistente) {
+    try {
+      await db.runAsync(
+        'INSERT INTO Clientes (tenant_id, nome, email, telefone) VALUES (?, ?, ?, ?)',
+        [tenantId, existente.nome, existente.email.trim().toLowerCase(), telefone ? telefone.trim() : null]
+      );
+    } catch (eCl) {
+      /* ignora colisão de constraint se o cliente já existia */
+    }
+    clienteExistente = await db.getAsync(
+      'SELECT id, telefone FROM Clientes WHERE tenant_id = ? AND LOWER(email) = ?',
+      [tenantId, existente.email.trim().toLowerCase()]
+    );
+  }
+
+  const token = jwt.sign(
+    { id: existente.id, perfil: 'cliente', email: existente.email },
+    JWT_SECRET,
+    { expiresIn: '30d' }
+  );
+
+  logAuditEvent(
+    existente.id,
+    'Acesso Atleta Publico Multiarena',
+    `Atleta '${existente.nome}' conectou-se à arena '${arena.nome}' usando sua conta universal.`,
+    req.ip
+  );
+
+  return res.status(200).json({
+    message: 'Bem-vindo de volta! Sua conta universal foi conectada a esta arena com sucesso.',
+    token,
+    usuario: {
+      id: existente.id,
+      nome: existente.nome,
+      email: existente.email,
+      telefone: clienteExistente ? (clienteExistente.telefone || (telefone ? telefone.trim() : '')) : ''
+    }
+  });
+}
+
 // 5. Cadastro Real do Atleta via Portal Público por Tenant
 const cadastrarAtletaPublico = async (req, res) => {
   const { slug } = req.params;
@@ -651,69 +706,15 @@ const cadastrarAtletaPublico = async (req, res) => {
     const jwt = require('jsonwebtoken');
     const JWT_SECRET = process.env.JWT_SECRET || 'secret-jwt-courtmanager-2026';
 
-    // Checa se o e-mail já existe na base global de usuários
     const existente = await db.getAsync(
       'SELECT id, nome, email, senha_hash, ativo FROM Usuarios WHERE LOWER(email) = ?',
       [email.trim().toLowerCase()]
     );
 
     if (existente) {
-      if (existente.ativo === 0) {
-        return res.status(403).json({ error: 'Sua conta de usuário está desativada. Entre em contato com a arena.' });
-      }
-
-      const senhaValida = await bcrypt.compare(senha, existente.senha_hash);
-      if (!senhaValida) {
-        return res.status(400).json({ error: 'Este e-mail já está cadastrado em nossa plataforma. Verifique a senha ou faça login.' });
-      }
-
-      // Garante vínculo na tabela Clientes para esta arena específica
-      let clienteExistente = await db.getAsync(
-        'SELECT id, telefone FROM Clientes WHERE tenant_id = ? AND LOWER(email) = ?',
-        [tenantId, email.trim().toLowerCase()]
-      );
-
-      if (!clienteExistente) {
-        try {
-          await db.runAsync(
-            'INSERT INTO Clientes (tenant_id, nome, email, telefone) VALUES (?, ?, ?, ?)',
-            [tenantId, existente.nome, email.trim().toLowerCase(), telefone ? telefone.trim() : null]
-          );
-        } catch (eCl) {
-          /* ignora colisão de constraint se o cliente já existia */
-        }
-        clienteExistente = await db.getAsync(
-          'SELECT id, telefone FROM Clientes WHERE tenant_id = ? AND LOWER(email) = ?',
-          [tenantId, email.trim().toLowerCase()]
-        );
-      }
-
-      const token = jwt.sign(
-        { id: existente.id, perfil: 'cliente', email: existente.email },
-        JWT_SECRET,
-        { expiresIn: '30d' }
-      );
-
-      logAuditEvent(
-        existente.id,
-        'Acesso Atleta Publico Multiarena',
-        `Atleta '${existente.nome}' conectou-se à arena '${arena.nome}' usando sua conta universal.`,
-        req.ip
-      );
-
-      return res.status(200).json({
-        message: 'Bem-vindo de volta! Sua conta universal foi conectada a esta arena com sucesso.',
-        token,
-        usuario: {
-          id: existente.id,
-          nome: existente.nome,
-          email: existente.email,
-          telefone: clienteExistente ? (clienteExistente.telefone || (telefone ? telefone.trim() : '')) : ''
-        }
-      });
+      return await conectarAtletaExistente({ existente, senha, tenantId, arena, telefone, req, res, JWT_SECRET, bcrypt, jwt });
     }
 
-    // Checa se o telefone já está cadastrado para outro cliente nesta arena
     if (telefone && telefone.trim()) {
       const telefoneExiste = await db.getAsync(
         'SELECT id FROM Clientes WHERE tenant_id = ? AND telefone = ? AND (email IS NULL OR LOWER(email) != ?)',
@@ -724,10 +725,7 @@ const cadastrarAtletaPublico = async (req, res) => {
       }
     }
 
-    // Criptografa a senha com bcrypt (10 rounds)
     const senhaHash = await bcrypt.hash(senha, 10);
-
-    // Insere o Usuário com perfil 'Cliente' (Conta Universal)
     const rUser = await db.runAsync(
       `INSERT INTO Usuarios (nome, email, senha_hash, perfil, ativo)
        VALUES (?, ?, ?, 'Cliente', 1)`,
@@ -736,7 +734,6 @@ const cadastrarAtletaPublico = async (req, res) => {
 
     const userId = rUser.lastID;
 
-    // Garante criação/vínculo no cadastro de Clientes da arena atual
     let cliente = await db.getAsync(
       'SELECT id FROM Clientes WHERE tenant_id = ? AND (email = ? OR (telefone IS NOT NULL AND telefone = ?))',
       [tenantId, email.trim().toLowerCase(), telefone ? telefone.trim() : '']
@@ -753,7 +750,6 @@ const cadastrarAtletaPublico = async (req, res) => {
       }
     }
 
-    // Gera o Token JWT para o atleta (Conta Universal)
     const token = jwt.sign(
       { id: userId, perfil: 'cliente', email: email.trim().toLowerCase() },
       JWT_SECRET,
@@ -821,7 +817,6 @@ const loginAtletaPublico = async (req, res) => {
       return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
     }
 
-    // Busca o telefone e avatar do cliente correspondente se existir
     const cliente = await db.getAsync('SELECT telefone, avatar_url FROM Clientes WHERE tenant_id = ? AND LOWER(email) = LOWER(?)', [tenantId, email.trim()]);
 
     const token = jwt.sign(
@@ -854,6 +849,29 @@ const loginAtletaPublico = async (req, res) => {
   }
 };
 
+async function obterOuCriarUsuarioGoogle({ email, nome, tenantId, bcrypt, crypto }) {
+  let usuario = await db.getAsync('SELECT id, tenant_id, nome, email, perfil, ativo FROM Usuarios WHERE email = ?', [email]);
+
+  if (!usuario) {
+    const randomSecret = crypto.randomBytes(16).toString('hex');
+    const senhaHashMock = await bcrypt.hash(`GOOGLE_OAUTH_${Date.now()}_${randomSecret}`, 10);
+    const rUser = await db.runAsync(
+      `INSERT INTO Usuarios (nome, email, senha_hash, perfil, ativo)
+       VALUES (?, ?, ?, 'Cliente', 1)`,
+      [nome, email, senhaHashMock]
+    );
+    usuario = {
+      id: rUser.lastID,
+      tenant_id: tenantId,
+      nome,
+      email,
+      perfil: 'Cliente',
+      ativo: 1
+    };
+  }
+  return usuario;
+}
+
 // 7. Autenticação e Cadastro com Google OAuth 2.0 pelo Tenant
 const googleAuthAtletaPublico = async (req, res) => {
   const { slug } = req.params;
@@ -868,12 +886,12 @@ const googleAuthAtletaPublico = async (req, res) => {
     const tenantId = arena.id;
     const jwt = require('jsonwebtoken');
     const bcrypt = require('bcrypt');
+    const crypto = require('crypto');
     const JWT_SECRET = process.env.JWT_SECRET || 'secret-jwt-courtmanager-2026';
 
     let email = null;
     let nome = null;
 
-    // Se vier com o token do Google (credential), decodifica e valida o JWT do Google
     if (credential) {
       try {
         const decoded = jwt.decode(credential);
@@ -885,7 +903,6 @@ const googleAuthAtletaPublico = async (req, res) => {
         return res.status(400).json({ error: 'Token do Google inválido.' });
       }
     } else if (process.env.NODE_ENV !== 'production' && bodyEmail) {
-      // Apenas em ambiente de desenvolvimento local permite simulação
       email = bodyEmail;
       nome = bodyNome || email.split('@')[0];
     } else {
@@ -899,36 +916,16 @@ const googleAuthAtletaPublico = async (req, res) => {
     email = email.trim().toLowerCase();
     nome = (nome || email.split('@')[0]).trim();
 
-    // Busca se o usuário já existe na base
-    let usuario = await db.getAsync('SELECT id, tenant_id, nome, email, perfil, ativo FROM Usuarios WHERE email = ?', [email]);
+    let usuario = await obterOuCriarUsuarioGoogle({ email, nome, tenantId, bcrypt, crypto });
 
-    if (usuario && usuario.perfil !== 'Cliente') {
+    if (usuario.perfil !== 'Cliente') {
       return res.status(403).json({ error: 'Este e-mail pertence a uma conta de gestão. Acesse o painel pelo portal administrativo.' });
-    }
-
-    if (!usuario) {
-      // Se não existir, realiza o cadastro automático via Google
-      const senhaHashMock = await bcrypt.hash(`GOOGLE_OAUTH_${Date.now()}_${Math.random()}`, 10);
-      const rUser = await db.runAsync(
-        `INSERT INTO Usuarios (nome, email, senha_hash, perfil, ativo)
-         VALUES (?, ?, ?, 'Cliente', 1)`,
-        [nome, email, senhaHashMock]
-      );
-      usuario = {
-        id: rUser.lastID,
-        tenant_id: tenantId,
-        nome,
-        email,
-        perfil: 'Cliente',
-        ativo: 1
-      };
     }
 
     if (usuario.ativo === 0) {
       return res.status(403).json({ error: 'Sua conta de usuário está desativada. Entre em contato com a arena.' });
     }
 
-    // Garante presença na tabela Clientes
     let cliente = await db.getAsync('SELECT id, telefone, avatar_url FROM Clientes WHERE tenant_id = ? AND LOWER(email) = LOWER(?)', [tenantId, email]);
     if (!cliente) {
       try {
@@ -1014,6 +1011,45 @@ const getPerfilAtleta = async (req, res) => {
   }
 };
 
+async function atualizarTabelaUsuarios(usuarioId, nome, novaSenha, bcrypt) {
+  const updatesUser = [];
+  const paramsUser = [];
+
+  if (nome && nome.trim()) {
+    updatesUser.push('nome = ?');
+    paramsUser.push(nome.trim());
+  }
+
+  if (novaSenha && novaSenha.length >= 6) {
+    const senhaHash = await bcrypt.hash(novaSenha, 10);
+    updatesUser.push('senha_hash = ?');
+    paramsUser.push(senhaHash);
+  }
+
+  if (updatesUser.length > 0) {
+    paramsUser.push(usuarioId);
+    await db.runAsync(`UPDATE Usuarios SET ${updatesUser.join(', ')} WHERE id = ?`, paramsUser);
+  }
+}
+
+async function sincronizarClienteTenant({ arenaId, usuario, nome, telefone, cpf, avatarUrl }) {
+  const avatarToSave = (avatarUrl && typeof avatarUrl === 'string' && avatarUrl.trim().length > 0) ? avatarUrl.trim() : null;
+
+  let cliente = await db.getAsync('SELECT id, avatar_url FROM Clientes WHERE LOWER(email) = LOWER(?) AND tenant_id = ?', [usuario.email, arenaId]);
+  if (cliente) {
+    const finalAvatar = avatarToSave || cliente.avatar_url || null;
+    await db.runAsync(
+      'UPDATE Clientes SET nome = ?, telefone = ?, cpf = ?, avatar_url = ? WHERE id = ?',
+      [nome ? nome.trim() : usuario.nome, telefone ? telefone.trim() : null, cpf ? cpf.trim() : null, finalAvatar, cliente.id]
+    );
+  } else {
+    await db.runAsync(
+      'INSERT INTO Clientes (tenant_id, nome, email, telefone, cpf, avatar_url) VALUES (?, ?, ?, ?, ?, ?)',
+      [arenaId, nome ? nome.trim() : usuario.nome, usuario.email, telefone ? telefone.trim() : null, cpf ? cpf.trim() : null, avatarToSave]
+    );
+  }
+}
+
 // 9. Atualizar Perfil e/ou Senha do Atleta
 const atualizarPerfilAtleta = async (req, res) => {
   const { slug } = req.params;
@@ -1041,27 +1077,8 @@ const atualizarPerfilAtleta = async (req, res) => {
       return res.status(404).json({ error: 'Usuário não encontrado.' });
     }
 
-    // 9a. Atualiza nome e senha na tabela Usuarios se fornecidos
-    const updatesUser = [];
-    const paramsUser = [];
+    await atualizarTabelaUsuarios(usuario.id, nome, nova_senha, bcrypt);
 
-    if (nome && nome.trim()) {
-      updatesUser.push('nome = ?');
-      paramsUser.push(nome.trim());
-    }
-
-    if (nova_senha && nova_senha.length >= 6) {
-      const senhaHash = await bcrypt.hash(nova_senha, 10);
-      updatesUser.push('senha_hash = ?');
-      paramsUser.push(senhaHash);
-    }
-
-    if (updatesUser.length > 0) {
-      paramsUser.push(usuario.id);
-      await db.runAsync(`UPDATE Usuarios SET ${updatesUser.join(', ')} WHERE id = ?`, paramsUser);
-    }
-
-    // Checa se o telefone já está cadastrado para outro cliente nesta arena
     if (telefone && telefone.trim()) {
       const telefoneExiste = await db.getAsync(
         'SELECT id FROM Clientes WHERE tenant_id = ? AND telefone = ? AND (email IS NULL OR LOWER(email) != ?)',
@@ -1072,22 +1089,14 @@ const atualizarPerfilAtleta = async (req, res) => {
       }
     }
 
-    // 9b. Atualiza tabela Clientes (telefone, cpf e avatar_url)
-    const avatarToSave = (avatar_url && typeof avatar_url === 'string' && avatar_url.trim().length > 0) ? avatar_url.trim() : null;
-
-    let cliente = await db.getAsync('SELECT id, avatar_url FROM Clientes WHERE LOWER(email) = LOWER(?) AND tenant_id = ?', [usuario.email, arena.id]);
-    if (cliente) {
-      const finalAvatar = avatarToSave || cliente.avatar_url || null;
-      await db.runAsync(
-        'UPDATE Clientes SET nome = ?, telefone = ?, cpf = ?, avatar_url = ? WHERE id = ?',
-        [nome ? nome.trim() : usuario.nome, telefone ? telefone.trim() : null, cpf ? cpf.trim() : null, finalAvatar, cliente.id]
-      );
-    } else {
-      await db.runAsync(
-        'INSERT INTO Clientes (tenant_id, nome, email, telefone, cpf, avatar_url) VALUES (?, ?, ?, ?, ?, ?)',
-        [arena.id, nome ? nome.trim() : usuario.nome, usuario.email, telefone ? telefone.trim() : null, cpf ? cpf.trim() : null, avatarToSave]
-      );
-    }
+    await sincronizarClienteTenant({
+      arenaId: arena.id,
+      usuario,
+      nome,
+      telefone,
+      cpf,
+      avatarUrl: avatar_url
+    });
 
     logAuditEvent(
       usuario.id,
@@ -1109,12 +1118,39 @@ const atualizarPerfilAtleta = async (req, res) => {
         avatar_url: clienteAtualizado ? (clienteAtualizado.avatar_url || '') : ''
       }
     });
-
   } catch (err) {
     console.error('[Public Controller Error] atualizarPerfilAtleta:', err);
     res.status(500).json({ error: 'Erro ao atualizar perfil do atleta.' });
   }
 };
+
+async function consultarELiquidarMercadoPago(reservaId, arenaId, gatewayAccessToken) {
+  const transacao = await db.getAsync('SELECT gateway_ref FROM TransacoesGateway WHERE reserva_id = ? AND status = "Pendente"', [reservaId]);
+  if (!transacao?.gateway_ref || transacao.gateway_ref.startsWith('sim_') || transacao.gateway_ref.startsWith('PIX_')) {
+    return null;
+  }
+  const token = gatewayAccessToken || process.env.MERCADO_PAGO_ACCESS_TOKEN;
+  if (!token) return null;
+
+  try {
+    const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${transacao.gateway_ref}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (mpRes.ok) {
+      const mpData = await mpRes.json();
+      if (mpData.status === 'approved') {
+        const { processarLiquidacao } = require('../services/gatewayService');
+        const payload = {};
+        if (mpData.transaction_amount) payload.valor_pago = mpData.transaction_amount;
+        await processarLiquidacao(transacao.gateway_ref, payload);
+        return await db.getAsync('SELECT id, status, status_pagamento FROM Reservas WHERE id = ? AND tenant_id = ?', [reservaId, arenaId]);
+      }
+    }
+  } catch (eMp) {
+    console.warn('[Public Polling Warning] Erro ao consultar API do Mercado Pago:', eMp.message);
+  }
+  return null;
+}
 
 // 11. Consultar Status do Pagamento da Reserva para Polling do Pix
 const getStatusReservaPublica = async (req, res) => {
@@ -1131,31 +1167,10 @@ const getStatusReservaPublica = async (req, res) => {
       return res.status(404).json({ error: 'Arena não encontrada.' });
     }
 
-    // Se a reserva ainda estiver com pagamento Pendente, consulta a API do Mercado Pago diretamente
     if (reserva.status_pagamento === 'Pendente') {
-      const transacao = await db.getAsync('SELECT gateway_ref FROM TransacoesGateway WHERE reserva_id = ? AND status = "Pendente"', [reserva_id]);
-      if (transacao && transacao.gateway_ref && !transacao.gateway_ref.startsWith('sim_') && !transacao.gateway_ref.startsWith('PIX_')) {
-        const token = arena.gateway_access_token || process.env.MERCADO_PAGO_ACCESS_TOKEN;
-        if (token) {
-          try {
-            const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${transacao.gateway_ref}`, {
-              headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (mpRes.ok) {
-              const mpData = await mpRes.json();
-              if (mpData.status === 'approved') {
-                const { processarLiquidacao } = require('../services/gatewayService');
-                const payload = {};
-                if (mpData.transaction_amount) payload.valor_pago = mpData.transaction_amount;
-                await processarLiquidacao(transacao.gateway_ref, payload);
-
-                reserva = await db.getAsync('SELECT id, status, status_pagamento FROM Reservas WHERE id = ? AND tenant_id = ?', [reserva_id, arena.id]);
-              }
-            }
-          } catch (eMp) {
-            console.warn('[Public Polling Warning] Erro ao consultar API do Mercado Pago:', eMp.message);
-          }
-        }
+      const atualizada = await consultarELiquidarMercadoPago(reserva_id, arena.id, arena.gateway_access_token);
+      if (atualizada) {
+        reserva = atualizada;
       }
     }
 
@@ -1221,7 +1236,6 @@ const getMinhasReservasAtleta = async (req, res) => {
     let emailsBusca = [];
     let telefonesBusca = [];
 
-    // Se houver token JWT, extrai o e-mail e telefone do atleta logado
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
       const jwt = require('jsonwebtoken');
@@ -1252,7 +1266,6 @@ const getMinhasReservasAtleta = async (req, res) => {
       if (digits) telefonesBusca.push(digits);
     }
 
-    // Remove duplicados
     emailsBusca = [...new Set(emailsBusca)];
     telefonesBusca = [...new Set(telefonesBusca)];
 
@@ -1263,7 +1276,6 @@ const getMinhasReservasAtleta = async (req, res) => {
     const emailPlaceholders = emailsBusca.length > 0 ? emailsBusca.map(() => '?').join(',') : "''";
     const phonePlaceholders = telefonesBusca.length > 0 ? telefonesBusca.map(() => '?').join(',') : "''";
 
-    // Busca os clientes correspondentes no tenant
     const clientes = await db.allAsync(
       `SELECT id FROM Clientes 
        WHERE tenant_id = ? 
@@ -1279,7 +1291,6 @@ const getMinhasReservasAtleta = async (req, res) => {
       return res.json([]);
     }
 
-    // Busca todas as reservas desse atleta no tenant com detalhes para o comprovante
     const arenaInfo = await db.getAsync('SELECT id, nome, endereco, telefone, email, chave_pix, titular_pix FROM Arenas WHERE id = ?', [arena.id]);
 
     const reservas = await db.allAsync(
@@ -1350,7 +1361,6 @@ const getMinhasReservasAtleta = async (req, res) => {
   }
 };
 
-
 // 14. Solicitar Recuperação de Senha do Atleta
 const solicitarRecuperacaoSenhaAtleta = async (req, res) => {
   const { slug } = req.params;
@@ -1376,9 +1386,9 @@ const solicitarRecuperacaoSenhaAtleta = async (req, res) => {
     }
 
     const crypto = require('crypto');
-    const codigo6Digits = Math.floor(100000 + Math.random() * 900000).toString();
+    const codigo6Digits = crypto.randomInt(100000, 1000000).toString();
     const token = crypto.randomBytes(24).toString('hex');
-    const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 minutos (Padrão OWASP / Mercado)
+    const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
     await db.runAsync(
       'UPDATE Usuarios SET reset_password_token = ?, reset_password_expires = ? WHERE id = ?',
@@ -1473,6 +1483,56 @@ const redefinirSenhaAtleta = async (req, res) => {
   }
 };
 
+function calcularExpiracaoSegundos(criadoEm) {
+  const criadoEmRaw = criadoEm ? String(criadoEm).replace(' ', 'T') : new Date().toISOString();
+  const criadoEmStr = criadoEmRaw.endsWith('Z') ? criadoEmRaw : `${criadoEmRaw}Z`;
+  const criadoEmTime = new Date(criadoEmStr).getTime();
+  const agoraTime = Date.now();
+  const decorridoSegundos = Math.max(0, Math.floor((agoraTime - criadoEmTime) / 1000));
+  const restanteSegundos = Math.max(0, (15 * 60) - decorridoSegundos);
+  const expiraEmMinutos = Math.ceil(restanteSegundos / 60);
+  return { restanteSegundos, expiraEmMinutos };
+}
+
+async function resolverPixDados(reserva, arena) {
+  let transacao = await db.getAsync('SELECT gateway_ref FROM TransacoesGateway WHERE reserva_id = ? ORDER BY id DESC', [reserva.id]);
+  let gatewayRef = transacao?.gateway_ref || `PIX_${reserva.id}_${Date.now()}`;
+  let copiaCola = null;
+  let qrCode = null;
+
+  if (arena.gateway_access_token) {
+    try {
+      const pixData = await criarCobrancaPix(reserva.id, reserva.valor_total, arena.id);
+      if (pixData) {
+        gatewayRef = pixData.gateway_ref || gatewayRef;
+        copiaCola = pixData.copia_cola;
+        qrCode = pixData.qr_code;
+      }
+    } catch (eGateway) {
+      console.warn('[Public Controller Warning] Erro ao re-gerar Pix via gatewayService:', eGateway.message);
+    }
+  }
+
+  if (!copiaCola) {
+    if (!arena.chave_pix?.trim()) {
+      return { errorConfig: true };
+    }
+    copiaCola = gerarPixEMV({
+      chave: arena.chave_pix.trim(),
+      nome: arena.titular_pix || arena.nome || 'Arena',
+      cidade: arena.cidade_pix || 'SAO PAULO',
+      valor: reserva.valor_total,
+      txid: `RES${reserva.id}`
+    });
+  }
+
+  if (!qrCode) {
+    qrCode = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(copiaCola)}`;
+  }
+
+  return { gatewayRef, copiaCola, qrCode };
+}
+
 // 16. Recuperar/Obter Dados do Pix de uma Reserva Pendente
 const obterPixReservaPendente = async (req, res) => {
   const { slug, reserva_id } = req.params;
@@ -1517,61 +1577,16 @@ const obterPixReservaPendente = async (req, res) => {
       });
     }
 
-    let transacao = await db.getAsync('SELECT gateway_ref FROM TransacoesGateway WHERE reserva_id = ? ORDER BY id DESC', [reserva.id]);
-
-    let gatewayRef = transacao?.gateway_ref || `PIX_${reserva.id}_${Date.now()}`;
-    let copiaCola = null;
-    let qrCode = null;
-
-    if (!copiaCola) {
-      try {
-        if (arena.gateway_access_token) {
-          const pixData = await criarCobrancaPix(reserva.id, reserva.valor_total, arena.id);
-          if (pixData) {
-            gatewayRef = pixData.gateway_ref || gatewayRef;
-            copiaCola = pixData.copia_cola;
-            qrCode = pixData.qr_code;
-          }
-        }
-      } catch (eGateway) {
-        console.warn('[Public Controller Warning] Erro ao re-gerar Pix via gatewayService:', eGateway.message);
-      }
-    }
-
-    if (!copiaCola) {
-      // Segurança: só usa Pix EMV se a arena tiver chave Pix explicitamente configurada
-      const hasChavePixReconsumo = !!(arena.chave_pix?.trim());
-      if (!hasChavePixReconsumo) {
-        return res.status(400).json({
-          payment_not_configured: true,
-          telefone_arena: arena.telefone || null,
-          error: 'Esta arena não tem uma chave Pix configurada. Entre em contato com a recepção.'
-        });
-      }
-      const chavePixArena = arena.chave_pix.trim();
-      const titularArena = arena.titular_pix || arena.nome || 'Arena';
-      const cidadeArena = arena.cidade_pix || 'SAO PAULO';
-
-      copiaCola = gerarPixEMV({
-        chave: chavePixArena,
-        nome: titularArena,
-        cidade: cidadeArena,
-        valor: reserva.valor_total,
-        txid: `RES${reserva.id}`
+    const pixDados = await resolverPixDados(reserva, arena);
+    if (pixDados.errorConfig) {
+      return res.status(400).json({
+        payment_not_configured: true,
+        telefone_arena: arena.telefone || null,
+        error: 'Esta arena não tem uma chave Pix configurada. Entre em contato com a recepção.'
       });
     }
 
-    if (!qrCode) {
-      qrCode = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(copiaCola)}`;
-    }
-
-    const criadoEmRaw = reserva.criado_em ? String(reserva.criado_em).replace(' ', 'T') : new Date().toISOString();
-    const criadoEmStr = criadoEmRaw.endsWith('Z') ? criadoEmRaw : `${criadoEmRaw}Z`;
-    const criadoEmTime = new Date(criadoEmStr).getTime();
-    const agoraTime = Date.now();
-    const decorridoSegundos = Math.max(0, Math.floor((agoraTime - criadoEmTime) / 1000));
-    const restanteSegundos = Math.max(0, (15 * 60) - decorridoSegundos);
-    const expiraEmMinutos = Math.ceil(restanteSegundos / 60);
+    const { restanteSegundos, expiraEmMinutos } = calcularExpiracaoSegundos(reserva.criado_em);
 
     res.json({
       reserva_id: reserva.id,
@@ -1582,9 +1597,9 @@ const obterPixReservaPendente = async (req, res) => {
       valor_total: reserva.valor_total,
       status: reserva.status,
       status_pagamento: reserva.status_pagamento,
-      gateway_ref: gatewayRef,
-      copia_cola: copiaCola,
-      qr_code: qrCode,
+      gateway_ref: pixDados.gatewayRef,
+      copia_cola: pixDados.copiaCola,
+      qr_code: pixDados.qrCode,
       expira_em_minutos: expiraEmMinutos,
       expira_em_segundos: restanteSegundos
     });
@@ -1594,6 +1609,66 @@ const obterPixReservaPendente = async (req, res) => {
   }
 };
 
+async function validarPropriedadeReserva(reserva, usuario, arenaId) {
+  const emailUsuario = (usuario.email || '').trim().toLowerCase();
+  const emailReserva = (reserva.cliente_email || '').trim().toLowerCase();
+
+  if (emailUsuario !== '' && emailReserva !== '' && emailUsuario === emailReserva) {
+    return true;
+  }
+
+  const clienteVinc = await db.getAsync(
+    'SELECT id FROM Clientes WHERE id = ? AND tenant_id = ? AND LOWER(email) = ?',
+    [reserva.cliente_id, arenaId, emailUsuario]
+  );
+  return !!clienteVinc;
+}
+
+async function processarEstornoCancelamento({ reserva, arena, grupoClause, grupoParams, codigoValidacao }) {
+  if (reserva.status_pagamento !== 'Pago') {
+    await db.runAsync(
+      `UPDATE Reservas 
+       SET status = 'Cancelada', codigo_validacao_cancelamento = ?, observacoes_cancelamento = 'Cancelado pelo cliente'
+       ${grupoClause}`,
+      [codigoValidacao, ...grupoParams]
+    );
+    return { estornoStatus: 'none', mensagemDevolucao: 'Reserva cancelada com sucesso.' };
+  }
+
+  const { estornarPagamentoPix } = require('../services/gatewayService');
+  const estornoMp = await estornarPagamentoPix(reserva.id, arena.id);
+
+  if (estornoMp && estornoMp.success) {
+    await db.runAsync(
+      `UPDATE Reservas 
+       SET status = 'Cancelada', status_pagamento = 'Estornado', 
+           codigo_validacao_cancelamento = ?, observacoes_cancelamento = 'Cancelado pelo cliente (Estorno MP Automático)'
+       ${grupoClause}`,
+      [codigoValidacao, ...grupoParams]
+    );
+    await db.runAsync(
+      "INSERT INTO Pagamentos (reserva_id, valor, metodo, registrado_por) VALUES (?, ?, 'Estorno', NULL)",
+      [reserva.id, -reserva.valor_total]
+    );
+    return {
+      estornoStatus: 'automatic',
+      mensagemDevolucao: 'Reserva cancelada e valor estornado automaticamente via Pix pelo Mercado Pago!'
+    };
+  }
+
+  await db.runAsync(
+    `UPDATE Reservas 
+     SET status = 'Cancelada', status_pagamento = 'Cancelado (Pendente Estorno)', 
+         codigo_validacao_cancelamento = ?, observacoes_cancelamento = 'Cancelado pelo cliente (Pendente Estorno Manual)'
+     ${grupoClause}`,
+    [codigoValidacao, ...grupoParams]
+  );
+  return {
+    estornoStatus: 'manual',
+    mensagemDevolucao: 'Reserva cancelada. Entre em contato com a arena via WhatsApp para realizar o estorno do Pix.'
+  };
+}
+
 const cancelarReservaAtleta = async (req, res) => {
   const { slug, id } = req.params;
   const reservaId = parseInt(id, 10);
@@ -1602,7 +1677,6 @@ const cancelarReservaAtleta = async (req, res) => {
     return res.status(400).json({ error: 'ID de reserva inválido.' });
   }
 
-  // 1. Validação estrita do Token JWT do Atleta
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Você precisa estar logado para cancelar uma reserva.' });
@@ -1643,23 +1717,7 @@ const cancelarReservaAtleta = async (req, res) => {
       return res.status(404).json({ error: 'Reserva não encontrada.' });
     }
 
-    // 2. Trava de Segurança IDOR: Garante que o atleta do token é o dono da reserva
-    const emailUsuario = (usuario.email || '').trim().toLowerCase();
-    const emailReserva = (reserva.cliente_email || '').trim().toLowerCase();
-
-    let isOwner = (emailUsuario !== '' && emailReserva !== '' && emailUsuario === emailReserva);
-
-    if (!isOwner) {
-      // Checa se o cliente_id da reserva está associado ao email deste usuário
-      const clienteVinc = await db.getAsync(
-        'SELECT id FROM Clientes WHERE id = ? AND tenant_id = ? AND LOWER(email) = ?',
-        [reserva.cliente_id, arena.id, emailUsuario]
-      );
-      if (clienteVinc) {
-        isOwner = true;
-      }
-    }
-
+    const isOwner = await validarPropriedadeReserva(reserva, usuario, arena.id);
     if (!isOwner) {
       logAuditEvent(
         usuario.id,
@@ -1670,7 +1728,6 @@ const cancelarReservaAtleta = async (req, res) => {
       return res.status(403).json({ error: 'Acesso negado. Esta reserva não pertence à sua conta.' });
     }
 
-    // Se a reserva tem grupo_id (reserva de múltiplos horários), atualiza TODAS as reservas do mesmo grupo
     let grupoClause = 'WHERE id = ? AND tenant_id = ?';
     let grupoParams = [reserva.id, arena.id];
 
@@ -1685,10 +1742,8 @@ const cancelarReservaAtleta = async (req, res) => {
       if (grupoReservas.length > 0 && grupoReservas.every(r => r.status === 'Cancelada')) {
         return res.status(400).json({ error: 'Esta reserva já se encontra cancelada.' });
       }
-    } else {
-      if (reserva.status === 'Cancelada') {
-        return res.status(400).json({ error: 'Esta reserva já se encontra cancelada.' });
-      }
+    } else if (reserva.status === 'Cancelada') {
+      return res.status(400).json({ error: 'Esta reserva já se encontra cancelada.' });
     }
 
     const todayStr = getTodayString();
@@ -1698,50 +1753,16 @@ const cancelarReservaAtleta = async (req, res) => {
       return res.status(400).json({ error: 'Não é possível cancelar uma reserva de data ou horário que já passou.' });
     }
 
-
     const crypto = require('crypto');
     const codigoValidacao = 'VAL-' + crypto.randomBytes(3).toString('hex').toUpperCase();
 
-    let estornoStatus = 'none';
-    let mensagemDevolucao = 'Reserva cancelada com sucesso.';
-
-    if (reserva.status_pagamento === 'Pago') {
-      const { estornarPagamentoPix } = require('../services/gatewayService');
-      const estornoMp = await estornarPagamentoPix(reserva.id, arena.id);
-
-      if (estornoMp && estornoMp.success) {
-        estornoStatus = 'automatic';
-        mensagemDevolucao = 'Reserva cancelada e valor estornado automaticamente via Pix pelo Mercado Pago!';
-        await db.runAsync(
-          `UPDATE Reservas 
-           SET status = 'Cancelada', status_pagamento = 'Estornado', 
-               codigo_validacao_cancelamento = ?, observacoes_cancelamento = 'Cancelado pelo cliente (Estorno MP Automático)'
-           ${grupoClause}`,
-          [codigoValidacao, ...grupoParams]
-        );
-        await db.runAsync(
-          "INSERT INTO Pagamentos (reserva_id, valor, metodo, registrado_por) VALUES (?, ?, 'Estorno', NULL)",
-          [reserva.id, -reserva.valor_total]
-        );
-      } else {
-        estornoStatus = 'manual';
-        mensagemDevolucao = 'Reserva cancelada. Entre em contato com a arena via WhatsApp para realizar o estorno do Pix.';
-        await db.runAsync(
-          `UPDATE Reservas 
-           SET status = 'Cancelada', status_pagamento = 'Cancelado (Pendente Estorno)', 
-               codigo_validacao_cancelamento = ?, observacoes_cancelamento = 'Cancelado pelo cliente (Pendente Estorno Manual)'
-           ${grupoClause}`,
-          [codigoValidacao, ...grupoParams]
-        );
-      }
-    } else {
-      await db.runAsync(
-        `UPDATE Reservas 
-         SET status = 'Cancelada', codigo_validacao_cancelamento = ?, observacoes_cancelamento = 'Cancelado pelo cliente'
-         ${grupoClause}`,
-        [codigoValidacao, ...grupoParams]
-      );
-    }
+    const { estornoStatus, mensagemDevolucao } = await processarEstornoCancelamento({
+      reserva,
+      arena,
+      grupoClause,
+      grupoParams,
+      codigoValidacao
+    });
 
     res.json({
       success: true,
@@ -1754,7 +1775,6 @@ const cancelarReservaAtleta = async (req, res) => {
         telefone: arena.telefone || ''
       },
       reserva: {
-
         id: reserva.id,
         quadra_nome: reserva.quadra_nome,
         data_reserva: reserva.data_reserva,

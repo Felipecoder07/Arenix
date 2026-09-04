@@ -103,6 +103,224 @@ interface ReciboData {
   };
 }
 
+interface PlanoCardModalProps {
+  plano: PlanoItem;
+  dados: PlanoDados | null;
+  cicloSelecionado: 'mensal' | 'anual';
+  solicitandoUpgradeId: number | null;
+  onSolicitarUpgrade: (planoId: number, ciclo: 'mensal' | 'anual') => void;
+}
+
+function PlanoCardModal({ plano: p, dados, cicloSelecionado, solicitandoUpgradeId, onSolicitarUpgrade }: PlanoCardModalProps) {
+  const isPlanoAtual = dados?.plano.id === p.id;
+  const isPro = p.nome === 'Pro';
+  const isEnterprise = p.nome === 'Enterprise';
+
+  const precoMensalExibicao = cicloSelecionado === 'anual' && p.valor_anual > 0
+    ? p.valor_anual
+    : p.valor_mensal;
+
+  const totalAnual = cicloSelecionado === 'anual' && p.valor_anual > 0
+    ? p.valor_anual * 12
+    : p.valor_mensal * 12;
+
+  return (
+    <div
+      style={{
+        backgroundColor: isPlanoAtual ? '#f8fafc' : isPro ? '#f0f7ff' : '#fff',
+        border: isPlanoAtual
+          ? '2px solid #94a3b8'
+          : isPro
+          ? '2px solid #2563eb'
+          : '1px solid #e2e8f0',
+        borderRadius: '14px',
+        padding: '24px 20px',
+        display: 'flex',
+        flexDirection: 'column',
+        position: 'relative',
+        boxShadow: isPro ? '0 8px 20px -4px rgba(37,99,235,0.15)' : '0 1px 3px rgba(0,0,0,0.05)'
+      }}
+    >
+      {isPro && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '-12px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: '#2563eb',
+            color: '#fff',
+            fontSize: '11px',
+            fontWeight: 700,
+            padding: '3px 12px',
+            borderRadius: '12px',
+            letterSpacing: '0.5px',
+            textTransform: 'uppercase'
+          }}
+        >
+          Mais Popular
+        </div>
+      )}
+
+      {isPlanoAtual && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '-12px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: '#64748b',
+            color: '#fff',
+            fontSize: '11px',
+            fontWeight: 700,
+            padding: '3px 12px',
+            borderRadius: '12px',
+            letterSpacing: '0.5px',
+            textTransform: 'uppercase'
+          }}
+        >
+          Plano Atual
+        </div>
+      )}
+
+      <div style={{ marginBottom: '16px' }}>
+        <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
+          Plano {p.nome}
+        </h3>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+          {isEnterprise ? (
+            <span style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a' }}>
+              Sob Consulta
+            </span>
+          ) : (
+            <>
+              <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 600 }}>R$</span>
+              <span style={{ fontSize: '26px', fontWeight: 800, color: '#0f172a' }}>
+                {precoMensalExibicao.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+              <span style={{ fontSize: '13px', color: '#64748b' }}>/mês</span>
+            </>
+          )}
+        </div>
+        {cicloSelecionado === 'anual' && !isEnterprise && (
+          <span style={{ fontSize: '11.5px', color: '#16a34a', fontWeight: 600, display: 'block', marginTop: '2px' }}>
+            Faturado anualmente (R$ {totalAnual.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/ano)
+          </span>
+        )}
+      </div>
+
+      <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '16px', flex: 1, marginBottom: '20px' }}>
+        <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: '#334155' }}>
+          <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✓</span>
+            <span><strong>{p.max_quadras === 999 ? 'Quadras Ilimitadas' : `Até ${p.max_quadras} Quadras`}</strong></span>
+          </li>
+          <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✓</span>
+            <span><strong>{p.max_usuarios === 999 ? 'Usuários Ilimitados' : `Até ${p.max_usuarios} Funcionários`}</strong></span>
+          </li>
+          <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✓</span>
+            <span>Portal do Atleta & Agendamento</span>
+          </li>
+          <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✓</span>
+            <span>Gestão de Caixa & Pagamentos</span>
+          </li>
+          {p.nome !== 'Basic' && (
+            <>
+              <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✓</span>
+                <span>Relatórios de BI & Exportação</span>
+              </li>
+              <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✓</span>
+                <span>Auditoria Completa de Ações</span>
+              </li>
+            </>
+          )}
+          {isEnterprise && (
+            <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✓</span>
+              <span>Suporte Prioritário VIP</span>
+            </li>
+          )}
+        </ul>
+      </div>
+
+      {isPlanoAtual ? (
+        <button
+          type="button"
+          disabled
+          style={{
+            width: '100%',
+            padding: '10px',
+            borderRadius: '8px',
+            border: '1px solid #cbd5e1',
+            backgroundColor: '#e2e8f0',
+            color: '#64748b',
+            fontWeight: 600,
+            fontSize: '13px',
+            cursor: 'default'
+          }}
+        >
+          ✓ Plano Ativo
+        </button>
+      ) : isEnterprise ? (
+        <a
+          href="https://wa.me/5500000000000?text=Olá! Gostaria de saber mais sobre o Plano Enterprise do CourtManager."
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            width: '100%',
+            padding: '10px',
+            borderRadius: '8px',
+            border: 'none',
+            backgroundColor: '#0f172a',
+            color: '#fff',
+            fontWeight: 600,
+            fontSize: '13px',
+            textAlign: 'center',
+            textDecoration: 'none',
+            display: 'block',
+            boxSizing: 'border-box'
+          }}
+        >
+          Falar com Consultor
+        </a>
+      ) : (
+        <button
+          type="button"
+          disabled={solicitandoUpgradeId === p.id}
+          onClick={() => onSolicitarUpgrade(p.id, cicloSelecionado)}
+          style={{
+            width: '100%',
+            padding: '10px',
+            borderRadius: '8px',
+            border: 'none',
+            backgroundColor: '#2563eb',
+            color: '#fff',
+            fontWeight: 600,
+            fontSize: '13px',
+            cursor: solicitandoUpgradeId === p.id ? 'wait' : 'pointer',
+            boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
+          }}
+        >
+          {solicitandoUpgradeId === p.id
+            ? 'Gerando Pix...'
+            : `Fazer Upgrade (${cicloSelecionado === 'anual' ? 'Anual' : 'Mensal'})`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+const DEFAULT_PLANOS: PlanoItem[] = [
+  { id: 1, nome: 'Basic', max_quadras: 3, max_usuarios: 3, valor_mensal: 49.99, valor_anual: 39.99 },
+  { id: 2, nome: 'Pro', max_quadras: 10, max_usuarios: 10, valor_mensal: 79.99, valor_anual: 63.99 },
+  { id: 3, nome: 'Enterprise', max_quadras: 999, max_usuarios: 999, valor_mensal: 0, valor_anual: 0 }
+];
+
 export function AdminAssinatura() {
   const token = localStorage.getItem('courtmanager_token');
   const [loading, setLoading] = useState(true);
@@ -1580,214 +1798,16 @@ export function AdminAssinatura() {
                   gap: '20px'
                 }}
               >
-                {(planosDisponiveis.length > 0 ? planosDisponiveis : [
-                  { id: 1, nome: 'Basic', max_quadras: 3, max_usuarios: 3, valor_mensal: 49.99, valor_anual: 39.99 },
-                  { id: 2, nome: 'Pro', max_quadras: 10, max_usuarios: 10, valor_mensal: 79.99, valor_anual: 63.99 },
-                  { id: 3, nome: 'Enterprise', max_quadras: 999, max_usuarios: 999, valor_mensal: 0, valor_anual: 0 }
-                ]).map((p) => {
-                  const isPlanoAtual = dados?.plano.id === p.id;
-                  const isPro = p.nome === 'Pro';
-                  const isEnterprise = p.nome === 'Enterprise';
-
-                  const precoMensalExibicao = cicloSelecionado === 'anual' && p.valor_anual > 0
-                    ? p.valor_anual
-                    : p.valor_mensal;
-
-                  const totalAnual = cicloSelecionado === 'anual' && p.valor_anual > 0
-                    ? p.valor_anual * 12
-                    : p.valor_mensal * 12;
-
-                  return (
-                    <div
-                      key={p.id}
-                      style={{
-                        backgroundColor: isPlanoAtual ? '#f8fafc' : isPro ? '#f0f7ff' : '#fff',
-                        border: isPlanoAtual
-                          ? '2px solid #94a3b8'
-                          : isPro
-                          ? '2px solid #2563eb'
-                          : '1px solid #e2e8f0',
-                        borderRadius: '14px',
-                        padding: '24px 20px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        position: 'relative',
-                        boxShadow: isPro ? '0 8px 20px -4px rgba(37,99,235,0.15)' : '0 1px 3px rgba(0,0,0,0.05)'
-                      }}
-                    >
-                      {isPro && (
-                        <div
-                          style={{
-                            position: 'absolute',
-                            top: '-12px',
-                            left: '50%',
-                            transform: 'translateX(-50%)',
-                            backgroundColor: '#2563eb',
-                            color: '#fff',
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            padding: '3px 12px',
-                            borderRadius: '12px',
-                            letterSpacing: '0.5px',
-                            textTransform: 'uppercase'
-                          }}
-                        >
-                          Mais Popular
-                        </div>
-                      )}
-
-                      {isPlanoAtual && (
-                        <div
-                          style={{
-                            position: 'absolute',
-                            top: '-12px',
-                            left: '50%',
-                            transform: 'translateX(-50%)',
-                            backgroundColor: '#64748b',
-                            color: '#fff',
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            padding: '3px 12px',
-                            borderRadius: '12px',
-                            letterSpacing: '0.5px',
-                            textTransform: 'uppercase'
-                          }}
-                        >
-                          Plano Atual
-                        </div>
-                      )}
-
-                      <div style={{ marginBottom: '16px' }}>
-                        <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
-                          Plano {p.nome}
-                        </h3>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                          {isEnterprise ? (
-                            <span style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a' }}>
-                              Sob Consulta
-                            </span>
-                          ) : (
-                            <>
-                              <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 600 }}>R$</span>
-                              <span style={{ fontSize: '26px', fontWeight: 800, color: '#0f172a' }}>
-                                {precoMensalExibicao.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </span>
-                              <span style={{ fontSize: '13px', color: '#64748b' }}>/mês</span>
-                            </>
-                          )}
-                        </div>
-                        {cicloSelecionado === 'anual' && !isEnterprise && (
-                          <span style={{ fontSize: '11.5px', color: '#16a34a', fontWeight: 600, display: 'block', marginTop: '2px' }}>
-                            Faturado anualmente (R$ {totalAnual.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/ano)
-                          </span>
-                        )}
-                      </div>
-
-                      <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '16px', flex: 1, marginBottom: '20px' }}>
-                        <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: '#334155' }}>
-                          <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✓</span>
-                            <span><strong>{p.max_quadras === 999 ? 'Quadras Ilimitadas' : `Até ${p.max_quadras} Quadras`}</strong></span>
-                          </li>
-                          <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✓</span>
-                            <span><strong>{p.max_usuarios === 999 ? 'Usuários Ilimitados' : `Até ${p.max_usuarios} Funcionários`}</strong></span>
-                          </li>
-                          <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✓</span>
-                            <span>Portal do Atleta & Agendamento</span>
-                          </li>
-                          <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✓</span>
-                            <span>Gestão de Caixa & Pagamentos</span>
-                          </li>
-                          {p.nome !== 'Basic' && (
-                            <>
-                              <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✓</span>
-                                <span>Relatórios de BI & Exportação</span>
-                              </li>
-                              <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✓</span>
-                                <span>Auditoria Completa de Ações</span>
-                              </li>
-                            </>
-                          )}
-                          {isEnterprise && (
-                            <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✓</span>
-                              <span>Suporte Prioritário VIP</span>
-                            </li>
-                          )}
-                        </ul>
-                      </div>
-
-                      {isPlanoAtual ? (
-                        <button
-                          type="button"
-                          disabled
-                          style={{
-                            width: '100%',
-                            padding: '10px',
-                            borderRadius: '8px',
-                            border: '1px solid #cbd5e1',
-                            backgroundColor: '#e2e8f0',
-                            color: '#64748b',
-                            fontWeight: 600,
-                            fontSize: '13px',
-                            cursor: 'default'
-                          }}
-                        >
-                          ✓ Plano Ativo
-                        </button>
-                      ) : isEnterprise ? (
-                        <a
-                          href="https://wa.me/5500000000000?text=Olá! Gostaria de saber mais sobre o Plano Enterprise do CourtManager."
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{
-                            width: '100%',
-                            padding: '10px',
-                            borderRadius: '8px',
-                            border: 'none',
-                            backgroundColor: '#0f172a',
-                            color: '#fff',
-                            fontWeight: 600,
-                            fontSize: '13px',
-                            textAlign: 'center',
-                            textDecoration: 'none',
-                            display: 'block',
-                            boxSizing: 'border-box'
-                          }}
-                        >
-                          Falar com Consultor
-                        </a>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={solicitandoUpgradeId === p.id}
-                          onClick={() => handleSolicitarUpgrade(p.id, cicloSelecionado)}
-                          style={{
-                            width: '100%',
-                            padding: '10px',
-                            borderRadius: '8px',
-                            border: 'none',
-                            backgroundColor: '#2563eb',
-                            color: '#fff',
-                            fontWeight: 600,
-                            fontSize: '13px',
-                            cursor: solicitandoUpgradeId === p.id ? 'wait' : 'pointer',
-                            boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
-                          }}
-                        >
-                          {solicitandoUpgradeId === p.id
-                            ? 'Gerando Pix...'
-                            : `Fazer Upgrade (${cicloSelecionado === 'anual' ? 'Anual' : 'Mensal'})`}
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
+                {(planosDisponiveis.length > 0 ? planosDisponiveis : DEFAULT_PLANOS).map((p) => (
+                  <PlanoCardModal
+                    key={p.id}
+                    plano={p}
+                    dados={dados}
+                    cicloSelecionado={cicloSelecionado}
+                    solicitandoUpgradeId={solicitandoUpgradeId}
+                    onSolicitarUpgrade={handleSolicitarUpgrade}
+                  />
+                ))}
               </div>
             )}
           </div>

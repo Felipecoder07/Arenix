@@ -63,6 +63,48 @@ const PRECOS_SUGERIDOS_PADRAO: Record<string, number> = {
   'Futmesa': 70
 };
 
+const getDefaultSportPrice = (sportNameOrQuadras: Quadra[] | string, sportNameOptional?: string): number => {
+  if (Array.isArray(sportNameOrQuadras)) {
+    const quadras = sportNameOrQuadras;
+    const sportName = sportNameOptional || '';
+    for (const q of quadras) {
+      if (Array.isArray(q.modalidades)) {
+        for (const m of q.modalidades) {
+          if (typeof m !== 'string' && m.nome === sportName && m.preco > 0) {
+            return m.preco;
+          }
+        }
+      }
+    }
+    return PRECOS_SUGERIDOS_PADRAO[sportName] || 100;
+  } else {
+    const sportName = sportNameOrQuadras;
+    return PRECOS_SUGERIDOS_PADRAO[sportName] || 100;
+  }
+};
+
+const formatCurrency = (val: number) => {
+  return 'R$ ' + parseFloat(val as any).toFixed(2).replace('.', ',');
+};
+
+const formatCurrencyInput = (value: string) => {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return '';
+  const num = parseInt(digits, 10) / 100;
+  return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+const formatFloatToCurrencyInput = (num: number) => {
+  if (num == null || isNaN(Number(num))) return '0,00';
+  return Number(num).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+const parseCurrencyToFloat = (value: string) => {
+  if (!value) return 0;
+  const clean = value.replace(/\./g, '').replace(',', '.');
+  return parseFloat(clean) || 0;
+};
+
 export function AdminConfiguracoes() {
   const [relAtivo, setRelAtivo] = useState<string>(() => {
     return sessionStorage.getItem('cm_config_tab') || 'quadras';
@@ -126,22 +168,6 @@ export function AdminConfiguracoes() {
   const [nqInicio, setNqInicio] = useState('07:00');
   const [nqFim, setNqFim] = useState('22:00');
 
-  // Helpers para Sugestão Inteligente de Preços por Esporte
-  const getDefaultSportPrice = (sportName: string): number => {
-    // 1. Herda o valor que a arena já configurou para esse esporte em outra quadra cadastrada
-    for (const q of quadras) {
-      if (Array.isArray(q.modalidades)) {
-        for (const m of q.modalidades) {
-          if (typeof m !== 'string' && m.nome === sportName && m.preco > 0) {
-            return m.preco;
-          }
-        }
-      }
-    }
-    // 2. Se for o primeiro cadastro, usa os valores de referência do mercado
-    return PRECOS_SUGERIDOS_PADRAO[sportName] || 100;
-  };
-
   const isSportSelected = (m: string) => nqModalidades.some(item => item.nome === m);
 
   const toggleSport = (m: string) => {
@@ -150,7 +176,7 @@ export function AdminConfiguracoes() {
         setNqModalidades(prev => prev.filter(i => i.nome !== m));
       }
     } else {
-      const defaultPrice = getDefaultSportPrice(m);
+      const defaultPrice = getDefaultSportPrice(quadras, m);
       setNqModalidades(prev => [...prev, { nome: m, preco: defaultPrice }]);
     }
   };
@@ -166,7 +192,7 @@ export function AdminConfiguracoes() {
       setOpcoesModalidades(prev => [...prev, trimmed]);
     }
     if (!nqModalidades.some(i => i.nome === trimmed)) {
-      const defaultPrice = getDefaultSportPrice(trimmed);
+      const defaultPrice = getDefaultSportPrice(quadras, trimmed);
       setNqModalidades(prev => [...prev, { nome: trimmed, preco: defaultPrice }]);
     }
     setNovoEsporteInput('');
@@ -202,28 +228,6 @@ export function AdminConfiguracoes() {
   const handleTabChange = (tab: string) => {
     setRelAtivo(tab);
     sessionStorage.setItem('cm_config_tab', tab);
-  };
-
-  const formatCurrency = (val: number) => {
-    return 'R$ ' + parseFloat(val as any).toFixed(2).replace('.', ',');
-  };
-
-  const formatCurrencyInput = (value: string) => {
-    const digits = value.replace(/\D/g, '');
-    if (!digits) return '';
-    const num = parseInt(digits, 10) / 100;
-    return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
-
-  const formatFloatToCurrencyInput = (num: number) => {
-    if (num == null || isNaN(Number(num))) return '0,00';
-    return Number(num).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
-
-  const parseCurrencyToFloat = (value: string) => {
-    if (!value) return 0;
-    const clean = value.replace(/\./g, '').replace(',', '.');
-    return parseFloat(clean) || 0;
   };
 
   // --- Fetch API helper ---

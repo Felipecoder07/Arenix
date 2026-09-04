@@ -5,78 +5,85 @@ const db = require('../config/database');
 const { criarCobrancaPix, criarCobrancaCartao, criarCobrancaMaquineta, processarLiquidacao } = require('../services/gatewayService');
 
 // Criar cobrança para uma reserva (Pix, Cartão ou Maquineta)
+async function validarReservaECalcularValorCobrar(reserva_id, user, valorParam) {
+  const reserva = await db.getAsync('SELECT valor_total, tenant_id, cliente_id, status FROM Reservas WHERE id = ?', [reserva_id]);
+  if (!reserva) {
+    throw { status: 404, message: 'Reserva não encontrada.' };
+  }
+
+  if (user.perfil === 'Cliente' && reserva.cliente_id !== user.cliente_id) {
+    throw { status: 403, message: 'Acesso negado. Esta reserva não pertence à sua conta.' };
+  }
+
+  if (reserva.status === 'Cancelada') {
+    throw { status: 400, message: 'Não é possível pagar por uma reserva que já está cancelada.' };
+  }
+
+  const resultPagamentos = await db.getAsync('SELECT SUM(valor) as total_pago FROM Pagamentos WHERE reserva_id = ?', [reserva_id]);
+  const totalPago = resultPagamentos.total_pago || 0;
+  const saldoRestante = reserva.valor_total - totalPago;
+
+  if (saldoRestante <= 0) {
+    throw { status: 400, message: 'Esta reserva já está totalmente paga.' };
+  }
+
+  let valorCobrar = saldoRestante;
+  if (valorParam !== undefined && valorParam !== null && parseFloat(valorParam) > 0) {
+    const valorCustom = parseFloat(valorParam);
+    if (valorCustom > saldoRestante + 0.01) {
+      throw { status: 400, message: `O valor informado (R$ ${valorCustom.toFixed(2)}) não pode ser maior que o saldo devedor (R$ ${saldoRestante.toFixed(2)}).` };
+    }
+    valorCobrar = valorCustom;
+  }
+
+  return { reserva, valorCobrar };
+}
+
+async function gerarCobrancaPorMetodo(metodo, reserva_id, valorCobrar, card_data, tenant_id) {
+  const mapaGateway = {
+    'pix': 'Pix',
+    'pix online': 'Pix',
+    'pix online (gateway)': 'Pix',
+    'cartão': 'Cartão',
+    'cartao': 'Cartão',
+    'cartão de crédito': 'Cartão',
+    'credito': 'Cartão',
+    'maquineta': 'Maquineta',
+    'cartão (maquineta)': 'Maquineta',
+    'cartão (maquineta online)': 'Maquineta'
+  };
+
+  const metodoNormalizado = mapaGateway[metodo ? metodo.toLowerCase().trim() : ''] || metodo;
+
+  if (metodoNormalizado === 'Pix') {
+    return await criarCobrancaPix(reserva_id, valorCobrar, tenant_id);
+  }
+  if (metodoNormalizado === 'Cartão') {
+    return await criarCobrancaCartao(reserva_id, valorCobrar, card_data, tenant_id);
+  }
+  if (metodoNormalizado === 'Maquineta') {
+    return await criarCobrancaMaquineta(reserva_id, valorCobrar, tenant_id);
+  }
+  throw { status: 400, message: 'Método inválido. Escolha "Pix", "Cartão" ou "Maquineta".' };
+}
+
+// Criar cobrança para uma reserva (Pix, Cartão ou Maquineta)
 router.post('/cobranca', verifyToken, async (req, res) => {
   try {
-    const { reserva_id, metodo, card_data } = req.body;
+    const { reserva_id, metodo, card_data, valor } = req.body;
 
     if (!reserva_id || !metodo) {
       return res.status(400).json({ error: 'Os campos reserva_id e metodo são obrigatórios.' });
     }
 
-    // Busca reserva para validação e obter o valor
-    const reserva = await db.getAsync('SELECT valor_total, tenant_id, cliente_id, status FROM Reservas WHERE id = ?', [reserva_id]);
-    if (!reserva) {
-      return res.status(404).json({ error: 'Reserva não encontrada.' });
-    }
-
-    // Segurança IDOR: Garante que clientes comuns só gerem cobranças de suas próprias reservas
-    if (req.user.perfil === 'Cliente' && reserva.cliente_id !== req.user.cliente_id) {
-      return res.status(403).json({ error: 'Acesso negado. Esta reserva não pertence à sua conta.' });
-    }
-
-    if (reserva.status === 'Cancelada') {
-      return res.status(400).json({ error: 'Não é possível pagar por uma reserva que já está cancelada.' });
-    }
-
-    // Calcular saldo restante para pagamento
-    const resultPagamentos = await db.getAsync('SELECT SUM(valor) as total_pago FROM Pagamentos WHERE reserva_id = ?', [reserva_id]);
-    const totalPago = resultPagamentos.total_pago || 0;
-    const saldoRestante = reserva.valor_total - totalPago;
-
-    if (saldoRestante <= 0) {
-      return res.status(400).json({ error: 'Esta reserva já está totalmente paga.' });
-    }
-
-    let valorCobrar = saldoRestante;
-    if (req.body.valor !== undefined && req.body.valor !== null && parseFloat(req.body.valor) > 0) {
-      const valorCustom = parseFloat(req.body.valor);
-      if (valorCustom > saldoRestante + 0.01) {
-        return res.status(400).json({ error: `O valor informado (R$ ${valorCustom.toFixed(2)}) não pode ser maior que o saldo devedor (R$ ${saldoRestante.toFixed(2)}).` });
-      }
-      valorCobrar = valorCustom;
-    }
-
-    const mapaGateway = {
-      'pix': 'Pix',
-      'pix online': 'Pix',
-      'pix online (gateway)': 'Pix',
-      'cartão': 'Cartão',
-      'cartao': 'Cartão',
-      'cartão de crédito': 'Cartão',
-      'credito': 'Cartão',
-      'maquineta': 'Maquineta',
-      'cartão (maquineta)': 'Maquineta',
-      'cartão (maquineta online)': 'Maquineta'
-    };
-
-    const metodoNormalizado = mapaGateway[metodo ? metodo.toLowerCase().trim() : ''] || metodo;
-
-    if (metodoNormalizado === 'Pix') {
-      const cobranca = await criarCobrancaPix(reserva_id, valorCobrar, reserva.tenant_id);
-      return res.json(cobranca);
-    } else if (metodoNormalizado === 'Cartão') {
-      const cobranca = await criarCobrancaCartao(reserva_id, valorCobrar, card_data, reserva.tenant_id);
-      return res.json(cobranca);
-    } else if (metodoNormalizado === 'Maquineta') {
-      const cobranca = await criarCobrancaMaquineta(reserva_id, valorCobrar, reserva.tenant_id);
-      return res.json(cobranca);
-    } else {
-      return res.status(400).json({ error: 'Método inválido. Escolha "Pix", "Cartão" ou "Maquineta".' });
-    }
+    const { reserva, valorCobrar } = await validarReservaECalcularValorCobrar(reserva_id, req.user, valor);
+    const cobranca = await gerarCobrancaPorMetodo(metodo, reserva_id, valorCobrar, card_data, reserva.tenant_id);
+    return res.json(cobranca);
 
   } catch (error) {
     console.error('[Gateway Routes Error]', error);
-    res.status(500).json({ error: error.message || 'Erro ao gerar cobrança de pagamento.' });
+    const status = error.status || 500;
+    res.status(status).json({ error: error.message || 'Erro ao gerar cobrança de pagamento.' });
   }
 });
 
@@ -170,42 +177,49 @@ router.post('/maquineta', verifyToken, async (req, res) => {
   }
 });
 
+async function resolverTokenWebhookMercadoPago(paymentId) {
+  const transacao = await db.getAsync('SELECT reserva_id FROM TransacoesGateway WHERE gateway_ref = ?', [paymentId]);
+  let token = process.env.MERCADO_PAGO_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN;
+
+  if (transacao) {
+    const reserva = await db.getAsync('SELECT tenant_id FROM Reservas WHERE id = ?', [transacao.reserva_id]);
+    if (reserva?.tenant_id) {
+      const arena = await db.getAsync('SELECT gateway_access_token FROM Arenas WHERE id = ?', [reserva.tenant_id]);
+      if (arena?.gateway_access_token?.trim()) {
+        token = arena.gateway_access_token.trim();
+      }
+    }
+  }
+  return token;
+}
+
+async function liquidarWebhookMercadoPago(paymentId, token) {
+  if (!token) return;
+  const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  if (mpRes.ok) {
+    const mpData = await mpRes.json();
+    if (mpData.status === 'approved') {
+      const payload = {};
+      if (mpData.pos_id) payload.device_id = mpData.pos_id;
+      if (mpData.transaction_amount) payload.valor_pago = mpData.transaction_amount;
+      await processarLiquidacao(paymentId, payload);
+    }
+  }
+}
+
 // Webhook oficial (Chamado pelo Mercado Pago ou provedor configurado)
 router.post('/webhook', async (req, res) => {
   try {
     const { action, data } = req.body;
+    const isPaymentEvent = action === 'payment.created' || action === 'payment.updated' || req.query.topic === 'payment' || req.query.type === 'payment';
 
-    if (action === 'payment.created' || action === 'payment.updated' || req.query.topic === 'payment' || req.query.type === 'payment') {
+    if (isPaymentEvent) {
       const paymentId = String(data ? data.id : (req.query.id || req.body.id || ''));
       if (paymentId) {
-        // Busca a transação pendente para obter o token específico da arena
-        const transacao = await db.getAsync('SELECT reserva_id FROM TransacoesGateway WHERE gateway_ref = ?', [paymentId]);
-        let token = process.env.MERCADO_PAGO_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN;
-
-        if (transacao) {
-          const reserva = await db.getAsync('SELECT tenant_id FROM Reservas WHERE id = ?', [transacao.reserva_id]);
-          if (reserva && reserva.tenant_id) {
-            const arena = await db.getAsync('SELECT gateway_access_token FROM Arenas WHERE id = ?', [reserva.tenant_id]);
-            if (arena && arena.gateway_access_token && arena.gateway_access_token.trim() !== '') {
-              token = arena.gateway_access_token.trim();
-            }
-          }
-        }
-
-        if (token) {
-          const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          if (mpRes.ok) {
-            const mpData = await mpRes.json();
-            if (mpData.status === 'approved') {
-              const payload = {};
-              if (mpData.pos_id) payload.device_id = mpData.pos_id;
-              if (mpData.transaction_amount) payload.valor_pago = mpData.transaction_amount;
-              await processarLiquidacao(paymentId, payload);
-            }
-          }
-        }
+        const token = await resolverTokenWebhookMercadoPago(paymentId);
+        await liquidarWebhookMercadoPago(paymentId, token);
       }
     }
 

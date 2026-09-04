@@ -26,6 +26,295 @@ interface ClienteDetalhe extends Cliente {
   ultimasReservas: Reserva[];
 }
 
+const formatPhone = (val: string) => {
+  const clean = val.replace(/\D/g, '');
+  if (clean.length === 0) return '';
+  if (clean.length <= 2) return `(${clean}`;
+  if (clean.length <= 7) return `(${clean.slice(0, 2)}) ${clean.slice(2)}`;
+  return `(${clean.slice(0, 2)}) ${clean.slice(2, 7)}-${clean.slice(7, 11)}`;
+};
+
+const formatCurrency = (val: number) => {
+  return 'R$ ' + val.toFixed(2).replace('.', ',');
+};
+
+interface FormErrors {
+  nome?: string;
+  telefone?: string;
+  email?: string;
+}
+
+const validarCamposCliente = (nome: string, telefone: string, email: string): FormErrors => {
+  const errs: FormErrors = {};
+  if (!nome.trim()) {
+    errs.nome = 'O nome é obrigatório.';
+  } else if (nome.trim().split(/\s+/).length < 2) {
+    errs.nome = 'Informe pelo menos o nome e sobrenome.';
+  }
+
+  if (!telefone.trim()) {
+    errs.telefone = 'O telefone é obrigatório.';
+  } else if (!/^\(\d{2}\)\s\d{5}-\d{4}$/.test(telefone.trim())) {
+    errs.telefone = 'Formato inválido. Use (99) 99999-9999.';
+  }
+
+  if (email.trim()) {
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(email.trim())) {
+      errs.email = 'E-mail inválido.';
+    }
+  }
+
+  return errs;
+};
+
+interface ModalNovoClienteProps {
+  isOpen: boolean;
+  modoEdicao: boolean;
+  ncNome: string;
+  setNcNome: (v: string) => void;
+  ncTelefone: string;
+  setNcTelefone: (v: string) => void;
+  ncEmail: string;
+  setNcEmail: (v: string) => void;
+  errors: FormErrors;
+  onClose: () => void;
+  onSubmit: (e: React.FormEvent) => void;
+}
+
+const ModalNovoCliente: React.FC<ModalNovoClienteProps> = ({
+  isOpen,
+  modoEdicao,
+  ncNome,
+  setNcNome,
+  ncTelefone,
+  setNcTelefone,
+  ncEmail,
+  setNcEmail,
+  errors,
+  onClose,
+  onSubmit
+}) => {
+  return (
+    <div className={`modal-overlay ${isOpen ? 'open' : ''}`}>
+      <div className="modal">
+        <div className="modal-header">
+          <h2 className="modal-title">{modoEdicao ? 'Editar Cliente' : 'Novo Cliente'}</h2>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={onSubmit}>
+          <div className="modal-body">
+            <div className="form-group">
+              <label htmlFor="nc-nome">Nome completo *</label>
+              <input 
+                type="text" 
+                id="nc-nome" 
+                placeholder="Nome do cliente" 
+                value={ncNome}
+                onChange={(e) => setNcNome(e.target.value)}
+                required 
+              />
+              {errors.nome && (
+                <span className="error-msg" style={{ color: 'var(--danger)', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                  {errors.nome}
+                </span>
+              )}
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="nc-telefone">Telefone *</label>
+              <input 
+                type="text" 
+                id="nc-telefone" 
+                placeholder="(99) 99999-9999" 
+                value={ncTelefone}
+                onChange={(e) => setNcTelefone(formatPhone(e.target.value))}
+                maxLength={15}
+                required 
+              />
+              {errors.telefone && (
+                <span className="error-msg" style={{ color: 'var(--danger)', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                  {errors.telefone}
+                </span>
+              )}
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="nc-email">E-mail</label>
+              <input 
+                type="email" 
+                id="nc-email" 
+                placeholder="Ex: cliente@email.com (opcional)" 
+                value={ncEmail}
+                onChange={(e) => setNcEmail(e.target.value)}
+              />
+              {errors.email && (
+                <span className="error-msg" style={{ color: 'var(--danger)', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                  {errors.email}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button className="btn-ghost" type="button" onClick={onClose}>Cancelar</button>
+            <button className="btn-primary" type="submit">Salvar Cliente</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+interface ModalDetalheClienteProps {
+  isOpen: boolean;
+  loadingDetalhe: boolean;
+  clienteDetalhe: ClienteDetalhe | null;
+  onClose: () => void;
+  onArquivar: () => void;
+  onDesarquivar: () => void;
+  onExcluir: () => void;
+  onEditar: () => void;
+}
+
+const ModalDetalheCliente: React.FC<ModalDetalheClienteProps> = ({
+  isOpen,
+  loadingDetalhe,
+  clienteDetalhe,
+  onClose,
+  onArquivar,
+  onDesarquivar,
+  onExcluir,
+  onEditar
+}) => {
+  return (
+    <div className={`modal-overlay ${isOpen ? 'open' : ''}`}>
+      <div className="modal" style={{ maxWidth: '540px' }}>
+        <div className="modal-header">
+          <h2 className="modal-title">{loadingDetalhe ? 'Carregando...' : clienteDetalhe?.nome}</h2>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        {loadingDetalhe ? (
+          <div className="modal-body text-center p-6 text-muted">Carregando detalhes do cliente...</div>
+        ) : clienteDetalhe ? (
+          <>
+            <div className="modal-body">
+              <div style={{ display: 'flex', gap: 'var(--s-6)', marginBottom: 'var(--s-5)' }}>
+                <div>
+                  <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>Telefone</div>
+                  <div style={{ fontSize: '13px', fontWeight: 500 }}>{clienteDetalhe.telefone || '—'}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>E-mail</div>
+                  <div style={{ fontSize: '13px' }}>{clienteDetalhe.email || '—'}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>Reservas</div>
+                  <div style={{ fontSize: '13px', fontWeight: 600 }}>{clienteDetalhe.reservasCount || 0}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>Saldo Devedor</div>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: (clienteDetalhe.saldoDevedor || 0) > 0 ? 'var(--danger)' : 'var(--text-color)' }}>
+                    {formatCurrency(clienteDetalhe.saldoDevedor || 0)}
+                  </div>
+                </div>
+              </div>
+
+              <h3 style={{ fontSize: '13px', fontWeight: 600, marginBottom: 'var(--s-3)' }}>Últimas Reservas</h3>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Quadra</th>
+                      <th>Status</th>
+                      <th>Pagamento</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {!clienteDetalhe.ultimasReservas || clienteDetalhe.ultimasReservas.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} style={{ textAlign: 'center' }}>Nenhuma reserva encontrada.</td>
+                      </tr>
+                    ) : (
+                      clienteDetalhe.ultimasReservas.map(r => {
+                        const dateParts = r.data_reserva.split('-');
+                        const dateStr = dateParts.length === 3 
+                          ? new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2])).toLocaleDateString('pt-BR')
+                          : r.data_reserva;
+
+                        return (
+                          <tr key={r.id}>
+                            <td>{dateStr} · {r.hora_inicio}</td>
+                            <td>{r.quadra_nome}</td>
+                            <td>
+                              <span className={`badge ${
+                                r.status === 'Confirmada' ? 'badge--paid' : r.status === 'Cancelada' ? 'badge--danger' : 'badge--pending'
+                              }`}>
+                                {r.status}
+                              </span>
+                            </td>
+                            <td>
+                              <span className={`badge ${
+                                r.status_pagamento === 'Pago' ? 'badge--paid' : r.status_pagamento === 'Pendente' ? 'badge--danger' : 'badge--pending'
+                              }`}>
+                                {r.status_pagamento}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="modal-footer" style={{ justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', gap: 'var(--s-2)' }}>
+                {clienteDetalhe.ativo === 1 ? (
+                  <button
+                    className="btn-ghost"
+                    type="button"
+                    onClick={onArquivar}
+                    title="Ocultar da lista principal preservando o histórico"
+                  >
+                    Arquivar
+                  </button>
+                ) : (
+                  <button
+                    className="btn-ghost"
+                    type="button"
+                    onClick={onDesarquivar}
+                  >
+                    Reativar
+                  </button>
+                )}
+                {(!clienteDetalhe.reservasCount || clienteDetalhe.reservasCount === 0) && (
+                  <button
+                    className="btn-ghost"
+                    type="button"
+                    style={{ color: 'var(--danger)' }}
+                    onClick={onExcluir}
+                  >
+                    Excluir
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button className="btn-ghost" type="button" onClick={onClose}>Fechar</button>
+                {clienteDetalhe.ativo === 1 && (
+                  <button className="btn-primary" type="button" onClick={onEditar}>Editar</button>
+                )}
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="modal-body text-center p-6 text-muted">Erro ao recuperar detalhes do cliente.</div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export function AdminClientes() {
   const token = localStorage.getItem('courtmanager_token');
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -42,7 +331,7 @@ export function AdminClientes() {
   const [ncNome, setNcNome] = useState('');
   const [ncTelefone, setNcTelefone] = useState('');
   const [ncEmail, setNcEmail] = useState('');
-  const [errors, setErrors] = useState<{ nome?: string; telefone?: string; email?: string }>({});
+  const [errors, setErrors] = useState<FormErrors>({});
 
   // Estado Detalhes Cliente
   const [selectedClienteId, setSelectedClienteId] = useState<number | null>(null);
@@ -113,49 +402,12 @@ export function AdminClientes() {
     fetchDetalhe();
   }, [selectedClienteId, token]);
 
-  // Auto-formatação de telefone
-  const formatPhone = (val: string) => {
-    const clean = val.replace(/\D/g, '');
-    if (clean.length === 0) return '';
-    if (clean.length <= 2) return `(${clean}`;
-    if (clean.length <= 7) return `(${clean.slice(0, 2)}) ${clean.slice(2)}`;
-    return `(${clean.slice(0, 2)}) ${clean.slice(2, 7)}-${clean.slice(7, 11)}`;
-  };
-
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setNcTelefone(formatPhone(e.target.value));
-  };
-
-  // Validar Formulário
-  const validarForm = () => {
-    const errs: typeof errors = {};
-    if (!ncNome.trim()) {
-      errs.nome = 'O nome é obrigatório.';
-    } else if (ncNome.trim().split(/\s+/).length < 2) {
-      errs.nome = 'Informe pelo menos o nome e sobrenome.';
-    }
-
-    if (!ncTelefone.trim()) {
-      errs.telefone = 'O telefone é obrigatório.';
-    } else if (!/^\(\d{2}\)\s\d{5}-\d{4}$/.test(ncTelefone.trim())) {
-      errs.telefone = 'Formato inválido. Use (99) 99999-9999.';
-    }
-
-    if (ncEmail.trim()) {
-      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-      if (!emailRegex.test(ncEmail.trim())) {
-        errs.email = 'E-mail inválido.';
-      }
-    }
-
-    setErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
-
   // Submit Criar/Editar Cliente
   const handleSalvarCliente = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validarForm() || !token) return;
+    const errs = validarCamposCliente(ncNome, ncTelefone, ncEmail);
+    setErrors(errs);
+    if (Object.keys(errs).length > 0 || !token) return;
 
     try {
       const method = modoEdicao ? 'PUT' : 'POST';
@@ -292,10 +544,6 @@ export function AdminClientes() {
     (c.email && c.email.toLowerCase().includes(busca.toLowerCase()))
   );
 
-  const formatCurrency = (val: number) => {
-    return 'R$ ' + val.toFixed(2).replace('.', ',');
-  };
-
   return (
     <div className="admin-clientes-page">
       {/* Toast Alert */}
@@ -405,199 +653,31 @@ export function AdminClientes() {
       </div>
 
       {/* MODAL: NOVO / EDITAR CLIENTE */}
-      <div className={`modal-overlay ${activeModal === 'novo-cliente' ? 'open' : ''}`}>
-        <div className="modal">
-          <div className="modal-header">
-            <h2 className="modal-title">{modoEdicao ? 'Editar Cliente' : 'Novo Cliente'}</h2>
-            <button className="modal-close" onClick={() => setActiveModal(null)}>✕</button>
-          </div>
-          <form onSubmit={handleSalvarCliente}>
-            <div className="modal-body">
-              <div className="form-group">
-                <label htmlFor="nc-nome">Nome completo *</label>
-                <input 
-                  type="text" 
-                  id="nc-nome" 
-                  placeholder="Nome do cliente" 
-                  value={ncNome}
-                  onChange={(e) => setNcNome(e.target.value)}
-                  required 
-                />
-                {errors.nome && (
-                  <span className="error-msg" style={{ color: 'var(--danger)', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-                    {errors.nome}
-                  </span>
-                )}
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="nc-telefone">Telefone *</label>
-                <input 
-                  type="text" 
-                  id="nc-telefone" 
-                  placeholder="(99) 99999-9999" 
-                  value={ncTelefone}
-                  onChange={handlePhoneChange}
-                  maxLength={15}
-                  required 
-                />
-                {errors.telefone && (
-                  <span className="error-msg" style={{ color: 'var(--danger)', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-                    {errors.telefone}
-                  </span>
-                )}
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="nc-email">E-mail</label>
-                <input 
-                  type="email" 
-                  id="nc-email" 
-                  placeholder="Ex: cliente@email.com (opcional)" 
-                  value={ncEmail}
-                  onChange={(e) => setNcEmail(e.target.value)}
-                />
-                {errors.email && (
-                  <span className="error-msg" style={{ color: 'var(--danger)', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-                    {errors.email}
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn-ghost" type="button" onClick={() => setActiveModal(null)}>Cancelar</button>
-              <button className="btn-primary" type="submit">Salvar Cliente</button>
-            </div>
-          </form>
-        </div>
-      </div>
+      <ModalNovoCliente
+        isOpen={activeModal === 'novo-cliente'}
+        modoEdicao={modoEdicao}
+        ncNome={ncNome}
+        setNcNome={setNcNome}
+        ncTelefone={ncTelefone}
+        setNcTelefone={setNcTelefone}
+        ncEmail={ncEmail}
+        setNcEmail={setNcEmail}
+        errors={errors}
+        onClose={() => setActiveModal(null)}
+        onSubmit={handleSalvarCliente}
+      />
 
       {/* MODAL: DETALHE DO CLIENTE */}
-      <div className={`modal-overlay ${activeModal === 'detalhe-cliente' ? 'open' : ''}`}>
-        <div className="modal" style={{ maxWidth: '540px' }}>
-          <div className="modal-header">
-            <h2 className="modal-title">{loadingDetalhe ? 'Carregando...' : clienteDetalhe?.nome}</h2>
-            <button className="modal-close" onClick={() => { setActiveModal(null); setSelectedClienteId(null); }}>✕</button>
-          </div>
-          {loadingDetalhe ? (
-            <div className="modal-body text-center p-6 text-muted">Carregando detalhes do cliente...</div>
-          ) : clienteDetalhe ? (
-            <>
-              <div className="modal-body">
-                <div style={{ display: 'flex', gap: 'var(--s-6)', marginBottom: 'var(--s-5)' }}>
-                  <div>
-                    <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>Telefone</div>
-                    <div style={{ fontSize: '13px', fontWeight: 500 }}>{clienteDetalhe.telefone || '—'}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>E-mail</div>
-                    <div style={{ fontSize: '13px' }}>{clienteDetalhe.email || '—'}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>Reservas</div>
-                    <div style={{ fontSize: '13px', fontWeight: 600 }}>{clienteDetalhe.reservasCount || 0}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>Saldo Devedor</div>
-                    <div style={{ fontSize: '13px', fontWeight: 600, color: (clienteDetalhe.saldoDevedor || 0) > 0 ? 'var(--danger)' : 'var(--text-color)' }}>
-                      {formatCurrency(clienteDetalhe.saldoDevedor || 0)}
-                    </div>
-                  </div>
-                </div>
-
-                <h3 style={{ fontSize: '13px', fontWeight: 600, marginBottom: 'var(--s-3)' }}>Últimas Reservas</h3>
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Data</th>
-                        <th>Quadra</th>
-                        <th>Status</th>
-                        <th>Pagamento</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {!clienteDetalhe.ultimasReservas || clienteDetalhe.ultimasReservas.length === 0 ? (
-                        <tr>
-                          <td colSpan={4} style={{ textAlign: 'center' }}>Nenhuma reserva encontrada.</td>
-                        </tr>
-                      ) : (
-                        clienteDetalhe.ultimasReservas.map(r => {
-                          const dateParts = r.data_reserva.split('-');
-                          const dateStr = dateParts.length === 3 
-                            ? new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2])).toLocaleDateString('pt-BR')
-                            : r.data_reserva;
-
-                          return (
-                            <tr key={r.id}>
-                              <td>{dateStr} · {r.hora_inicio}</td>
-                              <td>{r.quadra_nome}</td>
-                              <td>
-                                <span className={`badge ${
-                                  r.status === 'Confirmada' ? 'badge--paid' : r.status === 'Cancelada' ? 'badge--danger' : 'badge--pending'
-                                }`}>
-                                  {r.status}
-                                </span>
-                              </td>
-                              <td>
-                                <span className={`badge ${
-                                  r.status_pagamento === 'Pago' ? 'badge--paid' : r.status_pagamento === 'Pendente' ? 'badge--danger' : 'badge--pending'
-                                }`}>
-                                  {r.status_pagamento}
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-              <div className="modal-footer" style={{ justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', gap: 'var(--s-2)' }}>
-                  {clienteDetalhe.ativo === 1 ? (
-                    <button
-                      className="btn-ghost"
-                      type="button"
-                      onClick={handleArquivarCliente}
-                      title="Ocultar da lista principal preservando o histórico"
-                    >
-                      Arquivar
-                    </button>
-                  ) : (
-                    <button
-                      className="btn-ghost"
-                      type="button"
-                      onClick={handleDesarquivarCliente}
-                    >
-                      Reativar
-                    </button>
-                  )}
-                  {(!clienteDetalhe.reservasCount || clienteDetalhe.reservasCount === 0) && (
-                    <button
-                      className="btn-ghost"
-                      type="button"
-                      style={{ color: 'var(--danger)' }}
-                      onClick={handleExcluirCliente}
-                    >
-                      Excluir
-                    </button>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <button className="btn-ghost" type="button" onClick={() => { setActiveModal(null); setSelectedClienteId(null); }}>Fechar</button>
-                  {clienteDetalhe.ativo === 1 && (
-                    <button className="btn-primary" type="button" onClick={abrirEdicao}>Editar</button>
-                  )}
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="modal-body text-center p-6 text-muted">Erro ao recuperar detalhes do cliente.</div>
-          )}
-        </div>
-      </div>
+      <ModalDetalheCliente
+        isOpen={activeModal === 'detalhe-cliente'}
+        loadingDetalhe={loadingDetalhe}
+        clienteDetalhe={clienteDetalhe}
+        onClose={() => { setActiveModal(null); setSelectedClienteId(null); }}
+        onArquivar={handleArquivarCliente}
+        onDesarquivar={handleDesarquivarCliente}
+        onExcluir={handleExcluirCliente}
+        onEditar={abrirEdicao}
+      />
     </div>
   );
 }

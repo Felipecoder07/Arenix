@@ -15,6 +15,79 @@ import { brl, getLocalDateISO, formatLongDate, formatShortDate } from './lib/for
 
 import { BACKEND_URL } from './lib/backendUrl';
 
+function formatSingleSlotMessage(
+  s: Slot,
+  courtsList: Court[],
+  activeSport?: string,
+  total = 0
+): string[] {
+  const courtObj = courtsList.find(c => c.id === s.courtId);
+  const courtName = courtObj?.name || 'Quadra';
+  const sportName = s.sport || activeSport || courtObj?.modalities?.[0] || 'Esporte';
+
+  const lines: string[] = [
+    `📅 *Data:* ${formatLongDate(s.dateISO)}`,
+    `⏰ *Horário:* ${s.start} às ${s.end}`,
+    `🏟️ *Quadra:* ${courtName}`,
+    `🎾 *Modalidade:* ${sportName}`
+  ];
+  if (total > 0) {
+    lines.push(`💰 *Valor:* ${brl(total)}`);
+  }
+  return lines;
+}
+
+function formatSameDateSlotsMessage(
+  sortedSlots: Slot[],
+  courtsList: Court[],
+  activeSport?: string,
+  total = 0,
+  firstCourt?: Court,
+  allSameCourt = false
+): string[] {
+  const dateStr = formatLongDate(sortedSlots[0].dateISO);
+  const sportName = sortedSlots[0].sport || activeSport || firstCourt?.modalities?.[0] || 'Esporte';
+
+  const lines: string[] = [`📅 *Data:* ${dateStr}`];
+  if (allSameCourt && firstCourt) {
+    lines.push(`🏟️ *Quadra:* ${firstCourt.name}`);
+  }
+  lines.push(`🎾 *Modalidade:* ${sportName}`);
+  lines.push(`⏰ *Horários Selecionados (${sortedSlots.length}):*`);
+  sortedSlots.forEach(s => {
+    const courtObj = courtsList.find(c => c.id === s.courtId);
+    const courtSuffix = !allSameCourt && courtObj ? ` — ${courtObj.name}` : '';
+    lines.push(`  • ${s.start} às ${s.end}${courtSuffix}`);
+  });
+  if (total > 0) {
+    lines.push(`💰 *Valor Total:* ${brl(total)}`);
+  }
+  return lines;
+}
+
+function formatMultiDateSlotsMessage(
+  sortedSlots: Slot[],
+  courtsList: Court[],
+  activeSport?: string,
+  total = 0,
+  firstCourt?: Court
+): string[] {
+  const sportName = sortedSlots[0].sport || activeSport || firstCourt?.modalities?.[0] || 'Esporte';
+  const lines: string[] = [
+    `🎾 *Modalidade:* ${sportName}`,
+    `⏰ *Horários Selecionados (${sortedSlots.length}):*`
+  ];
+  sortedSlots.forEach(s => {
+    const courtObj = courtsList.find(c => c.id === s.courtId);
+    const courtName = courtObj?.name || 'Quadra';
+    lines.push(`  • ${formatShortDate(s.dateISO)} das ${s.start} às ${s.end} — ${courtName}`);
+  });
+  if (total > 0) {
+    lines.push(`💰 *Valor Total:* ${brl(total)}`);
+  }
+  return lines;
+}
+
 function buildWhatsAppReservationMessage(
   arenaName: string,
   slots: Slot[],
@@ -36,52 +109,16 @@ function buildWhatsAppReservationMessage(
   const firstCourt = courtsList.find(c => c.id === sortedSlots[0].courtId);
   const allSameCourt = sortedSlots.every(s => s.courtId === sortedSlots[0].courtId);
 
-  const lines: string[] = [];
-  lines.push(`Olá! Gostaria de agendar ${sortedSlots.length === 1 ? 'um horário' : 'os seguintes horários'} na *${arenaName || 'Arena'}*:\n`);
+  const lines: string[] = [
+    `Olá! Gostaria de agendar ${sortedSlots.length === 1 ? 'um horário' : 'os seguintes horários'} na *${arenaName || 'Arena'}*:\n`
+  ];
 
   if (sortedSlots.length === 1) {
-    const s = sortedSlots[0];
-    const courtObj = courtsList.find(c => c.id === s.courtId);
-    const courtName = courtObj?.name || 'Quadra';
-    const sportName = s.sport || activeSport || courtObj?.modalities?.[0] || 'Esporte';
-
-    lines.push(`📅 *Data:* ${formatLongDate(s.dateISO)}`);
-    lines.push(`⏰ *Horário:* ${s.start} às ${s.end}`);
-    lines.push(`🏟️ *Quadra:* ${courtName}`);
-    lines.push(`🎾 *Modalidade:* ${sportName}`);
-    if (total > 0) {
-      lines.push(`💰 *Valor:* ${brl(total)}`);
-    }
+    lines.push(...formatSingleSlotMessage(sortedSlots[0], courtsList, activeSport, total));
   } else if (allSameDate) {
-    const dateStr = formatLongDate(sortedSlots[0].dateISO);
-    const sportName = sortedSlots[0].sport || activeSport || firstCourt?.modalities?.[0] || 'Esporte';
-
-    lines.push(`📅 *Data:* ${dateStr}`);
-    if (allSameCourt && firstCourt) {
-      lines.push(`🏟️ *Quadra:* ${firstCourt.name}`);
-    }
-    lines.push(`🎾 *Modalidade:* ${sportName}`);
-    lines.push(`⏰ *Horários Selecionados (${sortedSlots.length}):*`);
-    sortedSlots.forEach(s => {
-      const courtObj = courtsList.find(c => c.id === s.courtId);
-      const courtSuffix = !allSameCourt && courtObj ? ` — ${courtObj.name}` : '';
-      lines.push(`  • ${s.start} às ${s.end}${courtSuffix}`);
-    });
-    if (total > 0) {
-      lines.push(`💰 *Valor Total:* ${brl(total)}`);
-    }
+    lines.push(...formatSameDateSlotsMessage(sortedSlots, courtsList, activeSport, total, firstCourt, allSameCourt));
   } else {
-    const sportName = sortedSlots[0].sport || activeSport || firstCourt?.modalities?.[0] || 'Esporte';
-    lines.push(`🎾 *Modalidade:* ${sportName}`);
-    lines.push(`⏰ *Horários Selecionados (${sortedSlots.length}):*`);
-    sortedSlots.forEach(s => {
-      const courtObj = courtsList.find(c => c.id === s.courtId);
-      const courtName = courtObj?.name || 'Quadra';
-      lines.push(`  • ${formatShortDate(s.dateISO)} das ${s.start} às ${s.end} — ${courtName}`);
-    });
-    if (total > 0) {
-      lines.push(`💰 *Valor Total:* ${brl(total)}`);
-    }
+    lines.push(...formatMultiDateSlotsMessage(sortedSlots, courtsList, activeSport, total, firstCourt));
   }
 
   if (athleteName && athleteName.trim()) {
@@ -89,23 +126,43 @@ function buildWhatsAppReservationMessage(
   }
 
   lines.push(`\nGostaria de confirmar a disponibilidade para reservar!`);
-
   return lines.join('\n');
 }
 
-export default function App() {
-  // 1. Extrair o Slug da URL (ex: /arena/felp-arena ou /felp-arena)
-  const getSlugFromPath = () => {
-    const path = window.location.pathname.replace(/^\/+/g, '');
-    const parts = path.split('/');
-    if (parts[0] === 'arena' && parts[1]) return parts[1];
-    if (parts[0] && parts[0] !== 'index.html' && parts[0] !== 'favicon.ico' && parts[0].trim() !== '') {
-      return parts[0].trim();
-    }
-    return 'felp-arena'; // Slug padrão para testes
-  };
+function getSlugFromPath(): string {
+  const path = window.location.pathname.replace(/^\/+/g, '');
+  const parts = path.split('/');
+  if (parts[0] === 'arena' && parts[1]) return parts[1];
+  if (parts[0] && parts[0] !== 'index.html' && parts[0] !== 'favicon.ico' && parts[0].trim() !== '') {
+    return parts[0].trim();
+  }
+  return 'felp-arena';
+}
 
-  const [slug] = useState<string>(getSlugFromPath());
+function getInitialAthlete(): { name: string; email: string; phone: string } | null {
+  try {
+    const saved = localStorage.getItem('atleta_session');
+    const token = localStorage.getItem('courtmanager_athlete_token') || localStorage.getItem('atleta_token');
+    if (saved && token) {
+      return JSON.parse(saved);
+    }
+  } catch {
+    // Ignore storage parse error
+  }
+  return null;
+}
+
+function resolveCoverUrl(rawCover?: string): string {
+  const fallback = 'https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?auto=format&fit=crop&q=80&w=1200';
+  if (!rawCover) return fallback;
+  if (rawCover.startsWith('http://') || rawCover.startsWith('https://') || rawCover.startsWith('data:')) {
+    return rawCover;
+  }
+  return `${BACKEND_URL}${rawCover}`;
+}
+
+export default function App() {
+  const [slug] = useState<string>(getSlugFromPath);
   const [arena, setArena] = useState<ArenaInfo | null>(null);
   const [courts, setCourts] = useState<Court[]>([]);
   const [courtId, setCourtId] = useState<string>('');
@@ -117,18 +174,6 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [blockedMsg, setBlockedMsg] = useState<string | null>(null);
-
-  // Helper para restaurar sessão prévia do atleta do localStorage (sem delay de UI)
-  const getInitialAthlete = () => {
-    try {
-      const saved = localStorage.getItem('atleta_session');
-      const token = localStorage.getItem('courtmanager_athlete_token') || localStorage.getItem('atleta_token');
-      if (saved && token) {
-        return JSON.parse(saved);
-      }
-    } catch {}
-    return null;
-  };
 
   // Atleta Logado (Sessão do Atleta)
   const [athlete, setAthlete] = useState<{ name: string; email: string; phone: string } | null>(getInitialAthlete);
@@ -171,7 +216,6 @@ export default function App() {
             localStorage.setItem('atleta_session', JSON.stringify(userObj));
           }
         } else if (res.status === 401 || res.status === 403) {
-          // Token expirado ou inválido: desloga com segurança
           setAthlete(null);
           localStorage.removeItem('atleta_token');
           localStorage.removeItem('courtmanager_athlete_token');
@@ -179,21 +223,13 @@ export default function App() {
         }
       })
       .catch(() => {
-        // Falha de rede: mantém sessão local para não deslogar offline/intermitência
+        // Falha de rede
       });
   }, [slug]);
 
   // 2. Carregar Dados Públicos do Tenant por Slug
   useEffect(() => {
     let attempts = 0;
-    const resolveCoverUrl = (rawCover?: string): string => {
-      const fallback = 'https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?auto=format&fit=crop&q=80&w=1200';
-      if (!rawCover) return fallback;
-      if (rawCover.startsWith('http://') || rawCover.startsWith('https://') || rawCover.startsWith('data:')) {
-        return rawCover;
-      }
-      return `${BACKEND_URL}${rawCover}`;
-    };
 
     const fetchArena = () => {
       setLoading(true);

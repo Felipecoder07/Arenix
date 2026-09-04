@@ -196,6 +196,67 @@ const aplicarDesconto = async (req, res) => {
   }
 };
 
+async function resolveEstornoTarget(tenant_id, pagamento_id, reserva_id) {
+  if (pagamento_id) {
+    const pagamento = await db.getAsync(
+      'SELECT p.* FROM Pagamentos p JOIN Reservas r ON p.reserva_id = r.id WHERE p.id = ? AND r.tenant_id = ?',
+      [pagamento_id, tenant_id]
+    );
+    if (!pagamento) return { error: 'Pagamento não encontrado.', status: 404 };
+    if (pagamento.valor < 0) return { error: 'Pagamento já é um estorno.', status: 400 };
+    return { finalReservaId: pagamento.reserva_id, maxEstornavel: pagamento.valor };
+  }
+  
+  if (reserva_id) {
+    const reserva = await db.getAsync(
+      'SELECT r.* FROM Reservas r WHERE r.id = ? AND r.tenant_id = ?',
+      [reserva_id, tenant_id]
+    );
+    if (!reserva) return { error: 'Reserva não encontrada.', status: 404 };
+    return { finalReservaId: reserva.id, maxEstornavel: 0 };
+  }
+
+  return { error: 'É necessário informar pagamento_id ou reserva_id.', status: 400 };
+}
+
+async function dispararEmailEstorno(tenant_id, finalReservaId, valorEstornoInfo, descMotivo) {
+  try {
+    const clientQuery = `
+      SELECT c.nome, c.email, r.data_reserva, r.hora_inicio, r.hora_fim, q.nome as quadra_nome
+      FROM Reservas r
+      JOIN Clientes c ON r.cliente_id = c.id
+      JOIN Quadras q ON r.quadra_id = q.id
+      WHERE r.id = ?
+    `;
+    const details = await db.getAsync(clientQuery, [finalReservaId]);
+    const arena = await db.getAsync('SELECT nome FROM Arenas WHERE id = ?', [tenant_id]);
+    
+    if (details && details.email) {
+      const { sendEmail } = require('../services/emailService');
+      const subject = `Reembolso / Estorno Realizado - ${arena ? arena.nome : 'Arenix'}`;
+      const html = `
+        <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; line-height: 1.6;">
+          <h2 style="color: #DD6B20;">Notificação de Estorno / Reembolso ↩️</h2>
+          <p>Olá, ${details.nome}. Informamos que um estorno de pagamento foi registrado para o seu agendamento.</p>
+          <div style="background-color: #FFFAF0; border: 1px solid #FEEBC8; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            <strong>Detalhes do Estorno:</strong><br />
+            💰 <strong>Valor Estornado:</strong> R$ ${Number.parseFloat(valorEstornoInfo).toFixed(2).replace('.', ',')}<br />
+            ❌ <strong>Motivo/Justificativa:</strong> ${descMotivo}<br />
+            📅 <strong>Reserva Original:</strong> ${details.data_reserva.split('-').reverse().join('/')} (${details.hora_inicio} às ${details.hora_fim})<br />
+            🎾 <strong>Quadra:</strong> ${details.quadra_nome}
+          </div>
+          <p>O valor estornado será processado de acordo com o método original de pagamento. Em caso de dúvidas, fale com a recepção da arena.</p>
+          <hr style="border: 0; border-top: 1px solid #E2E8F0; margin: 20px 0;" />
+          <p style="font-size: 0.8em; color: #A0AEC0;">Esta é uma mensagem automática enviada por Arenix CourtManager em nome de ${arena ? arena.nome : 'sua Arena'}.</p>
+        </div>
+      `;
+      await sendEmail(details.email, subject, html);
+    }
+  } catch (e) {
+    console.error('[SMTP] Erro ao disparar e-mail de estorno:', e.message);
+  }
+}
+
 const registrarEstorno = async (req, res) => {
   try {
     const { pagamento_id, reserva_id, valor, motivo, motivo_estorno } = req.body;
@@ -203,37 +264,16 @@ const registrarEstorno = async (req, res) => {
     const usuario = req.user;
     const descMotivo = motivo || motivo_estorno || 'Estorno parcial';
 
-    // RN-008: Apenas Admin pode estornar
     if (usuario.perfil !== 'Administrador') {
       return res.status(403).json({ error: 'Apenas Administradores podem realizar estornos.' });
     }
 
-    let finalReservaId;
-    let maxEstornavel = 0;
-
-    if (pagamento_id) {
-      const pagamento = await db.getAsync(
-        'SELECT p.* FROM Pagamentos p JOIN Reservas r ON p.reserva_id = r.id WHERE p.id = ? AND r.tenant_id = ?',
-        [pagamento_id, req.user.tenant_id]
-      );
-      if (!pagamento) return res.status(404).json({ error: 'Pagamento não encontrado.' });
-      if (pagamento.valor < 0) return res.status(400).json({ error: 'Pagamento já é um estorno.' });
-      
-      finalReservaId = pagamento.reserva_id;
-      maxEstornavel = pagamento.valor;
-    } else if (reserva_id) {
-      const reserva = await db.getAsync(
-        'SELECT r.* FROM Reservas r WHERE r.id = ? AND r.tenant_id = ?',
-        [reserva_id, req.user.tenant_id]
-      );
-      if (!reserva) return res.status(404).json({ error: 'Reserva não encontrada.' });
-      
-      finalReservaId = reserva.id;
-    } else {
-      return res.status(400).json({ error: 'É necessário informar pagamento_id ou reserva_id.' });
+    const target = await resolveEstornoTarget(req.user.tenant_id, pagamento_id, reserva_id);
+    if (target.error) {
+      return res.status(target.status).json({ error: target.error });
     }
+    const { finalReservaId, maxEstornavel } = target;
 
-    // Calcula o saldo líquido disponível para estorno da reserva (total_positivo - total_estornados)
     const saldoLiquidoQuery = await db.getAsync(`
       SELECT 
         COALESCE(SUM(CASE WHEN valor > 0 THEN valor ELSE 0 END), 0) AS total_positivo,
@@ -246,14 +286,13 @@ const registrarEstorno = async (req, res) => {
     const totalNegativo = saldoLiquidoQuery.total_negativo;
     const saldoDisponivelReserva = totalPositivo - totalNegativo;
 
-    // Se informou pagamento_id, limitamos ao valor daquele pagamento, mas sem exceder o saldo geral da reserva
     let limiteMaximo = saldoDisponivelReserva;
     if (pagamento_id && maxEstornavel < limiteMaximo) {
       limiteMaximo = maxEstornavel;
     }
 
-    const valorEstornoInfo = valor !== undefined ? parseFloat(valor) : limiteMaximo;
-    if (isNaN(valorEstornoInfo) || valorEstornoInfo <= 0) {
+    const valorEstornoInfo = valor !== undefined ? Number.parseFloat(valor) : limiteMaximo;
+    if (Number.isNaN(valorEstornoInfo) || valorEstornoInfo <= 0) {
       return res.status(400).json({ error: 'O valor do estorno deve ser maior que zero.' });
     }
 
@@ -261,7 +300,6 @@ const registrarEstorno = async (req, res) => {
       return res.status(400).json({ error: `O valor do estorno (R$ ${valorEstornoInfo.toFixed(2)}) não pode ser maior que o saldo disponível para estorno (R$ ${limiteMaximo.toFixed(2)}).` });
     }
 
-    // Criar um pagamento negativo para representar o estorno e manter rastreabilidade
     const valorEstornoNegativo = -Math.abs(valorEstornoInfo);
     await db.runAsync(
       'INSERT INTO Pagamentos (reserva_id, valor, metodo, registrado_por) VALUES (?, ?, ?, ?)',
@@ -269,47 +307,9 @@ const registrarEstorno = async (req, res) => {
     );
 
     const { saldoDevedor, novoStatus } = await atualizarStatusReserva(finalReservaId, req.user.tenant_id);
-
     logAuditEvent(usuario.id, 'Estorno Realizado', `Reserva: ${finalReservaId}, Valor: ${Math.abs(valorEstornoNegativo)}, Motivo: ${descMotivo}`, ip);
 
-    // Dispara e-mail de notificação de estorno em background (defensivo)
-    (async () => {
-      try {
-        const clientQuery = `
-          SELECT c.nome, c.email, r.data_reserva, r.hora_inicio, r.hora_fim, q.nome as quadra_nome
-          FROM Reservas r
-          JOIN Clientes c ON r.cliente_id = c.id
-          JOIN Quadras q ON r.quadra_id = q.id
-          WHERE r.id = ?
-        `;
-        const details = await db.getAsync(clientQuery, [finalReservaId]);
-        const arena = await db.getAsync('SELECT nome FROM Arenas WHERE id = ?', [req.user.tenant_id]);
-        
-        if (details && details.email) {
-          const { sendEmail } = require('../services/emailService');
-          const subject = `Reembolso / Estorno Realizado - ${arena ? arena.nome : 'Arenix'}`;
-          const html = `
-            <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; line-height: 1.6;">
-              <h2 style="color: #DD6B20;">Notificação de Estorno / Reembolso ↩️</h2>
-              <p>Olá, ${details.nome}. Informamos que um estorno de pagamento foi registrado para o seu agendamento.</p>
-              <div style="background-color: #FFFAF0; border: 1px solid #FEEBC8; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                <strong>Detalhes do Estorno:</strong><br />
-                💰 <strong>Valor Estornado:</strong> R$ ${parseFloat(valorEstornoInfo).toFixed(2).replace('.', ',')}<br />
-                ❌ <strong>Motivo/Justificativa:</strong> ${descMotivo}<br />
-                📅 <strong>Reserva Original:</strong> ${details.data_reserva.split('-').reverse().join('/')} (${details.hora_inicio} às ${details.hora_fim})<br />
-                🎾 <strong>Quadra:</strong> ${details.quadra_nome}
-              </div>
-              <p>O valor estornado será processado de acordo com o método original de pagamento. Em caso de dúvidas, fale com a recepção da arena.</p>
-              <hr style="border: 0; border-top: 1px solid #E2E8F0; margin: 20px 0;" />
-              <p style="font-size: 0.8em; color: #A0AEC0;">Esta é uma mensagem automática enviada por Arenix CourtManager em nome de ${arena ? arena.nome : 'sua Arena'}.</p>
-            </div>
-          `;
-          await sendEmail(details.email, subject, html);
-        }
-      } catch (e) {
-        console.error('[SMTP] Erro ao disparar e-mail de estorno:', e.message);
-      }
-    })();
+    dispararEmailEstorno(req.user.tenant_id, finalReservaId, valorEstornoInfo, descMotivo);
 
     res.json({
       message: 'Estorno realizado com sucesso.',

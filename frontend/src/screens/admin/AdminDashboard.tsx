@@ -65,6 +65,48 @@ interface GradeData {
   }>;
 }
 
+interface DashboardMiniSlotProps {
+  quadra: any;
+  horaStr: string;
+  isPastHour: boolean;
+  reservas: any[];
+  bloqueios: any[];
+}
+
+function DashboardMiniSlot({ quadra: q, horaStr, isPastHour, reservas, bloqueios }: DashboardMiniSlotProps) {
+  if (horaStr < q.hora_abertura || horaStr >= q.hora_fechamento) {
+    return <div key={q.id} className="slot" style={{ background: 'transparent', border: 'none' }} />;
+  }
+
+  const r = (reservas || []).find((res: any) => res.quadra_id === q.id && res.hora_inicio <= horaStr && res.hora_fim > horaStr);
+  const b = (bloqueios || []).find((bl: any) => bl.quadra_id === q.id && bl.hora_inicio <= horaStr && bl.hora_fim > horaStr);
+
+  if (b) {
+    return isPastHour ? (
+      <div key={q.id} className="slot slot--past-blocked" title={b.motivo || 'Bloqueado'} />
+    ) : (
+      <div key={q.id} className="slot slot--blocked" title={b.motivo || 'Bloqueado'}>⊘</div>
+    );
+  }
+
+  if (r) {
+    let cls = 'slot--pending';
+    if (r.status_pagamento === 'Pago') cls = 'slot--paid';
+    if (r.status_pagamento === 'Parcial') cls = 'slot--partial';
+    return (
+      <div key={q.id} className={`slot ${cls}`} title={r.cliente_nome}>
+        {r.cliente_nome || '—'}
+      </div>
+    );
+  }
+
+  return isPastHour ? (
+    <div key={q.id} className="slot slot--past-available" title="Livre (Passado)" />
+  ) : (
+    <div key={q.id} className="slot slot--available" title="Livre" />
+  );
+}
+
 export function AdminDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [grade, setGrade] = useState<GradeData | null>(null);
@@ -177,41 +219,17 @@ export function AdminDashboard() {
     const rows = [];
     for (let h = minHour; h <= maxHour; h++) {
       const horaStr = h.toString().padStart(2, '0') + ':00';
-      const isPastHour = horaStr <= currentHour;
-
-      const rowSlots = quadras.map(q => {
-        if (horaStr >= q.hora_abertura && horaStr < q.hora_fechamento) {
-          const r = (reservas || []).find(res => res.quadra_id === q.id && res.hora_inicio <= horaStr && res.hora_fim > horaStr);
-          const b = (bloqueios || []).find(bl => bl.quadra_id === q.id && bl.hora_inicio <= horaStr && bl.hora_fim > horaStr);
-
-          if (b) {
-            return isPastHour ? (
-              <div key={q.id} className="slot slot--past-blocked" title={b.motivo || 'Bloqueado'} />
-            ) : (
-              <div key={q.id} className="slot slot--blocked" title={b.motivo || 'Bloqueado'}>⊘</div>
-            );
-          } else if (r) {
-            let cls = 'slot--pending';
-            if (r.status_pagamento === 'Pago') cls = 'slot--paid';
-            if (r.status_pagamento === 'Parcial') cls = 'slot--partial';
-            return (
-              <div key={q.id} className={`slot ${cls}`} title={r.cliente_nome}>
-                {r.cliente_nome || '—'}
-              </div>
-            );
-          } else {
-            return isPastHour ? (
-              <div key={q.id} className="slot slot--past-available" title="Livre (Passado)" />
-            ) : (
-              <div key={q.id} className="slot slot--available" title="Livre" />
-            );
-          }
-        } else {
-          return (
-            <div key={q.id} className="slot" style={{ background: 'transparent', border: 'none' }} />
-          );
-        }
-      });
+      const isPastHour = horaStr < currentHour;
+      const rowSlots = quadras.map(q => (
+        <DashboardMiniSlot
+          key={q.id}
+          quadra={q}
+          horaStr={horaStr}
+          isPastHour={isPastHour}
+          reservas={reservas}
+          bloqueios={bloqueios}
+        />
+      ));
 
       rows.push(
         <div key={horaStr} className="mini-grade-row" style={{ gridTemplateColumns: `52px repeat(${quadras.length}, 1fr)` }}>

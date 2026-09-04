@@ -12,7 +12,7 @@ interface Props {
   initialName?: string;
   initialPhone?: string;
   onClose: () => void;
-  onConfirm: (data: { slots: Slot[]; name: string; phone: string; cpf: string; sport?: string }) => void;
+  onConfirm: (data: { slots: Slot[]; name: string; phone: string; cpf: string; sport?: string }) => Promise<void> | void;
 }
 
 export default function CheckoutDrawer({ 

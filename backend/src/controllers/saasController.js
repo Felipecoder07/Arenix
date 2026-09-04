@@ -993,74 +993,88 @@ const getConfiguracoesSaaS = async (req, res) => {
   }
 };
 
+async function updateGeneralConfigs(body) {
+  const { trial_ativo, dias_trial, dias_abandono_cadastro, manutencao_ativa, manutencao_mensagem } = body;
+
+  if (trial_ativo !== undefined) {
+    await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['trial_ativo', trial_ativo === '1' || trial_ativo === true ? '1' : '0']);
+  }
+  if (dias_trial !== undefined) {
+    const trialNum = Number.parseInt(dias_trial, 10);
+    if (Number.isNaN(trialNum) || trialNum < 0) {
+      throw new Error('O período de trial não pode ser um valor negativo.');
+    }
+    await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['dias_trial', String(trialNum)]);
+  }
+  if (dias_abandono_cadastro !== undefined) {
+    const diasNum = Math.max(1, Number.parseInt(dias_abandono_cadastro, 10) || 7);
+    await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['dias_abandono_cadastro', String(diasNum)]);
+  }
+  if (manutencao_ativa !== undefined) {
+    await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['manutencao_ativa', String(manutencao_ativa)]);
+  }
+  if (manutencao_mensagem !== undefined) {
+    await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['manutencao_mensagem', String(manutencao_mensagem)]);
+  }
+}
+
+async function updateMercadoPagoConfigs(body) {
+  const { mp_client_id, mp_client_secret, mp_master_access_token, mp_webhook_secret } = body;
+  const envUpdates = {};
+
+  if (mp_client_id !== undefined) {
+    const cleanId = String(mp_client_id).trim();
+    if (cleanId && !/^\d{16}$/.test(cleanId)) {
+      throw new Error('O Client ID do Mercado Pago deve conter exatamente 16 dígitos numéricos.');
+    }
+    await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['mp_client_id', cleanId]);
+    envUpdates['MERCADO_PAGO_CLIENT_ID'] = cleanId;
+  }
+  if (mp_client_secret !== undefined) {
+    const cleanSecret = String(mp_client_secret).trim();
+    await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['mp_client_secret', cleanSecret]);
+    envUpdates['MERCADO_PAGO_CLIENT_SECRET'] = cleanSecret;
+  }
+  if (mp_master_access_token !== undefined) {
+    const cleanToken = String(mp_master_access_token).trim();
+    await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['mp_master_access_token', cleanToken]);
+    envUpdates['MERCADO_PAGO_ACCESS_TOKEN'] = cleanToken;
+  }
+  if (mp_webhook_secret !== undefined) {
+    const cleanWebhookSecret = String(mp_webhook_secret).trim();
+    await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['mp_webhook_secret', cleanWebhookSecret]);
+    envUpdates['MERCADO_PAGO_WEBHOOK_SECRET'] = cleanWebhookSecret;
+  }
+
+  if (Object.keys(envUpdates).length > 0) {
+    syncEnvFile(envUpdates);
+  }
+}
+
+async function updateReasonsList(reasons) {
+  if (!Array.isArray(reasons)) return;
+  await db.runAsync('DELETE FROM MotivosCancelamento WHERE tenant_id = 0');
+  for (const r of reasons) {
+    if (r.trim()) {
+      await db.runAsync('INSERT INTO MotivosCancelamento (tenant_id, motivo) VALUES (0, ?)', [r.trim()]);
+    }
+  }
+}
+
 const updateConfiguracoesSaaS = async (req, res) => {
-  const { dias_trial, trial_ativo, dias_abandono_cadastro, manutencao_ativa, manutencao_mensagem, reasons, mp_client_id, mp_client_secret, mp_master_access_token, mp_webhook_secret } = req.body;
   try {
-    const envUpdates = {};
-
-    if (trial_ativo !== undefined) {
-      await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['trial_ativo', trial_ativo === '1' || trial_ativo === true ? '1' : '0']);
-    }
-    if (dias_trial !== undefined) {
-      const trialNum = parseInt(dias_trial, 10);
-      if (isNaN(trialNum) || trialNum < 0) {
-        return res.status(400).json({ error: 'O período de trial não pode ser um valor negativo.' });
-      }
-      await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['dias_trial', String(trialNum)]);
-    }
-    if (dias_abandono_cadastro !== undefined) {
-      const diasNum = Math.max(1, parseInt(dias_abandono_cadastro, 10) || 7);
-      await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['dias_abandono_cadastro', String(diasNum)]);
-    }
-    if (manutencao_ativa !== undefined) {
-      await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['manutencao_ativa', String(manutencao_ativa)]);
-    }
-    if (manutencao_mensagem !== undefined) {
-      await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['manutencao_mensagem', String(manutencao_mensagem)]);
-    }
-    if (mp_client_id !== undefined) {
-      const cleanId = String(mp_client_id).trim();
-      if (cleanId && !/^\d{16}$/.test(cleanId)) {
-        return res.status(400).json({ error: 'O Client ID do Mercado Pago deve conter exatamente 16 dígitos numéricos.' });
-      }
-      await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['mp_client_id', cleanId]);
-      envUpdates['MERCADO_PAGO_CLIENT_ID'] = cleanId;
-    }
-    if (mp_client_secret !== undefined) {
-      const cleanSecret = String(mp_client_secret).trim();
-      await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['mp_client_secret', cleanSecret]);
-      envUpdates['MERCADO_PAGO_CLIENT_SECRET'] = cleanSecret;
-    }
-    if (mp_master_access_token !== undefined) {
-      const cleanToken = String(mp_master_access_token).trim();
-      await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['mp_master_access_token', cleanToken]);
-      envUpdates['MERCADO_PAGO_ACCESS_TOKEN'] = cleanToken;
-    }
-    if (mp_webhook_secret !== undefined) {
-      const cleanWebhookSecret = String(mp_webhook_secret).trim();
-      await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['mp_webhook_secret', cleanWebhookSecret]);
-      envUpdates['MERCADO_PAGO_WEBHOOK_SECRET'] = cleanWebhookSecret;
-    }
-
-    if (Object.keys(envUpdates).length > 0) {
-      syncEnvFile(envUpdates);
-    }
-
-    if (Array.isArray(reasons)) {
-      await db.runAsync('DELETE FROM MotivosCancelamento WHERE tenant_id = 0');
-      for (const r of reasons) {
-        if (r.trim()) {
-          await db.runAsync('INSERT INTO MotivosCancelamento (tenant_id, motivo) VALUES (0, ?)', [r.trim()]);
-        }
-      }
-    }
+    await updateGeneralConfigs(req.body);
+    await updateMercadoPagoConfigs(req.body);
+    await updateReasonsList(req.body.reasons);
 
     logAuditEvent(req.user.id, 'SaaS: Configurações Atualizadas', 'Parâmetros globais do sistema e credenciais de gateway foram salvos', req.ip);
-
     res.json({ message: 'Configurações atualizadas com sucesso!' });
   } catch (err) {
+    if (err.message && (err.message.includes('trial') || err.message.includes('Mercado Pago'))) {
+      return res.status(400).json({ error: err.message });
+    }
     console.error(err);
-    res.status(500).json({ error: 'Erro ao atualizar configurações.' });
+    res.status(500).json({ error: 'Erro ao salvar configurações.' });
   }
 };
 

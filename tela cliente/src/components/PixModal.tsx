@@ -1,36 +1,35 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { X, Copy, Check, Clock, ShieldCheck, Loader2, Zap } from 'lucide-react';
 import type { ReservationInput } from '../types';
 import { brl, formatLongDate, mmss } from '../lib/format';
+import { BACKEND_URL } from '../lib/backendUrl';
 
 interface Props {
-  open: boolean;
-  slug?: string;
-  data: ReservationInput | null;
-  pixPayload?: {
+  readonly open: boolean;
+  readonly slug?: string;
+  readonly data: ReservationInput | null;
+  readonly pixPayload?: {
     copia_cola: string;
     qr_code?: string | null;
     reserva_id?: number;
     expira_em_minutos?: number;
     expira_em_segundos?: number;
   } | null;
-  onClose: () => void;
-  onCancelPending?: () => void;
+  readonly onClose: () => void;
+  readonly onCancelPending?: () => void;
 }
 
-import { BACKEND_URL } from '../lib/backendUrl';
 const PIX_DURATION = 15 * 60;
 
+function pad(n: number) {
+  return String(n).padStart(2, '0');
+}
 
 function buildPixCodeFallback(data: ReservationInput): string {
   const id = `${data.courtId}${data.dateISO.replace(/-/g, '')}${data.start.replace(':', '')}`;
   return `00020126360012BR.GOV.BCB.PIX0111arena@beachclub.com.br5204000053039865802BR5913ARENA BEACH6009FORTALEZA62${pad(
     id.length
   )}${id}6304ABCD`;
-}
-
-function pad(n: number) {
-  return String(n).padStart(2, '0');
 }
 
 function qrMatrix(seed: string, size = 25): boolean[][] {
@@ -70,18 +69,44 @@ function qrMatrix(seed: string, size = 25): boolean[][] {
   return m;
 }
 
-export default function PixModal({ open, slug = 'felp-arena', data, pixPayload, onClose, onCancelPending }: Props) {
-  const [remaining, setRemaining] = useState(PIX_DURATION);
-  const [copied, setCopied] = useState(false);
-  const [status, setStatus] = useState<'pending' | 'confirmed'>('pending');
+function calculateInitialSeconds(pixPayload?: Props['pixPayload']): number {
+  if (pixPayload?.expira_em_segundos !== undefined) {
+    return Math.max(0, Math.min(PIX_DURATION, pixPayload.expira_em_segundos));
+  }
+  if (pixPayload?.expira_em_minutos !== undefined) {
+    return Math.max(0, Math.min(15, pixPayload.expira_em_minutos)) * 60;
+  }
+  return PIX_DURATION;
+}
 
-  const pixCode = useMemo(() => {
-    if (pixPayload?.copia_cola) return pixPayload.copia_cola;
-    return data ? buildPixCodeFallback(data) : '';
-  }, [data, pixPayload]);
+async function copyToClipboard(pixCode: string): Promise<void> {
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(pixCode);
+      return;
+    } catch {
+      // Fallback
+    }
+  }
+  try {
+    const textarea = document.createElement('textarea');
+    textarea.value = pixCode;
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-999999px';
+    textarea.style.top = '-999999px';
+    textarea.setAttribute('readonly', '');
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, 999999);
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+  } catch {
+    // Silently ignore fallback failure
+  }
+}
 
-  const matrix = useMemo(() => (data ? qrMatrix(pixCode) : []), [pixCode, data]);
-
+function useLockBodyScroll(open: boolean) {
   useEffect(() => {
     if (!open) return;
     document.documentElement.style.overflow = 'hidden';
@@ -91,101 +116,98 @@ export default function PixModal({ open, slug = 'felp-arena', data, pixPayload, 
       document.body.style.overflow = '';
     };
   }, [open]);
+}
 
-  // Contagem regressiva do Pix baseada no tempo real restante
+export default function PixModal({
+  open,
+  slug = 'felp-arena',
+  data,
+  pixPayload,
+  onClose,
+  onCancelPending
+}: Props) {
+  const [remaining, setRemaining] = useState(PIX_DURATION);
+  const [copied, setCopied] = useState(false);
+  const [status, setStatus] = useState<'pending' | 'confirmed'>('pending');
+
+  useLockBodyScroll(open);
+
+  const pixCode = useMemo(() => {
+    if (pixPayload?.copia_cola) return pixPayload.copia_cola;
+    return data ? buildPixCodeFallback(data) : '';
+  }, [data, pixPayload]);
+
+  const matrix = useMemo(() => (data ? qrMatrix(pixCode) : []), [pixCode, data]);
+
+  // Contagem regressiva
   useEffect(() => {
     if (!open) return;
-    let initialSeconds = PIX_DURATION;
-    if (pixPayload?.expira_em_segundos !== undefined) {
-      initialSeconds = Math.max(0, Math.min(PIX_DURATION, pixPayload.expira_em_segundos));
-    } else if (pixPayload?.expira_em_minutos !== undefined) {
-      initialSeconds = Math.max(0, Math.min(15, pixPayload.expira_em_minutos)) * 60;
-    }
-    setRemaining(initialSeconds);
+    setRemaining(calculateInitialSeconds(pixPayload));
     setStatus('pending');
     setCopied(false);
+
     const t = setInterval(() => {
       setRemaining((r) => {
         if (r <= 1) {
-          if (onCancelPending) onCancelPending();
+          onCancelPending?.();
           return 0;
         }
         return r - 1;
       });
     }, 1000);
-    return () => clearInterval(t);
-  }, [open, pixPayload]);
 
-  // Polling para checar confirmação automática do Pix
+    return () => clearInterval(t);
+  }, [open, pixPayload, onCancelPending]);
+
+  // Polling de confirmação
   useEffect(() => {
     if (!open || status === 'confirmed' || !pixPayload?.reserva_id) return;
+
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`${BACKEND_URL}/api/public/tenant/${slug}/status-reserva/${pixPayload.reserva_id}`);
-        if (res.ok) {
-          const json = await res.json();
-          if (json.status_pagamento === 'Pago') {
-            setStatus('confirmed');
-          } else if (json.status_pagamento === 'Expirado' || json.status === 'Cancelada') {
-            setRemaining(0);
-          }
+        if (!res.ok) return;
+        const json = await res.json();
+        if (json.status_pagamento === 'Pago') {
+          setStatus('confirmed');
+        } else if (json.status_pagamento === 'Expirado' || json.status === 'Cancelada') {
+          setRemaining(0);
         }
-      } catch {}
+      } catch {
+        // Ignore network errors in polling
+      }
     }, 3000);
+
     return () => clearInterval(interval);
-  }, [open, status, pixPayload, slug]);
+  }, [open, status, pixPayload?.reserva_id, slug]);
 
-  if (!open || !data) return null;
-
-  const handleCloseModal = () => {
-    if (status === 'pending' && onCancelPending) {
-      onCancelPending();
+  const handleCloseModal = useCallback(() => {
+    if (status === 'pending') {
+      onCancelPending?.();
     }
     onClose();
-  };
+  }, [status, onCancelPending, onClose]);
 
-  const copy = async () => {
-    let success = false;
-
-    // 1. Tentar Clipboard API nativa (HTTPS/Localhost moderno)
-    if (navigator.clipboard && window.isSecureContext) {
-      try {
-        await navigator.clipboard.writeText(pixCode);
-        success = true;
-      } catch (e) {
-        console.warn('Clipboard API bloqueada ou falhou, ativando fallback:', e);
-      }
-    }
-
-    // 2. Fallback universal DOM para celulares iOS/Android em HTTP/IP local
-    if (!success) {
-      try {
-        const textarea = document.createElement('textarea');
-        textarea.value = pixCode;
-        textarea.style.position = 'fixed';
-        textarea.style.left = '-999999px';
-        textarea.style.top = '-999999px';
-        textarea.setAttribute('readonly', '');
-        document.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
-        textarea.setSelectionRange(0, 999999);
-        success = document.execCommand('copy');
-        document.body.removeChild(textarea);
-      } catch (err) {
-        console.error('Erro no fallback de cópia:', err);
-      }
-    }
-
+  const handleCopy = useCallback(async () => {
+    await copyToClipboard(pixCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
-  };
+  }, [pixCode]);
+
+  if (!open || !data) return null;
 
   const expired = remaining === 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-charcoal/50 animate-fadeIn" onClick={handleCloseModal} />
+      <div 
+        className="absolute inset-0 bg-charcoal/50 animate-fadeIn cursor-pointer" 
+        onClick={handleCloseModal}
+        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleCloseModal()}
+        role="button"
+        tabIndex={0}
+        aria-label="Fechar modal"
+      />
       <div className="relative w-full max-w-sm bg-card rounded-3xl shadow-sheet animate-scaleIn overflow-hidden">
         <div className="flex items-center justify-between px-5 pt-4 pb-3">
           <div className="flex items-center gap-2">
@@ -228,78 +250,95 @@ export default function PixModal({ open, slug = 'felp-arena', data, pixPayload, 
           <div className="rounded-2xl bg-surface border border-edge p-3.5 mb-4 space-y-1 text-sm">
             <div className="flex justify-between">
               <span className="text-muted">{data.courtName}</span>
+              <span className="font-semibold text-charcoal">{data.start} - {data.end}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted">{formatLongDate(data.dateISO)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted">{data.start} às {data.end}</span>
-              <span className="font-bold text-charcoal">{brl(data.price)}</span>
+            <div className="flex justify-between text-xs text-muted">
+              <span>{formatLongDate(data.dateISO)}</span>
+              <span className="font-bold text-emerald-600 text-sm">{brl(data.price)}</span>
             </div>
           </div>
 
-          {status === 'pending' ? (
-            <>
-              {/* QR Code */}
-              <div className="flex flex-col items-center">
-                <div className="p-3 bg-white rounded-2xl border border-edge shadow-soft">
-                  {pixPayload?.qr_code ? (
-                    <img
-                      src={
-                        pixPayload.qr_code.startsWith('http') || pixPayload.qr_code.startsWith('data:')
-                          ? pixPayload.qr_code
-                          : `data:image/png;base64,${pixPayload.qr_code}`
-                      }
-                      alt="QR Code Pix"
-                      className="w-[180px] h-[180px] object-contain"
-                    />
-                  ) : (
-                    <svg viewBox="0 0 25 25" width="180" height="180" shapeRendering="crispEdges">
-                      <rect width="25" height="25" fill="#ffffff" />
-                      {matrix.map((row, y) =>
-                        row.map((on, x) =>
-                          on ? <rect key={`${x}-${y}`} x={x} y={y} width="1" height="1" fill="#1c1c1c" /> : null
-                        )
-                      )}
-                    </svg>
-                  )}
+          {/* QR Code Container */}
+          <div className="flex flex-col items-center justify-center bg-surface border border-edge rounded-2xl p-4 mb-4">
+            {status === 'confirmed' ? (
+              <div className="py-6 flex flex-col items-center text-center">
+                <div className="w-16 h-16 bg-available-bg text-available-text rounded-full flex items-center justify-center mb-3">
+                  <Check size={36} strokeWidth={3} />
                 </div>
-                <p className="mt-2 text-xs text-muted">Aponte a câmera do seu banco</p>
+                <h3 className="font-bold text-lg text-charcoal">Reserva Garantida!</h3>
+                <p className="text-xs text-muted mt-1 max-w-[200px]">
+                  Identificamos seu pagamento automaticamente pelo banco.
+                </p>
               </div>
+            ) : pixPayload?.qr_code ? (
+              <div className="relative">
+                <img
+                  src={pixPayload.qr_code.startsWith('data:') ? pixPayload.qr_code : `data:image/png;base64,${pixPayload.qr_code}`}
+                  alt="QR Code Pix"
+                  className="w-48 h-48 rounded-xl object-contain border border-edge bg-white p-2"
+                />
+                {expired && (
+                  <div className="absolute inset-0 bg-charcoal/70 backdrop-blur-[2px] rounded-xl flex items-center justify-center text-white text-xs font-bold p-3 text-center">
+                    QR Code Expirado
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="w-48 h-48 bg-white p-2 rounded-xl border border-edge grid grid-cols-25 gap-[1px]">
+                {matrix.flat().map((filled, i) => (
+                  <div key={i} className={filled ? 'bg-charcoal' : 'bg-white'} />
+                ))}
+              </div>
+            )}
 
-              {/* Copia e cola */}
-              <div className="mt-4">
-                <p className="text-xs font-semibold text-muted mb-1.5 ml-1">Copia e cola</p>
-                <div className="flex items-center gap-2 rounded-2xl border border-edge bg-cream px-3 py-2.5">
-                  <code className="flex-1 text-xs text-charcoal/80 truncate font-mono">{pixCode}</code>
-                  <button
-                    onClick={copy}
-                    className="tap shrink-0 flex items-center gap-1.5 rounded-xl bg-charcoal text-white px-3 h-10 text-sm font-semibold active:scale-95 transition"
-                  >
-                    {copied ? <Check size={16} className="text-available-bg" /> : <Copy size={16} />}
-                    {copied ? 'Copiado' : 'Copiar'}
-                  </button>
-                </div>
+            {status === 'pending' && !expired && (
+              <div className="mt-3 flex items-center gap-1.5 text-xs text-muted">
+                <Loader2 size={13} className="animate-spin text-accent" />
+                <span>Aguardando confirmação bancária...</span>
               </div>
-            </>
-          ) : (
-            /* Estado de Sucesso */
-            <div className="py-6 flex flex-col items-center text-center space-y-3 animate-scaleUp">
-              <div className="w-16 h-16 rounded-full bg-available-bg text-available-text flex items-center justify-center font-bold text-3xl shadow-soft">
-                <ShieldCheck size={36} />
-              </div>
-              <h3 className="text-lg font-bold text-charcoal">Reserva Confirmada!</h3>
-              <p className="text-xs text-muted max-w-xs">
-                Seu pagamento Pix foi aprovado com sucesso. Sua vaga está garantida na arena!
-              </p>
-              <button
-                onClick={onClose}
-                className="w-full rounded-2xl bg-available-text text-white font-bold h-12 text-sm shadow-soft active:scale-95 transition mt-2"
-              >
-                Concluir
-              </button>
-            </div>
+            )}
+          </div>
+
+          {/* Copy Button */}
+          {status !== 'confirmed' && (
+            <button
+              onClick={handleCopy}
+              disabled={expired}
+              className={`w-full py-3.5 px-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-sm transition-all ${
+                copied
+                  ? 'bg-emerald-600 text-white'
+                  : expired
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  : 'bg-accent text-white hover:bg-accent-hover active:scale-[0.99]'
+              }`}
+            >
+              {copied ? (
+                <>
+                  <Check size={18} />
+                  Código Copiado com Sucesso!
+                </>
+              ) : (
+                <>
+                  <Copy size={18} />
+                  Copiar Código Pix (Copia e Cola)
+                </>
+              )}
+            </button>
           )}
+
+          {status === 'confirmed' && (
+            <button
+              onClick={handleCloseModal}
+              className="w-full py-3.5 px-4 rounded-2xl font-bold text-sm bg-emerald-600 text-white hover:bg-emerald-700 active:scale-[0.99]"
+            >
+              Ver Minhas Reservas
+            </button>
+          )}
+
+          <div className="mt-3 flex items-center justify-center gap-1 text-[11px] text-muted">
+            <ShieldCheck size={14} className="text-emerald-600" />
+            <span>Pagamento 100% seguro via Banco Central do Brasil</span>
+          </div>
         </div>
       </div>
     </div>

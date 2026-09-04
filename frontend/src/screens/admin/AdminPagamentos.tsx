@@ -58,6 +58,94 @@ interface KPIResumo {
   };
 }
 
+const formatCurrencyInput = (value: string) => {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return '';
+  const num = parseInt(digits, 10) / 100;
+  return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+const formatFloatToCurrencyInput = (num: number) => {
+  return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+const parseCurrencyToFloat = (value: string) => {
+  if (!value) return 0;
+  const clean = value.replace(/\./g, '').replace(',', '.');
+  return parseFloat(clean) || 0;
+};
+
+const formatCurrency = (val: number) => {
+  return 'R$ ' + val.toFixed(2).replace('.', ',');
+};
+
+const formatData = (dateStr: string) => {
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return dateStr;
+};
+
+interface AdminPagamentosKPIsProps {
+  dataFiltro: string;
+  kpis: KPIResumo | null;
+}
+
+const AdminPagamentosKPIs: React.FC<AdminPagamentosKPIsProps> = ({ dataFiltro, kpis }) => {
+  if (dataFiltro && kpis?.resumoFiltrado) {
+    return (
+      <section className="kpi-row mb-6" aria-label="Resumo financeiro">
+        <div className="kpi-card" style={{ borderLeft: '4px solid #16a34a' }}>
+          <div className="kpi-label">Recebido em {formatData(dataFiltro)}</div>
+          <div className="kpi-value">{formatCurrency(kpis.resumoFiltrado.recebido)}</div>
+          <div className="kpi-sub positive">{kpis.resumoFiltrado.qtdPagamentos} pagamento(s)</div>
+        </div>
+        <div className="kpi-card" style={{ borderLeft: '4px solid #f59e0b' }}>
+          <div className="kpi-label">Pendente em {formatData(dataFiltro)}</div>
+          <div className="kpi-value">{formatCurrency(kpis.resumoFiltrado.pendente)}</div>
+          <div className="kpi-sub warning">{kpis.resumoFiltrado.qtdPendente} reserva(s)</div>
+        </div>
+        <div className="kpi-card" style={{ borderLeft: '4px solid #2563eb' }}>
+          <div className="kpi-label">Faturado no Dia</div>
+          <div className="kpi-value">{formatCurrency(kpis.resumoFiltrado.faturamentoTotal)}</div>
+          <div className="kpi-sub" style={{ color: '#2563eb' }}>{kpis.resumoFiltrado.totalReservas} reserva(s) agendadas</div>
+        </div>
+        <div className="kpi-card" style={{ borderLeft: '4px solid #dc2626' }}>
+          <div className="kpi-label">Inadimplência Geral</div>
+          <div className="kpi-value" style={{ color: 'var(--danger)' }}>{formatCurrency(kpis?.totalInadimplencia || 0)}</div>
+          <div className="kpi-sub warning">{kpis?.qtdInadimplentes || 0} reserva(s) vencidas</div>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="kpi-row mb-6" aria-label="Resumo financeiro">
+      <div className="kpi-card" style={{ borderLeft: '4px solid #16a34a' }}>
+        <div className="kpi-label">Recebido Hoje</div>
+        <div className="kpi-value">{formatCurrency(kpis?.recebidoHoje || 0)}</div>
+        <div className="kpi-sub positive">{kpis?.qtdPagamentosHoje || 0} pagamento(s)</div>
+      </div>
+      <div className="kpi-card" style={{ borderLeft: '4px solid #f59e0b' }}>
+        <div className="kpi-label">Pendente Hoje</div>
+        <div className="kpi-value">{formatCurrency(kpis?.pendenteHoje || 0)}</div>
+        <div className="kpi-sub warning">{kpis?.qtdPendenteHoje || 0} reserva(s)</div>
+      </div>
+      <div className="kpi-card" style={{ borderLeft: '4px solid #2563eb' }}>
+        <div className="kpi-label">Recebido no Mês</div>
+        <div className="kpi-value">{formatCurrency(kpis?.recebidoMes || 0)}</div>
+        <div className="kpi-sub positive">mês atual</div>
+      </div>
+      <div className="kpi-card" style={{ borderLeft: '4px solid #dc2626' }}>
+        <div className="kpi-label">Inadimplência</div>
+        <div className="kpi-value" style={{ color: 'var(--danger)' }}>{formatCurrency(kpis?.totalInadimplencia || 0)}</div>
+        <div className="kpi-sub warning">{kpis?.qtdInadimplentes || 0} reserva(s) vencidas</div>
+      </div>
+    </section>
+  );
+};
+
 export function AdminPagamentos() {
   const token = localStorage.getItem('courtmanager_token');
 
@@ -168,23 +256,6 @@ export function AdminPagamentos() {
     }, 350);
     return () => clearTimeout(timer);
   }, [busca]);
-
-  const formatCurrencyInput = (value: string) => {
-    const digits = value.replace(/\D/g, '');
-    if (!digits) return '';
-    const num = parseInt(digits, 10) / 100;
-    return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
-
-  const formatFloatToCurrencyInput = (num: number) => {
-    return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
-
-  const parseCurrencyToFloat = (value: string) => {
-    if (!value) return 0;
-    const clean = value.replace(/\./g, '').replace(',', '.');
-    return parseFloat(clean) || 0;
-  };
 
   // Buscar histórico de pagamentos individuais ao abrir modal de pagamento ou estorno
   const carregarHistoricoPagamentos = async (reservaId: number) => {
@@ -317,10 +388,11 @@ export function AdminPagamentos() {
 
     const valorNumerico = parseCurrencyToFloat(rpValor);
 
-    if (rpMetodo === 'Pix Online (Gateway)') {
+    if (rpMetodo === 'Pix Online (Gateway)' || rpMetodo === 'Cartão (Maquineta Online)') {
       setLoadingGateway(true);
       setShowPixCobranca(true);
       try {
+        const metodo = rpMetodo === 'Pix Online (Gateway)' ? 'Pix' : 'Maquineta';
         const res = await fetch('/api/pagamentos/gateway/cobranca', {
           method: 'POST',
           headers: {
@@ -329,46 +401,20 @@ export function AdminPagamentos() {
           },
           body: JSON.stringify({
             reserva_id: reservaAtual.id,
-            metodo: 'Pix',
+            metodo,
             valor: valorNumerico
           })
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Erro ao gerar cobrança Pix.');
+        if (!res.ok) throw new Error(data.error || `Erro ao gerar cobrança ${metodo}.`);
 
         setGatewayRef(data.gateway_ref);
-        setQrCode(data.qr_code);
-        setCopiaCola(data.copia_cola);
-      } catch (err: any) {
-        showToast(err.message, 'error');
-        setShowPixCobranca(false);
-      } finally {
-        setLoadingGateway(false);
-      }
-      return;
-    }
-
-    if (rpMetodo === 'Cartão (Maquineta Online)') {
-      setLoadingGateway(true);
-      setShowPixCobranca(true);
-      try {
-        const res = await fetch('/api/pagamentos/gateway/cobranca', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            reserva_id: reservaAtual.id,
-            metodo: 'Maquineta',
-            valor: valorNumerico
-          })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Erro ao acionar maquineta.');
-
-        setGatewayRef(data.gateway_ref);
-        setPosDeviceId(data.device_id);
+        if (metodo === 'Pix') {
+          setQrCode(data.qr_code);
+          setCopiaCola(data.copia_cola);
+        } else {
+          setPosDeviceId(data.device_id);
+        }
       } catch (err: any) {
         showToast(err.message, 'error');
         setShowPixCobranca(false);
@@ -499,18 +545,6 @@ export function AdminPagamentos() {
     document.body.removeChild(link);
   };
 
-  const formatCurrency = (val: number) => {
-    return 'R$ ' + val.toFixed(2).replace('.', ',');
-  };
-
-  const formatData = (dateStr: string) => {
-    const parts = dateStr.split('-');
-    if (parts.length === 3) {
-      return `${parts[2]}/${parts[1]}/${parts[0]}`;
-    }
-    return dateStr;
-  };
-
   // Totais da listagem atual
   const totalValor = reservas.reduce((acc, r) => acc + (r.valor_total || 0), 0);
   const totalPago = reservas.reduce((acc, r) => acc + (r.total_pago || 0), 0);
@@ -572,55 +606,7 @@ export function AdminPagamentos() {
       )}
 
       {/* KPI strip Adaptativo */}
-      <section className="kpi-row mb-6" aria-label="Resumo financeiro">
-        {dataFiltro && kpis?.resumoFiltrado ? (
-          <>
-            <div className="kpi-card" style={{ borderLeft: '4px solid #16a34a' }}>
-              <div className="kpi-label">Recebido em {formatData(dataFiltro)}</div>
-              <div className="kpi-value">{formatCurrency(kpis.resumoFiltrado.recebido)}</div>
-              <div className="kpi-sub positive">{kpis.resumoFiltrado.qtdPagamentos} pagamento(s)</div>
-            </div>
-            <div className="kpi-card" style={{ borderLeft: '4px solid #f59e0b' }}>
-              <div className="kpi-label">Pendente em {formatData(dataFiltro)}</div>
-              <div className="kpi-value">{formatCurrency(kpis.resumoFiltrado.pendente)}</div>
-              <div className="kpi-sub warning">{kpis.resumoFiltrado.qtdPendente} reserva(s)</div>
-            </div>
-            <div className="kpi-card" style={{ borderLeft: '4px solid #2563eb' }}>
-              <div className="kpi-label">Faturado no Dia</div>
-              <div className="kpi-value">{formatCurrency(kpis.resumoFiltrado.faturamentoTotal)}</div>
-              <div className="kpi-sub" style={{ color: '#2563eb' }}>{kpis.resumoFiltrado.totalReservas} reserva(s) agendadas</div>
-            </div>
-            <div className="kpi-card" style={{ borderLeft: '4px solid #dc2626' }}>
-              <div className="kpi-label">Inadimplência Geral</div>
-              <div className="kpi-value" style={{ color: 'var(--danger)' }}>{formatCurrency(kpis?.totalInadimplencia || 0)}</div>
-              <div className="kpi-sub warning">{kpis?.qtdInadimplentes || 0} reserva(s) vencidas</div>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="kpi-card" style={{ borderLeft: '4px solid #16a34a' }}>
-              <div className="kpi-label">Recebido Hoje</div>
-              <div className="kpi-value">{formatCurrency(kpis?.recebidoHoje || 0)}</div>
-              <div className="kpi-sub positive">{kpis?.qtdPagamentosHoje || 0} pagamento(s)</div>
-            </div>
-            <div className="kpi-card" style={{ borderLeft: '4px solid #f59e0b' }}>
-              <div className="kpi-label">Pendente Hoje</div>
-              <div className="kpi-value">{formatCurrency(kpis?.pendenteHoje || 0)}</div>
-              <div className="kpi-sub warning">{kpis?.qtdPendenteHoje || 0} reserva(s)</div>
-            </div>
-            <div className="kpi-card" style={{ borderLeft: '4px solid #2563eb' }}>
-              <div className="kpi-label">Recebido no Mês</div>
-              <div className="kpi-value">{formatCurrency(kpis?.recebidoMes || 0)}</div>
-              <div className="kpi-sub positive">mês atual</div>
-            </div>
-            <div className="kpi-card" style={{ borderLeft: '4px solid #dc2626' }}>
-              <div className="kpi-label">Inadimplência</div>
-              <div className="kpi-value" style={{ color: 'var(--danger)' }}>{formatCurrency(kpis?.totalInadimplencia || 0)}</div>
-              <div className="kpi-sub warning">{kpis?.qtdInadimplentes || 0} reserva(s) vencidas</div>
-            </div>
-          </>
-        )}
-      </section>
+      <AdminPagamentosKPIs dataFiltro={dataFiltro} kpis={kpis} />
 
       {/* Toolbar / Filtros com Atalhos Rápidos */}
       <div className="page-toolbar mb-6 flex flex-col md:flex-row items-center justify-between gap-4">

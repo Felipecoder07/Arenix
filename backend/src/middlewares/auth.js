@@ -2,6 +2,49 @@ const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret-jwt-courtmanager-2026';
 
+async function verificarStatusTenantEManutencao(db, user, originalUrl) {
+  if (user.perfil === 'SuperAdmin' || !user.tenant_id) return null;
+
+  try {
+    const isWhitelistedRoute = originalUrl && (
+      originalUrl.includes('/api/tenant/assinatura') || 
+      originalUrl.includes('/api/auth/me') ||
+      originalUrl.includes('/api/auth/logout')
+    );
+
+    const arena = await db.getAsync('SELECT status FROM Arenas WHERE id = ?', [user.tenant_id]);
+    if (!arena || arena.status === -1) {
+      return { 
+        status: 403, 
+        body: { error: 'Esta arena foi removida da plataforma. O acesso foi revogado.', deleted: true } 
+      };
+    }
+
+    if (arena.status === 0 && !isWhitelistedRoute) {
+      return { 
+        status: 403, 
+        body: { error: 'Acesso suspenso por pendência financeira. Acesse a aba Assinatura para regularizar.', blocked: true } 
+      };
+    }
+
+    const maintRow = await db.getAsync("SELECT valor FROM ConfiguracoesSaaS WHERE chave = 'manutencao_ativa'");
+    if (maintRow && maintRow.valor === '1') {
+      const msgRow = await db.getAsync("SELECT valor FROM ConfiguracoesSaaS WHERE chave = 'manutencao_mensagem'");
+      return {
+        status: 503,
+        body: {
+          error: msgRow && msgRow.valor ? msgRow.valor : 'O sistema está em manutenção programada. Voltamos em instantes.',
+          maintenance: true
+        }
+      };
+    }
+  } catch (checkErr) {
+    console.error('Erro ao verificar status da arena no middleware:', checkErr);
+  }
+
+  return null;
+}
+
 const verifyToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   if (!authHeader) return res.status(403).json({ error: 'Token não fornecido.' });
@@ -11,50 +54,15 @@ const verifyToken = (req, res, next) => {
 
   jwt.verify(token, JWT_SECRET, async (err, decoded) => {
     if (err) return res.status(401).json({ error: 'Token expirado ou inválido.' });
-    req.user = decoded; // { id, tenant_id, perfil }
+    req.user = decoded;
 
-    // Atualiza o último acesso da sessão em background
     const db = require('../config/database');
     db.runAsync('UPDATE SessoesAtivas SET ultimo_acesso = CURRENT_TIMESTAMP WHERE token = ?', [token])
-      .catch(err => console.error('Erro ao atualizar atividade da sessao:', err));
+      .catch(errSess => console.error('Erro ao atualizar atividade da sessao:', errSess));
 
-    // Validação de segurança de tenant: SuperAdmin é isento de bloqueios.
-    // As rotas de assinatura (/api/tenant/assinatura/*) também são isentas do bloqueio status=0
-    // para permitir que o dono da arena acesse o painel financeiro e pague sua mensalidade para se desbloquear.
-    if (req.user.perfil !== 'SuperAdmin' && req.user.tenant_id) {
-      try {
-        const isWhitelistedRoute = req.originalUrl && (
-          req.originalUrl.includes('/api/tenant/assinatura') || 
-          req.originalUrl.includes('/api/auth/me') ||
-          req.originalUrl.includes('/api/auth/logout')
-        );
-
-        const arena = await db.getAsync('SELECT status FROM Arenas WHERE id = ?', [req.user.tenant_id]);
-        if (!arena || arena.status === -1) {
-          return res.status(403).json({ 
-            error: 'Esta arena foi removida da plataforma. O acesso foi revogado.',
-            deleted: true 
-          });
-        }
-
-        if (arena.status === 0 && !isWhitelistedRoute) {
-          return res.status(403).json({ 
-            error: 'Acesso suspenso por pendência financeira. Acesse a aba Assinatura para regularizar.',
-            blocked: true 
-          });
-        }
-
-        const maintRow = await db.getAsync("SELECT valor FROM ConfiguracoesSaaS WHERE chave = 'manutencao_ativa'");
-        if (maintRow && maintRow.valor === '1') {
-          const msgRow = await db.getAsync("SELECT valor FROM ConfiguracoesSaaS WHERE chave = 'manutencao_mensagem'");
-          return res.status(503).json({
-            error: msgRow && msgRow.valor ? msgRow.valor : 'O sistema está em manutenção programada. Voltamos em instantes.',
-            maintenance: true
-          });
-        }
-      } catch (checkErr) {
-        console.error('Erro ao verificar status da arena no middleware:', checkErr);
-      }
+    const checkResult = await verificarStatusTenantEManutencao(db, req.user, req.originalUrl);
+    if (checkResult) {
+      return res.status(checkResult.status).json(checkResult.body);
     }
 
     next();
