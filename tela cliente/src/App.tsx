@@ -7,6 +7,8 @@ import DateCarousel from './components/DateCarousel';
 import SlotGrid from './components/SlotGrid';
 import CheckoutDrawer from './components/CheckoutDrawer';
 import PixModal from './components/PixModal';
+import CardPaymentResultModal from './components/CardPaymentResultModal';
+import type { CardPaymentData } from './components/MercadoPagoCardForm';
 import MyReservations from './components/MyReservations';
 import StepIndicator from './components/StepIndicator';
 import LoginScreen from './components/LoginScreen';
@@ -186,8 +188,9 @@ export default function App() {
   const [loginOpen, setLoginOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [pixOpen, setPixOpen] = useState(false);
+  const [cardPaymentResult, setCardPaymentResult] = useState<{ reservationId: number; status: string } | null>(null);
   const [reservation, setReservation] = useState<ReservationInput | null>(null);
-  const [pixPayload, setPixPayload] = useState<{ copia_cola: string; qr_code?: string | null; reserva_id?: number; reservas_ids?: number[]; valor_total?: number; expira_em_minutos?: number; expira_em_segundos?: number } | null>(null);
+  const [pixPayload, setPixPayload] = useState<{ copia_cola: string; qr_code?: string | null; reserva_id?: number; reservas_ids?: number[]; valor_total?: number; expira_em_minutos?: number; expira_em_segundos?: number; manual_confirmation?: boolean } | null>(null);
   const [myResOpen, setMyResOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [paymentNotConfigured, setPaymentNotConfigured] = useState<{ telefone: string | null } | null>(null);
@@ -254,7 +257,8 @@ export default function App() {
               whatsapp: a.telefone || '',
               hoursToday: a.horario_abertura && a.horario_fechamento ? `${a.horario_abertura} às ${a.horario_fechamento}` : '06:00 às 23:00',
               rating: 4.9,
-              reviews: 128
+              reviews: 128,
+              gateway_public_key: a.gateway_public_key || ''
             });
           } else {
             setNotFound(true);
@@ -633,7 +637,7 @@ export default function App() {
   };
 
   // Confirmar Agendamento de Múltiplos Horários via Backend Pix
-  const handleConfirm = async (dataInput: { slots: Slot[]; name: string; phone: string; cpf: string; sport?: string }) => {
+  const handleConfirm = async (dataInput: { slots: Slot[]; name: string; phone: string; cpf: string; sport?: string; paymentMethod: 'pix' | 'card'; cardData?: CardPaymentData }) => {
     try {
       const activeSport = dataInput.sport || sessionSport || (selectedSport !== 'Todos' ? selectedSport : (court?.modalities?.[0] || 'Beach Tennis'));
       const payloadItens = dataInput.slots.map(s => ({
@@ -653,6 +657,7 @@ export default function App() {
           telefone: dataInput.phone,
           cpf: dataInput.cpf,
           email: athlete?.email || '',
+          payment_method: dataInput.paymentMethod,
           itens: payloadItens
         })
       });
@@ -660,13 +665,40 @@ export default function App() {
       const resJson = await res.json();
 
       if (res.ok) {
+        if (resJson.payment_pending_review) {
+          setDrawerOpen(false);
+          alert(`Reserva #${resJson.reserva_id} registrada. A cobrança Pix está em verificação. Consulte o status antes de tentar novamente.`);
+          return;
+        }
+        if (dataInput.paymentMethod === 'card' && dataInput.cardData) {
+          setDrawerOpen(false);
+          try {
+            const paymentResponse = await fetch(`${BACKEND_URL}/api/public/tenant/${slug}/reserva-cartao`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ reservas_ids: resJson.reservas_ids || [resJson.reserva_id], card_data: dataInput.cardData })
+            });
+            if (!paymentResponse.ok) {
+              setCardPaymentResult({ reservationId: Number(resJson.reserva_id), status: 'pending' });
+              return;
+            }
+            const payment = await paymentResponse.json();
+            const status = payment.payment_status === 'approved' ? 'approved'
+              : ['rejected', 'cancelled'].includes(payment.payment_status) ? 'rejected' : 'pending';
+            setCardPaymentResult({ reservationId: Number(resJson.reserva_id), status });
+          } catch {
+            setCardPaymentResult({ reservationId: Number(resJson.reserva_id), status: 'pending' });
+          }
+          return;
+        }
         setPixPayload({
           copia_cola: resJson.copia_cola,
           qr_code: resJson.qr_code,
           reserva_id: resJson.reserva_id,
           reservas_ids: resJson.reservas_ids || (resJson.reserva_id ? [resJson.reserva_id] : []),
           valor_total: resJson.valor_total,
-          expira_em_minutos: resJson.expira_em_minutos
+          expira_em_minutos: resJson.expira_em_minutos,
+          manual_confirmation: Boolean(resJson.manual_confirmation)
         });
 
         const first = dataInput.slots[0];
@@ -698,7 +730,7 @@ export default function App() {
   };
 
   const handleCancelPending = async () => {
-    if (pixPayload?.reserva_id || (pixPayload?.reservas_ids && pixPayload.reservas_ids.length > 0)) {
+    if (!pixPayload?.manual_confirmation && (pixPayload?.reserva_id || (pixPayload?.reservas_ids && pixPayload.reservas_ids.length > 0))) {
       try {
         await fetch(`${BACKEND_URL}/api/public/tenant/${slug}/cancelar-pendente`, {
           method: 'POST',
@@ -725,6 +757,14 @@ export default function App() {
     try {
       const res = await fetch(`${BACKEND_URL}/api/public/tenant/${slug}/reserva-pix/${reservaId}`);
       const data = await res.json();
+      if (data.payment_pending_review) {
+        alert(`A cobrança Pix da reserva #${reservaId} está em verificação. Consulte o status antes de tentar novamente.`);
+        return;
+      }
+      if (data.payment_not_configured) {
+        setPaymentNotConfigured({ telefone: data.telefone_arena || null });
+        return;
+      }
       if (res.ok && data.reserva_id) {
         if (data.status_pagamento === 'Pago') {
           alert('Esta reserva já consta como Paga!');
@@ -752,7 +792,8 @@ export default function App() {
           qr_code: data.qr_code,
           valor_total: data.valor_total,
           expira_em_minutos: data.expira_em_minutos || 15,
-          expira_em_segundos: data.expira_em_segundos !== undefined ? data.expira_em_segundos : (data.expira_em_minutos || 15) * 60
+          expira_em_segundos: data.expira_em_segundos !== undefined ? data.expira_em_segundos : (data.expira_em_minutos || 15) * 60,
+          manual_confirmation: Boolean(data.manual_confirmation)
         });
         setPixOpen(true);
       } else {
@@ -1129,6 +1170,7 @@ export default function App() {
         onSportChange={handleChooseSport}
         initialName={athlete?.name || ''}
         initialPhone={athlete?.phone || ''}
+        publicKey={arena?.gateway_public_key}
         onClose={() => setDrawerOpen(false)}
         onConfirm={handleConfirm}
       />
@@ -1141,6 +1183,15 @@ export default function App() {
         onClose={handlePixClose}
         onCancelPending={handleCancelPending}
       />
+
+      {cardPaymentResult && (
+        <CardPaymentResultModal
+          slug={slug}
+          reservationId={cardPaymentResult.reservationId}
+          initialStatus={cardPaymentResult.status}
+          onClose={() => setCardPaymentResult(null)}
+        />
+      )}
 
       <MyReservations
         slug={slug}

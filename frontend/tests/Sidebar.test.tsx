@@ -61,11 +61,13 @@ describe('administrative navigation', () => {
 
 describe('master navigation', () => {
   it('keeps its routes and hides the arena detail entry from the menu', () => {
+    safeStorage.setItem('courtmanager_user', JSON.stringify({ nome: 'Marina Souza', email: 'master@courtly.com', perfil: 'SuperAdmin' }));
     render(<MemoryRouter><Sidebar collapsed={false} onToggle={vi.fn()} /></MemoryRouter>);
-    expect(screen.getByText('Painel Master')).toBeInTheDocument();
+    expect(screen.getByText('PAINEL MASTER')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Arenas' })).toHaveAttribute('href', '/master/arenas');
     expect(screen.queryByRole('link', { name: 'Detalhe da arena' })).not.toBeInTheDocument();
-    expect(screen.getByText('master@courtmanager')).toBeInTheDocument();
+    expect(screen.getByText('Marina Souza')).toBeInTheDocument();
+    expect(screen.getByText('master@courtly.com')).toBeInTheDocument();
   });
 
   it.each([true, false])('clears the session and returns to login after logout (network success: %s)', async (success) => {

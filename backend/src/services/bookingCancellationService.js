@@ -6,7 +6,7 @@ async function hasInFlight(reservation) {
   if(await db.getAsync("SELECT 1 FROM PaymentIntents WHERE tenant_id=? AND scope=? AND state IN ('creating','pending','unknown')",[reservation.tenant_id,scope])) return true;
   return Boolean(await db.getAsync("SELECT 1 FROM TransacoesGateway t JOIN Reservas r ON r.id=t.reserva_id WHERE r.tenant_id=? AND (r.id=? OR (? IS NOT NULL AND r.grupo_id=?)) AND t.status NOT IN ('Pago','Aprovado','Estornado','Chargeback','Cancelado','Rejeitado','Expirado')",[reservation.tenant_id,reservation.id,reservation.grupo_id,reservation.grupo_id]));
 }
-async function requestCancellation(ids,{tenantId,authorize,reason='Cancelamento',onlyUnpaid=false}={}) {
+async function requestCancellation(ids,{tenantId,authorize,reason='Cancelamento',reasonId=null,observations=null,onlyUnpaid=false}={}) {
   await ensureSecuritySchema(db);
   if(!Array.isArray(ids)||!ids.length||ids.length>24||ids.some(id=>!Number.isSafeInteger(Number(id))||Number(id)<=0)) throw httpError(400,'Reservas inválidas.');
   return db.transaction(async()=>{
@@ -25,7 +25,8 @@ async function requestCancellation(ids,{tenantId,authorize,reason='Cancelamento'
     }
     const results=[];
     for(const row of rows.values()) {
-      await db.runAsync('INSERT OR IGNORE INTO BookingCancellations(reserva_id,reason,created) VALUES(?,?,?)',[row.id,reason,Date.now()]);
+      const inserted=await db.runAsync('INSERT OR IGNORE INTO BookingCancellations(reserva_id,reason,created) VALUES(?,?,?)',[row.id,reason,Date.now()]);
+      if(reasonId !== null && inserted.changes>0) await db.runAsync('UPDATE Reservas SET motivo_cancelamento_id=?, observacoes_cancelamento=? WHERE id=? AND tenant_id=?',[reasonId,observations,row.id,tenantId]);
       await require('./paymentLedgerService').recompute(row.id);
       const updated=await db.getAsync('SELECT id,status,status_pagamento FROM Reservas WHERE id=?',[row.id]);
       results.push(updated);
@@ -36,7 +37,7 @@ async function requestCancellation(ids,{tenantId,authorize,reason='Cancelamento'
 }
 async function expireUnpaid(tenantId) {
   await ensureSecuritySchema(db);
-  const rows=await db.allAsync("SELECT id FROM Reservas WHERE tenant_id=? AND criado_por IS NULL AND status='Pendente' AND status_pagamento='Pendente' AND datetime(criado_em,'+15 minutes')<datetime('now')",[tenantId]);
+  const rows=await db.allAsync("SELECT id FROM Reservas WHERE tenant_id=? AND criado_por IS NULL AND status='Pendente' AND status_pagamento='Pendente' AND COALESCE(pix_checkout_mode,'mercado_pago')!='chave_pix' AND datetime(criado_em,'+15 minutes')<datetime('now')",[tenantId]);
   for(const row of rows) {
     try { await requestCancellation([row.id],{tenantId,onlyUnpaid:true,reason:'Expiração do checkout'}); }
     catch(error) { if(error.status!==409) throw error; }

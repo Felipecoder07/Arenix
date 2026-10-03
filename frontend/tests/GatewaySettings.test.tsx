@@ -79,7 +79,7 @@ describe('configuração de pagamentos sem exposição de credenciais', () => {
     fireEvent.click(confirm);
     await waitFor(() => expect(screen.queryByText('✓ Conta Conectada')).not.toBeInTheDocument());
     expect(fetchMock).toHaveBeenCalledWith('/api/pagamentos/gateway/oauth/desconectar', expect.objectContaining({
-      method: 'POST', body: JSON.stringify({ senha_atual: 'CurrentPassword123!', codigo_2fa: '' }),
+      method: 'POST', body: JSON.stringify({ senha_atual: 'CurrentPassword123!' }),
       credentials: 'same-origin', headers: expect.any(Headers)
     }));
     expect(gatewayWrites()).toHaveLength(0);

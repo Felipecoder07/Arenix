@@ -1,9 +1,31 @@
-import { useCallback } from 'react';
+import { useCallback, useState, useEffect } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { errorMessage } from '../../utils/errorMessage';
 import { apiFetch as fetch } from '../../utils/apiFetch';
-import React, { useState, useEffect } from 'react';
-import '../../assets/css/pagamentos.css';
-
+import { safeStorage } from '../../utils/safeStorage';
+import { getStoredUser } from '../../utils/session';
+import type { Announcement } from '../../types/api';
+import {
+  Users,
+  CalendarCheck,
+  UserPlus,
+  Archive,
+  Plus,
+  Globe,
+  Bell,
+  Search,
+  ChevronDown,
+  Menu,
+  X,
+  Check,
+  User,
+  Phone,
+  Mail,
+  Save,
+  Pencil,
+  Calendar,
+  UserCheck,
+} from 'lucide-react';
 
 interface Reserva {
   id: number;
@@ -12,6 +34,7 @@ interface Reserva {
   status: string;
   status_pagamento: string;
   quadra_nome: string;
+  valor_total?: number;
 }
 
 interface Cliente {
@@ -22,22 +45,21 @@ interface Cliente {
   ativo: number;
   criado_em: string;
   reservasCount?: number;
+  reservas_count?: number;
   saldoDevedor?: number;
+  ultima_visita?: string;
+  ticket_medio?: number;
 }
 
 interface ClienteDetalhe extends Cliente {
   ultimasReservas: Reserva[];
 }
 
-interface VinculoPendente {
-  usuario_id: number;
-  cliente_id: number;
-  created_at: string;
-  cliente_nome: string;
-  cliente_telefone: string;
-  cliente_email: string | null;
-  usuario_nome: string;
-  usuario_email: string;
+interface ClientesKPIs {
+  totalAtivos: number;
+  comReservas: number;
+  novosMes: number;
+  arquivados: number;
 }
 
 const formatPhone = (val: string) => {
@@ -48,8 +70,23 @@ const formatPhone = (val: string) => {
   return `(${clean.slice(0, 2)}) ${clean.slice(2, 7)}-${clean.slice(7, 11)}`;
 };
 
-const formatCurrency = (val: number) => {
+const formatCurrency = (val?: number | null) => {
+  if (val === undefined || val === null || isNaN(val)) return 'R$ 0,00';
   return 'R$ ' + val.toFixed(2).replace('.', ',');
+};
+
+const formatDateBR = (dateStr?: string | null) => {
+  if (!dateStr) return '—';
+  // Pega apenas a porção YYYY-MM-DD ignorando hora, 'T' ou espaço
+  const dateOnly = dateStr.trim().split(/[T\s]/)[0];
+  const parts = dateOnly.split('-');
+  if (parts.length === 3) {
+    const day = parts[2].padStart(2, '0');
+    const month = parts[1].padStart(2, '0');
+    const year = parts[0];
+    return `${day}/${month}/${year}`;
+  }
+  return dateStr;
 };
 
 interface FormErrors {
@@ -68,7 +105,7 @@ const validarCamposCliente = (nome: string, telefone: string, email: string): Fo
 
   if (!telefone.trim()) {
     errs.telefone = 'O telefone é obrigatório.';
-  } else if (!/^\(\d{2}\)\s\d{5}-\d{4}$/.test(telefone.trim())) {
+  } else if (!/^\(\d{2}\)\s\d{4,5}-\d{4}$/.test(telefone.trim())) {
     errs.telefone = 'Formato inválido. Use (99) 99999-9999.';
   }
 
@@ -82,6 +119,7 @@ const validarCamposCliente = (nome: string, telefone: string, email: string): Fo
   return errs;
 };
 
+// Modal de Criação / Edição de Cliente
 interface ModalNovoClienteProps {
   isOpen: boolean;
   modoEdicao: boolean;
@@ -107,71 +145,231 @@ const ModalNovoCliente: React.FC<ModalNovoClienteProps> = ({
   setNcEmail,
   errors,
   onClose,
-  onSubmit
+  onSubmit,
 }) => {
+  if (!isOpen) return null;
+
+  const previewName = ncNome.trim() || (modoEdicao ? 'Cliente' : 'Cliente novo');
+  const previewInitials = (() => {
+    const parts = ncNome.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return modoEdicao ? 'CL' : 'CN';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  })();
+
   return (
-    <div className={`modal-overlay ${isOpen ? 'open' : ''}`}>
-      <div className="modal">
-        <div className="modal-header">
-          <h2 className="modal-title">{modoEdicao ? 'Editar Cliente' : 'Novo Cliente'}</h2>
-          <button className="modal-close" onClick={onClose}>✕</button>
+    <div
+      data-pencil-name="Overlay Novo Cliente"
+      className="fixed inset-0 bg-[#071915]/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        data-pencil-name="Modal Novo Cliente"
+        className="box-border w-full max-w-[440px] flex flex-col gap-[16px] p-[28px] justify-start items-start bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[22px] overflow-hidden shadow-2xl animate-scale-in"
+      >
+        {/* Header Novo Cliente */}
+        <div
+          data-pencil-name="Header Novo Cliente"
+          className="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-between items-start"
+        >
+          <div
+            data-pencil-name="Título Novo Cliente Grupo"
+            className="box-border flex-1 h-fit flex flex-col gap-[6px] justify-start items-start"
+          >
+            <div
+              data-pencil-name="Título Novo Cliente"
+              className="text-[24px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+            >
+              {modoEdicao ? 'Editar cliente' : 'Novo cliente'}
+            </div>
+            <div
+              data-pencil-name="Subtítulo Novo Cliente"
+              className="text-[12px]/[normal] box-border w-full text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left"
+            >
+              {modoEdicao
+                ? 'Atualize os dados cadastrais do cliente.'
+                : 'Informe os dados básicos para cadastrar um cliente.'}
+            </div>
+          </div>
+          <button
+            data-pencil-name="Fechar Novo Cliente"
+            type="button"
+            onClick={onClose}
+            className="box-border w-[34px] shrink-0 h-[34px] flex flex-row gap-0 justify-center items-center bg-[#F7F2EA] hover:bg-[#EBE4D8] rounded-[17px] transition-colors cursor-pointer text-[#6F766F]"
+            title="Fechar"
+          >
+            <X size={18} />
+          </button>
         </div>
-        <form onSubmit={onSubmit}>
-          <div className="modal-body">
-            <div className="form-group">
-              <label htmlFor="nc-nome">Nome completo *</label>
-              <input 
-                type="text" 
-                id="nc-nome" 
-                placeholder="Nome do cliente" 
-                value={ncNome}
-                onChange={(e) => setNcNome(e.target.value)}
-                required 
-              />
+
+        {/* Prévia Cliente Novo */}
+        <div
+          data-pencil-name="Prévia Cliente Novo"
+          className="box-border w-full h-[47px] shrink-0 flex flex-row gap-[10px] p-[8px_10px] justify-start items-center bg-[#071915] outline outline-1 outline-[#071915] -outline-offset-1 rounded-[14px]"
+        >
+          <div
+            data-pencil-name="Avatar Preview Novo Cliente"
+            className="box-border w-[30px] shrink-0 h-[30px] bg-[#C9FF3B] text-[#071915] rounded-full flex items-center justify-center font-bold text-[11px]"
+          >
+            {previewInitials}
+          </div>
+          <div
+            data-pencil-name="Nome Preview Novo Cliente"
+            className="text-[13px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap truncate"
+            title={previewName}
+          >
+            {previewName}
+          </div>
+        </div>
+
+        {/* Form Novo Cliente */}
+        <form onSubmit={onSubmit} className="box-border w-full flex flex-col gap-[14px] justify-start items-start">
+          <div
+            data-pencil-name="Form Novo Cliente"
+            className="box-border w-full h-fit shrink-0 flex flex-col gap-[14px] justify-start items-start"
+          >
+            {/* Campo Grupo Nome completo * */}
+            <div
+              data-pencil-name="Campo Grupo Nome completo *"
+              className="box-border w-full h-fit shrink-0 flex flex-col gap-[7px] justify-start items-start"
+            >
+              <label
+                htmlFor="nc-nome"
+                data-pencil-name="Label Nome completo *"
+                className="text-[12px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+              >
+                Nome completo *
+              </label>
+              <div
+                data-pencil-name="Input Nome completo *"
+                className={`box-border w-full h-[42px] shrink-0 flex flex-row gap-[9px] px-[12px] justify-start items-center bg-[#FBFAF7] outline outline-1 ${
+                  errors.nome ? 'outline-red-500' : 'outline-[#DED6CA]'
+                } -outline-offset-1 rounded-[11px] focus-within:outline-2 focus-within:outline-[#071915] transition-all`}
+              >
+                <User size={15} className="text-[#6F766F] shrink-0" />
+                <input
+                  type="text"
+                  id="nc-nome"
+                  placeholder="Nome do cliente"
+                  value={ncNome}
+                  onChange={(e) => setNcNome(e.target.value)}
+                  className="w-full bg-transparent border-none outline-none text-[13px] text-[#071915] placeholder:text-[#94A3B8] font-normal"
+                  required
+                />
+              </div>
               {errors.nome && (
-                <span className="error-msg" style={{ color: 'var(--danger)', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                <span className="text-[11px] text-red-500 font-medium">
                   {errors.nome}
                 </span>
               )}
             </div>
 
-            <div className="form-group">
-              <label htmlFor="nc-telefone">Telefone *</label>
-              <input 
-                type="text" 
-                id="nc-telefone" 
-                placeholder="(99) 99999-9999" 
-                value={ncTelefone}
-                onChange={(e) => setNcTelefone(formatPhone(e.target.value))}
-                maxLength={15}
-                required 
-              />
+            {/* Campo Grupo Telefone * */}
+            <div
+              data-pencil-name="Campo Grupo Telefone *"
+              className="box-border w-full h-fit shrink-0 flex flex-col gap-[7px] justify-start items-start"
+            >
+              <label
+                htmlFor="nc-telefone"
+                data-pencil-name="Label Telefone *"
+                className="text-[12px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+              >
+                Telefone *
+              </label>
+              <div
+                data-pencil-name="Input Telefone *"
+                className={`box-border w-full h-[42px] shrink-0 flex flex-row gap-[9px] px-[12px] justify-start items-center bg-[#FBFAF7] outline outline-1 ${
+                  errors.telefone ? 'outline-red-500' : 'outline-[#DED6CA]'
+                } -outline-offset-1 rounded-[11px] focus-within:outline-2 focus-within:outline-[#071915] transition-all`}
+              >
+                <Phone size={15} className="text-[#6F766F] shrink-0" />
+                <input
+                  type="text"
+                  id="nc-telefone"
+                  placeholder="(99) 99999-9999"
+                  value={ncTelefone}
+                  onChange={(e) => setNcTelefone(formatPhone(e.target.value))}
+                  maxLength={15}
+                  className="w-full bg-transparent border-none outline-none text-[13px] text-[#071915] placeholder:text-[#94A3B8] font-normal"
+                  required
+                />
+              </div>
               {errors.telefone && (
-                <span className="error-msg" style={{ color: 'var(--danger)', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                <span className="text-[11px] text-red-500 font-medium">
                   {errors.telefone}
                 </span>
               )}
             </div>
 
-            <div className="form-group">
-              <label htmlFor="nc-email">E-mail</label>
-              <input 
-                type="email" 
-                id="nc-email" 
-                placeholder="Ex: cliente@email.com (opcional)" 
-                value={ncEmail}
-                onChange={(e) => setNcEmail(e.target.value)}
-              />
+            {/* Campo Grupo E-mail */}
+            <div
+              data-pencil-name="Campo Grupo E-mail"
+              className="box-border w-full h-fit shrink-0 flex flex-col gap-[7px] justify-start items-start"
+            >
+              <label
+                htmlFor="nc-email"
+                data-pencil-name="Label E-mail"
+                className="text-[12px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+              >
+                E-mail
+              </label>
+              <div
+                data-pencil-name="Input E-mail"
+                className={`box-border w-full h-[42px] shrink-0 flex flex-row gap-[9px] px-[12px] justify-start items-center bg-[#FBFAF7] outline outline-1 ${
+                  errors.email ? 'outline-red-500' : 'outline-[#DED6CA]'
+                } -outline-offset-1 rounded-[11px] focus-within:outline-2 focus-within:outline-[#071915] transition-all`}
+              >
+                <Mail size={15} className="text-[#6F766F] shrink-0" />
+                <input
+                  type="email"
+                  id="nc-email"
+                  placeholder="cliente@email.com · opcional"
+                  value={ncEmail}
+                  onChange={(e) => setNcEmail(e.target.value)}
+                  className="w-full bg-transparent border-none outline-none text-[13px] text-[#071915] placeholder:text-[#94A3B8] font-normal"
+                />
+              </div>
               {errors.email && (
-                <span className="error-msg" style={{ color: 'var(--danger)', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                <span className="text-[11px] text-red-500 font-medium">
                   {errors.email}
                 </span>
               )}
             </div>
           </div>
-          <div className="modal-footer">
-            <button className="btn-ghost" type="button" onClick={onClose}>Cancelar</button>
-            <button className="btn-primary" type="submit">Salvar Cliente</button>
+
+          {/* Footer Novo Cliente */}
+          <div
+            data-pencil-name="Footer Novo Cliente"
+            className="box-border w-full h-[52px] shrink-0 flex flex-row gap-[10px] justify-between items-center pt-2"
+          >
+            <button
+              data-pencil-name="Cancelar Novo Cliente"
+              type="button"
+              onClick={onClose}
+              className="box-border w-fit shrink-0 h-[38px] flex flex-row gap-0 px-[16px] justify-center items-center bg-[#FFFFFF] outline outline-1 outline-[#DED6CA] -outline-offset-1 rounded-[10px] hover:bg-[#F7F2EA] transition-colors cursor-pointer"
+            >
+              <div
+                data-pencil-name="Texto Cancelar Novo Cliente"
+                className="text-[13px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+              >
+                Cancelar
+              </div>
+            </button>
+            <button
+              data-pencil-name="Salvar Novo Cliente"
+              type="submit"
+              className="box-border w-fit shrink-0 h-[38px] flex flex-row gap-[8px] px-[16px] justify-center items-center bg-[#071915] hover:bg-[#122822] rounded-[10px] transition-colors cursor-pointer shadow-sm"
+            >
+              <Save size={15} className="text-[#C9FF3B]" />
+              <div
+                data-pencil-name="Texto Salvar Novo Cliente"
+                className="text-[13px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+              >
+                {modoEdicao ? 'Salvar alterações' : 'Salvar cliente'}
+              </div>
+            </button>
           </div>
         </form>
       </div>
@@ -179,6 +377,7 @@ const ModalNovoCliente: React.FC<ModalNovoClienteProps> = ({
   );
 };
 
+// Modal de Detalhe Completo do Cliente
 interface ModalDetalheClienteProps {
   isOpen: boolean;
   loadingDetalhe: boolean;
@@ -188,6 +387,7 @@ interface ModalDetalheClienteProps {
   onDesarquivar: () => void;
   onExcluir: () => void;
   onEditar: () => void;
+  operadorNome?: string;
 }
 
 const ModalDetalheCliente: React.FC<ModalDetalheClienteProps> = ({
@@ -198,150 +398,543 @@ const ModalDetalheCliente: React.FC<ModalDetalheClienteProps> = ({
   onArquivar,
   onDesarquivar,
   onExcluir,
-  onEditar
+  onEditar,
+  operadorNome = 'fefe',
 }) => {
+  if (!isOpen) return null;
+
+  const initials = (() => {
+    if (!clienteDetalhe?.nome) return 'CL';
+    const parts = clienteDetalhe.nome.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  })();
+
+  const totalReservas =
+    clienteDetalhe?.reservas_count ??
+    clienteDetalhe?.reservasCount ??
+    (clienteDetalhe?.ultimasReservas?.length || 0);
+
+  const canceladas =
+    clienteDetalhe?.ultimasReservas?.filter((r) => r.status === 'Cancelada').length || 0;
+
+  const resumoTexto = `${totalReservas} reserva${totalReservas === 1 ? '' : 's'}${
+    canceladas > 0 ? ` · ${canceladas} cancelada${canceladas === 1 ? '' : 's'}` : ''
+  }`;
+
   return (
-    <div className={`modal-overlay ${isOpen ? 'open' : ''}`}>
-      <div className="modal" style={{ maxWidth: '540px' }}>
-        <div className="modal-header">
-          <h2 className="modal-title">{loadingDetalhe ? 'Carregando...' : clienteDetalhe?.nome}</h2>
-          <button className="modal-close" onClick={onClose}>✕</button>
+    <div
+      data-pencil-name="Overlay Ver Cliente"
+      className="fixed inset-0 bg-[#071915]/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        data-pencil-name="Modal Ver Cliente"
+        className="box-border w-full max-w-[600px] flex flex-col gap-[18px] justify-start items-start bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[26px] overflow-hidden shadow-2xl animate-scale-in"
+      >
+        {/* Hero Ver Cliente Refinado */}
+        <div
+          data-pencil-name="Hero Ver Cliente Refinado"
+          className="box-border w-full h-[132px] shrink-0 flex flex-row gap-[16px] p-[24px_26px] justify-start items-center bg-[#071915]"
+        >
+          <div
+            data-pencil-name="Avatar Ver Cliente Refinado"
+            className="box-border w-[58px] shrink-0 h-[58px] bg-[#C9FF3B] text-[#071915] rounded-full flex items-center justify-center font-bold text-xl select-none"
+          >
+            {initials}
+          </div>
+          <div
+            data-pencil-name="Texto Hero Ver Cliente"
+            className="box-border flex-1 h-fit flex flex-col gap-[6px] justify-start items-start min-w-0"
+          >
+            <div
+              data-pencil-name="Nome Hero Ver Cliente"
+              className="text-[25px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap truncate max-w-full leading-tight"
+              title={clienteDetalhe?.nome}
+            >
+              {loadingDetalhe ? 'Carregando...' : clienteDetalhe?.nome}
+            </div>
+            <div
+              data-pencil-name="Contato Hero Ver Cliente"
+              className="text-[13px]/[normal] box-border text-[#D5DDD2] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap truncate max-w-full"
+            >
+              {clienteDetalhe?.telefone || clienteDetalhe?.email || 'Sem contato'}
+            </div>
+            {clienteDetalhe?.ativo === 1 ? (
+              <div
+                data-pencil-name="Tag Cliente Ativo"
+                className="box-border w-fit h-fit shrink-0 flex flex-row gap-[6px] px-[8px] py-[4px] justify-start items-center bg-[#C9FF3B] rounded-[11px]"
+              >
+                <div
+                  data-pencil-name="Ponto Tag Cliente Ativo"
+                  className="box-border w-[6px] shrink-0 h-[6px] bg-[#071915] rounded-full"
+                />
+                <div
+                  data-pencil-name="Texto Tag Cliente Ativo"
+                  className="text-[10px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                >
+                  Cliente ativo
+                </div>
+              </div>
+            ) : (
+              <div
+                data-pencil-name="Tag Cliente Arquivado"
+                className="box-border w-fit h-fit shrink-0 flex flex-row gap-[6px] px-[8px] py-[4px] justify-start items-center bg-[#FFF3D9] rounded-[11px]"
+              >
+                <div
+                  data-pencil-name="Ponto Tag Cliente Arquivado"
+                  className="box-border w-[6px] shrink-0 h-[6px] bg-[#A85B00] rounded-full"
+                />
+                <div
+                  data-pencil-name="Texto Tag Cliente Arquivado"
+                  className="text-[10px]/[normal] box-border text-[#A85B00] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                >
+                  Cliente arquivado
+                </div>
+              </div>
+            )}
+          </div>
+          <button
+            data-pencil-name="Fechar Ver Cliente Refinado"
+            type="button"
+            onClick={onClose}
+            className="box-border w-[34px] shrink-0 h-[34px] flex flex-row gap-0 justify-center items-center bg-[#FFFFFF1A] hover:bg-white/20 rounded-[17px] transition-colors cursor-pointer text-white"
+            title="Fechar"
+          >
+            <X size={18} />
+          </button>
         </div>
-        {loadingDetalhe ? (
-          <div className="modal-body text-center p-6 text-muted">Carregando detalhes do cliente...</div>
-        ) : clienteDetalhe ? (
-          <>
-            <div className="modal-body">
-              <div style={{ display: 'flex', gap: 'var(--s-6)', marginBottom: 'var(--s-5)' }}>
-                <div>
-                  <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>Telefone</div>
-                  <div style={{ fontSize: '13px', fontWeight: 500 }}>{clienteDetalhe.telefone || '—'}</div>
+
+        {/* Conteúdo Ver Cliente Refinado */}
+        <div
+          data-pencil-name="Conteúdo Ver Cliente Refinado"
+          className="box-border w-full flex-1 flex flex-col gap-[14px] px-[24px] justify-start items-start"
+        >
+          {loadingDetalhe ? (
+            <div className="w-full py-16 text-center text-xs text-[#6F766F]">
+              Carregando dados do cliente...
+            </div>
+          ) : !clienteDetalhe ? (
+            <div className="w-full py-16 text-center text-xs text-red-500">
+              Não foi possível carregar as informações do cliente.
+            </div>
+          ) : (
+            <>
+              {/* Resumo Ver Cliente Refinado (Cards Mini) */}
+              <div
+                data-pencil-name="Resumo Ver Cliente Refinado"
+                className="box-border w-full h-[92px] shrink-0 flex flex-row gap-[12px] justify-start items-start"
+              >
+                {/* Card Mini Cliente E-mail */}
+                <div
+                  data-pencil-name="Card Mini Cliente E-mail"
+                  className="box-border flex-1 h-full flex flex-col gap-[8px] p-[14px] justify-start items-start bg-[#FBFAF7] outline outline-1 outline-[#F0EBE4] -outline-offset-1 rounded-[16px] min-w-0"
+                >
+                  <div
+                    data-pencil-name="Label Mini Cliente E-mail"
+                    className="text-[10px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.6px] text-left whitespace-nowrap"
+                  >
+                    E-MAIL
+                  </div>
+                  <div
+                    data-pencil-name="Valor Mini Cliente E-mail"
+                    className={`text-[16px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap truncate max-w-full ${
+                      clienteDetalhe.email ? 'text-[#071915]' : 'text-[#6F766F]'
+                    }`}
+                    title={clienteDetalhe.email || ''}
+                  >
+                    {clienteDetalhe.email || '—'}
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>E-mail</div>
-                  <div style={{ fontSize: '13px' }}>{clienteDetalhe.email || '—'}</div>
+
+                {/* Card Mini Cliente Reservas */}
+                <div
+                  data-pencil-name="Card Mini Cliente Reservas"
+                  className="box-border flex-1 h-full flex flex-col gap-[8px] p-[14px] justify-start items-start bg-[#FBFAF7] outline outline-1 outline-[#F0EBE4] -outline-offset-1 rounded-[16px] min-w-0"
+                >
+                  <div
+                    data-pencil-name="Label Mini Cliente Reservas"
+                    className="text-[10px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.6px] text-left whitespace-nowrap"
+                  >
+                    RESERVAS
+                  </div>
+                  <div
+                    data-pencil-name="Valor Mini Cliente Reservas"
+                    className="text-[18px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                  >
+                    {totalReservas}
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>Reservas</div>
-                  <div style={{ fontSize: '13px', fontWeight: 600 }}>{clienteDetalhe.reservasCount || 0}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>Saldo Devedor</div>
-                  <div style={{ fontSize: '13px', fontWeight: 600, color: (clienteDetalhe.saldoDevedor || 0) > 0 ? 'var(--danger)' : 'var(--text-color)' }}>
+
+                {/* Card Mini Cliente Saldo */}
+                <div
+                  data-pencil-name="Card Mini Cliente Saldo"
+                  className="box-border flex-1 h-full flex flex-col gap-[8px] p-[14px] justify-start items-start bg-[#FBFAF7] outline outline-1 outline-[#F0EBE4] -outline-offset-1 rounded-[16px] min-w-0"
+                >
+                  <div
+                    data-pencil-name="Label Mini Cliente Saldo"
+                    className="text-[10px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.6px] text-left whitespace-nowrap"
+                  >
+                    SALDO
+                  </div>
+                  <div
+                    data-pencil-name="Valor Mini Cliente Saldo"
+                    className={`text-[18px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap ${
+                      (clienteDetalhe.saldoDevedor || 0) > 0 ? 'text-[#B01F24]' : 'text-[#138A4B]'
+                    }`}
+                  >
                     {formatCurrency(clienteDetalhe.saldoDevedor || 0)}
                   </div>
                 </div>
               </div>
 
-              <h3 style={{ fontSize: '13px', fontWeight: 600, marginBottom: 'var(--s-3)' }}>Últimas Reservas</h3>
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Data</th>
-                      <th>Quadra</th>
-                      <th>Status</th>
-                      <th>Pagamento</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {!clienteDetalhe.ultimasReservas || clienteDetalhe.ultimasReservas.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} style={{ textAlign: 'center' }}>Nenhuma reserva encontrada.</td>
-                      </tr>
-                    ) : (
-                      clienteDetalhe.ultimasReservas.map(r => {
-                        const dateParts = r.data_reserva.split('-');
-                        const dateStr = dateParts.length === 3 
-                          ? new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2])).toLocaleDateString('pt-BR')
-                          : r.data_reserva;
+              {/* Histórico de Reservas Cliente */}
+              <div
+                data-pencil-name="Histórico de Reservas Cliente"
+                className="box-border w-full h-[230px] shrink-0 flex flex-col gap-0 justify-start items-start bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[18px] overflow-hidden"
+              >
+                {/* Header Histórico Reservas Cliente */}
+                <div
+                  data-pencil-name="Header Histórico Reservas Cliente"
+                  className="box-border w-full h-[51.5px] shrink-0 flex flex-row gap-0 px-[16px] justify-between items-center bg-[#FBFAF7] border-b border-[#F0EBE4]"
+                >
+                  <div
+                    data-pencil-name="Título Histórico Reservas Cliente"
+                    className="text-[16px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                  >
+                    Histórico de reservas
+                  </div>
+                  <div
+                    data-pencil-name="Resumo Histórico Reservas Cliente"
+                    className="text-[12px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                  >
+                    {resumoTexto}
+                  </div>
+                </div>
 
-                        return (
-                          <tr key={r.id}>
-                            <td>{dateStr} · {r.hora_inicio}</td>
-                            <td>{r.quadra_nome}</td>
-                            <td>
-                              <span className={`badge ${
-                                r.status === 'Confirmada' ? 'badge--paid' : r.status === 'Cancelada' ? 'badge--danger' : 'badge--pending'
-                              }`}>
-                                {r.status}
-                              </span>
-                            </td>
-                            <td>
-                              <span className={`badge ${
-                                r.status_pagamento === 'Pago' ? 'badge--paid' : r.status_pagamento === 'Pendente' ? 'badge--danger' : 'badge--pending'
-                              }`}>
-                                {r.status_pagamento}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
+                {/* Colunas Histórico Reservas Cliente */}
+                <div
+                  data-pencil-name="Colunas Histórico Reservas Cliente"
+                  className="box-border w-full h-[31.5px] shrink-0 flex flex-row gap-[10px] px-[16px] justify-start items-center border-b border-[#F0EBE4]"
+                >
+                  <div
+                    data-pencil-name="Coluna Hist Cliente DATA"
+                    className="text-[10px]/[normal] box-border w-[118px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left"
+                  >
+                    DATA
+                  </div>
+                  <div
+                    data-pencil-name="Coluna Hist Cliente QUADRA"
+                    className="text-[10px]/[normal] box-border w-[86px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left"
+                  >
+                    QUADRA
+                  </div>
+                  <div
+                    data-pencil-name="Coluna Hist Cliente VALOR"
+                    className="text-[10px]/[normal] box-border w-[80px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left"
+                  >
+                    VALOR
+                  </div>
+                  <div
+                    data-pencil-name="Coluna Hist Cliente STATUS"
+                    className="text-[10px]/[normal] box-border w-[96px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left"
+                  >
+                    STATUS
+                  </div>
+                  <div
+                    data-pencil-name="Coluna Hist Cliente PAG."
+                    className="text-[10px]/[normal] box-border w-[76px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left"
+                  >
+                    PAG.
+                  </div>
+                </div>
+
+                {/* Linhas do Histórico */}
+                <div className="w-full flex-1 overflow-y-auto">
+                  {!clienteDetalhe.ultimasReservas || clienteDetalhe.ultimasReservas.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-[#6F766F]">
+                      Nenhuma reserva encontrada para este cliente.
+                    </div>
+                  ) : (
+                    clienteDetalhe.ultimasReservas.map((r) => {
+                      const isCancelada = r.status === 'Cancelada';
+                      const isConcluida = r.status === 'Confirmada' || r.status === 'Concluída';
+                      const isPago = r.status_pagamento === 'Pago';
+
+                      return (
+                        <div
+                          key={r.id}
+                          data-pencil-name={`Linha Histórico Reserva Cliente ${r.data_reserva} · ${r.hora_inicio}`}
+                          className="box-border w-full h-[33.5px] shrink-0 flex flex-row gap-[10px] px-[16px] justify-start items-center border-b border-[#F7F2EA] hover:bg-[#FAF8F5] transition-colors"
+                        >
+                          <div
+                            data-pencil-name={`Data Hist Cliente ${r.data_reserva} · ${r.hora_inicio}`}
+                            className="text-[11px]/[normal] box-border w-[118px] shrink-0 text-[#071915] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap truncate"
+                          >
+                            {formatDateBR(r.data_reserva)} · {r.hora_inicio}
+                          </div>
+                          <div
+                            data-pencil-name={`Quadra Hist Cliente ${r.data_reserva} · ${r.hora_inicio}`}
+                            className="text-[11px]/[normal] box-border w-[86px] shrink-0 text-[#071915] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap truncate"
+                            title={r.quadra_nome}
+                          >
+                            {r.quadra_nome}
+                          </div>
+                          <div
+                            data-pencil-name={`Valor Hist Cliente ${r.data_reserva} · ${r.hora_inicio}`}
+                            className="text-[11px]/[normal] box-border w-[80px] shrink-0 text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                          >
+                            {formatCurrency(r.valor_total || 0)}
+                          </div>
+                          <div
+                            data-pencil-name={`Status Hist Cliente ${r.data_reserva} · ${r.hora_inicio}`}
+                            className="box-border w-[96px] shrink-0 flex justify-start items-center"
+                          >
+                            <div
+                              className={`box-border w-fit min-w-[76px] px-2 h-[22px] flex flex-row gap-0 justify-center items-center rounded-[11px] ${
+                                isCancelada
+                                  ? 'bg-[#FDEAEA]'
+                                  : isConcluida
+                                  ? 'bg-[#EAF8EF]'
+                                  : 'bg-[#FFF3D9]'
+                              }`}
+                            >
+                              <div
+                                className={`text-[9px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap ${
+                                  isCancelada
+                                    ? 'text-[#B01F24]'
+                                    : isConcluida
+                                    ? 'text-[#138A4B]'
+                                    : 'text-[#A85B00]'
+                                }`}
+                              >
+                                {isCancelada ? 'Cancelada' : isConcluida ? 'Concluída' : r.status}
+                              </div>
+                            </div>
+                          </div>
+                          <div
+                            data-pencil-name={`Pagamento Hist Cliente ${r.data_reserva} · ${r.hora_inicio}`}
+                            className="box-border w-[76px] shrink-0 flex justify-start items-center"
+                          >
+                            <div
+                              className={`box-border w-fit min-w-[58px] px-2 h-[22px] flex flex-row gap-0 justify-center items-center rounded-[11px] ${
+                                isCancelada
+                                  ? 'bg-[#FDEAEA]'
+                                  : isPago
+                                  ? 'bg-[#EAF8EF]'
+                                  : 'bg-[#FFF3D9]'
+                              }`}
+                            >
+                              <div
+                                className={`text-[9px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap ${
+                                  isCancelada
+                                    ? 'text-[#B01F24]'
+                                    : isPago
+                                    ? 'text-[#138A4B]'
+                                    : 'text-[#A85B00]'
+                                }`}
+                              >
+                                {isCancelada ? 'Cancel.' : isPago ? 'Pago' : r.status_pagamento}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
-            </div>
-            <div className="modal-footer" style={{ justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', gap: 'var(--s-2)' }}>
-                {clienteDetalhe.ativo === 1 ? (
-                  <button
-                    className="btn-ghost"
-                    type="button"
-                    onClick={onArquivar}
-                    title="Ocultar da lista principal preservando o histórico"
+
+              {/* Operação Cliente Refinado */}
+              <div
+                data-pencil-name="Operação Cliente Refinado"
+                className="box-border w-full h-[64px] shrink-0 flex flex-row gap-[12px] justify-start items-start"
+              >
+                {/* Operação Cadastro */}
+                <div
+                  data-pencil-name="Operação Cadastro"
+                  className="box-border flex-1 h-full flex flex-row gap-[10px] p-[14px] justify-start items-center bg-[#FBFAF7] outline outline-1 outline-[#F0EBE4] -outline-offset-1 rounded-[16px] min-w-0"
+                >
+                  <div
+                    data-pencil-name="Ícone Operação Cadastro"
+                    className="box-border w-[34px] shrink-0 h-[34px] flex flex-row gap-0 justify-center items-center bg-[#F1EDE6] rounded-[11px]"
                   >
-                    Arquivar
-                  </button>
-                ) : (
-                  <button
-                    className="btn-ghost"
-                    type="button"
-                    onClick={onDesarquivar}
+                    <Calendar size={16} className="text-[#6F766F]" />
+                  </div>
+                  <div
+                    data-pencil-name="Texto Operação Cadastro"
+                    className="box-border w-fit shrink-0 h-fit flex flex-col gap-[4px] justify-start items-start"
                   >
-                    Reativar
-                  </button>
-                )}
-                {(!clienteDetalhe.reservasCount || clienteDetalhe.reservasCount === 0) && (
-                  <button
-                    className="btn-ghost"
-                    type="button"
-                    style={{ color: 'var(--danger)' }}
-                    onClick={onExcluir}
+                    <div
+                      data-pencil-name="Label Operação Cadastro"
+                      className="text-[11px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                    >
+                      Cadastro
+                    </div>
+                    <div
+                      data-pencil-name="Valor Operação Cadastro"
+                      className="text-[13px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                    >
+                      {formatDateBR(clienteDetalhe.criado_em) || '—'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Operação Operador */}
+                <div
+                  data-pencil-name="Operação Operador"
+                  className="box-border flex-1 h-full flex flex-row gap-[10px] p-[14px] justify-start items-center bg-[#FBFAF7] outline outline-1 outline-[#F0EBE4] -outline-offset-1 rounded-[16px] min-w-0"
+                >
+                  <div
+                    data-pencil-name="Ícone Operação Operador"
+                    className="box-border w-[34px] shrink-0 h-[34px] flex flex-row gap-0 justify-center items-center bg-[#F1EDE6] rounded-[11px]"
+                  >
+                    <UserCheck size={16} className="text-[#6F766F]" />
+                  </div>
+                  <div
+                    data-pencil-name="Texto Operação Operador"
+                    className="box-border w-fit shrink-0 h-fit flex flex-col gap-[4px] justify-start items-start"
+                  >
+                    <div
+                      data-pencil-name="Label Operação Operador"
+                      className="text-[11px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                    >
+                      Operador
+                    </div>
+                    <div
+                      data-pencil-name="Valor Operação Operador"
+                      className="text-[13px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                    >
+                      {operadorNome}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer Ver Cliente Refinado */}
+        <div
+          data-pencil-name="Footer Ver Cliente Refinado"
+          className="box-border w-full h-[71.5px] shrink-0 flex flex-row gap-0 px-[24px] justify-between items-center bg-[#FBFAF7] border-t border-[#F0EBE4]"
+        >
+          {/* Ações Secundárias Ver Cliente (Arquivar, Excluir) */}
+          <div
+            data-pencil-name="Ações Secundárias Ver Cliente"
+            className="box-border w-fit shrink-0 h-fit flex flex-row gap-[10px] justify-start items-start"
+          >
+            {clienteDetalhe && (
+              <>
+                <button
+                  data-pencil-name="Botão Arquivar Refinado"
+                  type="button"
+                  onClick={clienteDetalhe.ativo === 1 ? onArquivar : onDesarquivar}
+                  className="box-border w-fit shrink-0 h-[38px] flex flex-row gap-0 px-[14px] justify-center items-center bg-[#FFFFFF] outline outline-1 outline-[#DED6CA] -outline-offset-1 rounded-[10px] hover:bg-[#F7F2EA] transition-colors cursor-pointer"
+                  title={
+                    clienteDetalhe.ativo === 1
+                      ? 'Ocultar da lista principal preservando o histórico'
+                      : 'Restaurar para a lista de clientes ativos'
+                  }
+                >
+                  <div
+                    data-pencil-name="Texto Arquivar Refinado"
+                    className="text-[13px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+                  >
+                    {clienteDetalhe.ativo === 1 ? 'Arquivar' : 'Reativar'}
+                  </div>
+                </button>
+                <button
+                  data-pencil-name="Botão Excluir Refinado"
+                  type="button"
+                  onClick={onExcluir}
+                  className="box-border w-fit shrink-0 h-[38px] flex flex-row gap-0 px-[14px] justify-center items-center bg-[#FFFFFF] outline outline-1 outline-[#DED6CA] -outline-offset-1 rounded-[10px] hover:bg-[#FDEAEA] transition-colors cursor-pointer"
+                >
+                  <div
+                    data-pencil-name="Texto Excluir Refinado"
+                    className="text-[13px]/[normal] box-border text-[#B01F24] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
                   >
                     Excluir
-                  </button>
-                )}
+                  </div>
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Ações Primárias Ver Cliente (Fechar, Editar) */}
+          <div
+            data-pencil-name="Ações Primárias Ver Cliente"
+            className="box-border w-fit shrink-0 h-fit flex flex-row gap-[10px] justify-start items-start"
+          >
+            <button
+              data-pencil-name="Fechar Cliente Refinado"
+              type="button"
+              onClick={onClose}
+              className="box-border w-fit shrink-0 h-[38px] flex flex-row gap-0 px-[14px] justify-center items-center bg-[#FFFFFF] outline outline-1 outline-[#DED6CA] -outline-offset-1 rounded-[10px] hover:bg-[#F7F2EA] transition-colors cursor-pointer"
+            >
+              <div
+                data-pencil-name="Texto Fechar Cliente Refinado"
+                className="text-[13px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+              >
+                Fechar
               </div>
-              <div className="flex gap-2">
-                <button className="btn-ghost" type="button" onClick={onClose}>Fechar</button>
-                {clienteDetalhe.ativo === 1 && (
-                  <button className="btn-primary" type="button" onClick={onEditar}>Editar</button>
-                )}
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="modal-body text-center p-6 text-muted">Erro ao recuperar detalhes do cliente.</div>
-        )}
+            </button>
+            {clienteDetalhe && clienteDetalhe.ativo === 1 && (
+              <button
+                data-pencil-name="Editar Cliente Refinado"
+                type="button"
+                onClick={onEditar}
+                className="box-border w-fit shrink-0 h-[38px] flex flex-row gap-[8px] px-[16px] justify-center items-center bg-[#071915] hover:bg-[#122822] rounded-[10px] transition-colors cursor-pointer"
+              >
+                <Pencil size={14} className="text-[#C9FF3B]" />
+                <div
+                  data-pencil-name="Texto Editar Cliente Refinado"
+                  className="text-[13px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                >
+                  Editar
+                </div>
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
 };
 
 export function AdminClientes() {
+  const { onToggleSidebar } = useOutletContext<{ onToggleSidebar?: () => void }>() || {};
+
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [busca, setBusca] = useState('');
   const [loading, setLoading] = useState(true);
   const [abaAtiva, setAbaAtiva] = useState<'ativos' | 'arquivados'>('ativos');
+  const [filtroCanal, setFiltroCanal] = useState<'todos' | 'com_reservas' | 'sem_reservas'>('todos');
+  const [showFiltroCanalMenu, setShowFiltroCanalMenu] = useState(false);
 
-  const [pendingLinks, setPendingLinks] = useState<VinculoPendente[]>([]);
-  const [showPendingModal, setShowPendingModal] = useState(false);
+  // Informações de Arena e Usuário
+  const [arenaSlug, setArenaSlug] = useState(() => safeStorage.getItem('arena_slug') || 'felp-arena');
+  const user = getStoredUser();
+  const userName = user?.nome || 'fefe';
+
+  // Notificações / Comunicados
+  const [notifications, setNotifications] = useState<Announcement[]>([]);
+  const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+
+  // KPIs
+  const [kpis, setKpis] = useState<ClientesKPIs>({
+    totalAtivos: 0,
+    comReservas: 0,
+    novosMes: 0,
+    arquivados: 0,
+  });
 
   // Modais
   const [activeModal, setActiveModal] = useState<'novo-cliente' | 'detalhe-cliente' | null>(null);
 
-  // Estado Novo/Editar Cliente
+  // Estado Novo / Editar Cliente
   const [modoEdicao, setModoEdicao] = useState(false);
   const [idEdicao, setIdEdicao] = useState<number | null>(null);
   const [ncNome, setNcNome] = useState('');
@@ -349,12 +942,12 @@ export function AdminClientes() {
   const [ncEmail, setNcEmail] = useState('');
   const [errors, setErrors] = useState<FormErrors>({});
 
-  // Estado Detalhes Cliente
+  // Detalhe / Destaque do Cliente
   const [selectedClienteId, setSelectedClienteId] = useState<number | null>(null);
   const [clienteDetalhe, setClienteDetalhe] = useState<ClienteDetalhe | null>(null);
   const [loadingDetalhe, setLoadingDetalhe] = useState(false);
 
-  // Toast / Status messages
+  // Toast
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' } | null>(null);
 
   const showToast = (message: string, type: 'success' | 'error' | 'warning') => {
@@ -362,7 +955,20 @@ export function AdminClientes() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Carregar Clientes da API (filtra por aba ativa)
+  // Carregar KPIs
+  const carregarKPIs = useCallback(async () => {
+    try {
+      const res = await fetch('/api/clientes/estatisticas');
+      if (res.ok) {
+        const data = await res.json();
+        setKpis(data);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar estatísticas:', err);
+    }
+  }, []);
+
+  // Carregar Clientes da API
   const carregarClientes = useCallback(async (aba?: 'ativos' | 'arquivados') => {
     setLoading(true);
     const abaParaCarregar = aba ?? abaAtiva;
@@ -379,52 +985,34 @@ export function AdminClientes() {
     } finally {
       setLoading(false);
     }
-  }, [abaAtiva] );
+  }, [abaAtiva]);
 
-  const carregarVinculosPendentes = async () => {
-    try {
-      const res = await fetch(`/api/clientes/vinculos-pendentes`, { headers: {} });
-      if (res.ok) {
-        const data = await res.json();
-        setPendingLinks(data);
-      }
-    } catch (err) {
-      console.error('Erro ao carregar vínculos pendentes:', err);
-    }
-  };
+  // Carregar Notificações e dados da Arena
+  useEffect(() => {
+    fetch('/api/arenas/minha', { headers: {} })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && data.slug) {
+          setArenaSlug(data.slug);
+          safeStorage.setItem('arena_slug', data.slug);
+        }
+      })
+      .catch(() => {});
+
+    fetch('/api/auth/comunicados/ativos', { headers: {} })
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setNotifications(data);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     carregarClientes(abaAtiva);
-    carregarVinculosPendentes();
-  }, [abaAtiva, carregarClientes]);
-
-  const handleAprovarVinculo = async (usuario_id: number, cliente_id: number) => {
-    try {
-      const res = await fetch(`/api/clientes/vinculos-pendentes/${usuario_id}/${cliente_id}/aprovar`, {
-        method: 'POST',
-        headers: {}
-      });
-      if (!res.ok) throw new Error('Erro ao aprovar vínculo');
-      showToast('Vínculo aprovado com sucesso!', 'success');
-      carregarVinculosPendentes();
-    } catch {
-      showToast('Erro ao aprovar vínculo', 'error');
-    }
-  };
-
-  const handleRejeitarVinculo = async (usuario_id: number, cliente_id: number) => {
-    try {
-      const res = await fetch(`/api/clientes/vinculos-pendentes/${usuario_id}/${cliente_id}/rejeitar`, {
-        method: 'POST',
-        headers: {}
-      });
-      if (!res.ok) throw new Error('Erro ao rejeitar vínculo');
-      showToast('Vínculo rejeitado!', 'success');
-      carregarVinculosPendentes();
-    } catch {
-      showToast('Erro ao rejeitar vínculo', 'error');
-    }
-  };
+    carregarKPIs();
+  }, [abaAtiva, carregarClientes, carregarKPIs]);
 
   // Carregar Detalhes do Cliente
   useEffect(() => {
@@ -454,7 +1042,7 @@ export function AdminClientes() {
     fetchDetalhe();
   }, [selectedClienteId]);
 
-  // Submit Criar/Editar Cliente
+  // Salvar Novo / Editar Cliente
   const handleSalvarCliente = async (e: React.FormEvent) => {
     e.preventDefault();
     const errs = validarCamposCliente(ncNome, ncTelefone, ncEmail);
@@ -463,49 +1051,56 @@ export function AdminClientes() {
 
     try {
       const method = modoEdicao ? 'PUT' : 'POST';
-      const url = modoEdicao 
-        ? `/api/clientes/${idEdicao}`
-        : '/api/clientes';
+      const url = modoEdicao ? `/api/clientes/${idEdicao}` : '/api/clientes';
 
       const res = await fetch(url, {
         method,
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           nome: ncNome.trim(),
           telefone: ncTelefone.trim(),
-          email: ncEmail.trim() || null
-        })
+          email: ncEmail.trim() || null,
+        }),
       });
 
       const data = await res.json();
       if (!res.ok) {
         if (data.field) {
-          setErrors(prev => ({ ...prev, [data.field]: data.error }));
+          setErrors((prev) => ({ ...prev, [data.field]: data.error }));
         } else {
           showToast(data.error || 'Erro ao salvar cliente', 'error');
         }
         return;
       }
 
-      showToast(modoEdicao ? 'Cliente atualizado com sucesso!' : 'Cliente cadastrado com sucesso!', 'success');
+      showToast(
+        modoEdicao ? 'Cliente atualizado com sucesso!' : 'Cliente cadastrado com sucesso!',
+        'success'
+      );
       setActiveModal(null);
       resetForm();
       carregarClientes();
+      carregarKPIs();
     } catch (err) {
       console.error(err);
       showToast('Erro ao se conectar ao servidor.', 'error');
     }
   };
 
-  // Arquivar Cliente (soft delete)
+  // Arquivar Cliente
   const handleArquivarCliente = async () => {
     if (!clienteDetalhe) return;
-    if (!window.confirm(`Arquivar "${clienteDetalhe.nome}"? O cliente ficará oculto da lista principal, mas o histórico de reservas será preservado.`)) return;
+    if (
+      !window.confirm(
+        `Arquivar "${clienteDetalhe.nome}"? O cliente ficará oculto da lista principal, mas o histórico de reservas será preservado.`
+      )
+    )
+      return;
     try {
       const res = await fetch(`/api/clientes/${clienteDetalhe.id}/arquivar`, {
-        method: 'PATCH'
+        method: 'PATCH',
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao arquivar');
@@ -513,6 +1108,7 @@ export function AdminClientes() {
       setActiveModal(null);
       setSelectedClienteId(null);
       carregarClientes();
+      carregarKPIs();
     } catch (err) {
       showToast(errorMessage(err), 'error');
     }
@@ -523,7 +1119,7 @@ export function AdminClientes() {
     if (!clienteDetalhe) return;
     try {
       const res = await fetch(`/api/clientes/${clienteDetalhe.id}/desarquivar`, {
-        method: 'PATCH'
+        method: 'PATCH',
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao reativar');
@@ -531,16 +1127,18 @@ export function AdminClientes() {
       setActiveModal(null);
       setSelectedClienteId(null);
       carregarClientes();
+      carregarKPIs();
     } catch (err) {
       showToast(errorMessage(err), 'error');
     }
   };
 
-  // Excluir Cliente (apenas sem histórico)
+  // Excluir Cliente
   const handleExcluirCliente = async () => {
     if (!clienteDetalhe) return;
-    
-    if (clienteDetalhe.reservasCount && clienteDetalhe.reservasCount > 0) {
+
+    const resCount = clienteDetalhe.reservas_count ?? clienteDetalhe.reservasCount ?? 0;
+    if (resCount > 0) {
       showToast('Cliente com histórico não pode ser excluído. Use "Arquivar".', 'warning');
       return;
     }
@@ -548,7 +1146,7 @@ export function AdminClientes() {
     if (window.confirm(`Tem certeza que deseja excluir permanentemente o cliente ${clienteDetalhe.nome}?`)) {
       try {
         const res = await fetch(`/api/clientes/${clienteDetalhe.id}`, {
-          method: 'DELETE'
+          method: 'DELETE',
         });
 
         const data = await res.json();
@@ -558,6 +1156,7 @@ export function AdminClientes() {
         setActiveModal(null);
         setSelectedClienteId(null);
         carregarClientes();
+        carregarKPIs();
       } catch (err) {
         console.error(err);
         showToast(errorMessage(err), 'error');
@@ -585,138 +1184,859 @@ export function AdminClientes() {
     setActiveModal('novo-cliente');
   };
 
-  // Filtrar lista de clientes localmente
-  const clientesFiltrados = clientes.filter(c => 
-    c.nome.toLowerCase().includes(busca.toLowerCase()) || 
-    (c.telefone && c.telefone.includes(busca)) ||
-    (c.email && c.email.toLowerCase().includes(busca.toLowerCase()))
-  );
+  // Filtragem local
+  const clientesFiltrados = clientes.filter((c) => {
+    const matchBusca =
+      c.nome.toLowerCase().includes(busca.toLowerCase()) ||
+      (c.telefone && c.telefone.includes(busca)) ||
+      (c.email && c.email.toLowerCase().includes(busca.toLowerCase()));
+
+    if (!matchBusca) return false;
+
+    const resCount = c.reservas_count ?? c.reservasCount ?? 0;
+    if (filtroCanal === 'com_reservas') return resCount > 0;
+    if (filtroCanal === 'sem_reservas') return resCount === 0;
+    return true;
+  });
+
+  // Cliente em destaque (se houver selecionado, usa ele; senão, o primeiro da lista filtrada)
+  const clienteDestaque =
+    clientesFiltrados.find((c) => c.id === selectedClienteId) ||
+    clientesFiltrados[0] ||
+    null;
 
   return (
-    <div className="admin-clientes-page">
+    <div className="admin-clientes-page w-full flex flex-col min-w-0 font-[Inter,system-ui,sans-serif]">
       {/* Toast Alert */}
       {toast && (
-        <div 
-          className={`fixed bottom-4 right-4 z-50 px-4 py-3 rounded-lg text-white font-medium shadow-lg transition-transform duration-200 ${
-            toast.type === 'success' ? 'bg-success' : toast.type === 'warning' ? 'bg-warning' : 'bg-danger'
+        <div
+          style={{ zIndex: 999999 }}
+          className={`fixed bottom-5 right-5 px-4 py-3 rounded-xl text-white text-xs font-semibold shadow-2xl flex items-center gap-2.5 animate-slideUp border ${
+            toast.type === 'success'
+              ? 'bg-emerald-600 border-emerald-500'
+              : 'bg-rose-600 border-rose-500'
           }`}
         >
-          {toast.message}
+          <span>{toast.message}</span>
         </div>
       )}
 
-      {pendingLinks.length > 0 && (
-        <div 
-          className="mb-4 bg-warning/10 border border-warning/20 rounded-xl p-4 flex items-center justify-between cursor-pointer hover:bg-warning/15 transition-colors"
-          onClick={() => setShowPendingModal(true)}
+      {/* Área Principal Clientes (Fiel ao mockup do Penpot) */}
+      <div
+        data-pencil-name="Área Principal Clientes"
+        className="box-border w-full flex flex-col gap-[18px] justify-start items-start"
+      >
+        {/* Cabeçalho Clientes */}
+        <div
+          data-pencil-name="Cabeçalho Clientes"
+          className="box-border w-full min-h-[70px] shrink-0 flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center select-none"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-warning/20 text-warning-text flex items-center justify-center font-bold">
-              !
-            </div>
-            <div>
-              <h4 className="text-warning-text font-bold text-sm">Vínculos de Atletas Pendentes ({pendingLinks.length})</h4>
-              <p className="text-xs text-warning-text/80">Existem atletas aguardando aprovação para vincular às contas locais.</p>
+            {onToggleSidebar && (
+              <button
+                type="button"
+                onClick={onToggleSidebar}
+                className="md:hidden p-2 rounded-xl bg-white border border-[#E6DED2] text-[#071915] hover:bg-[#F1EDE6] transition-colors"
+                title="Abrir menu"
+              >
+                <Menu size={20} />
+              </button>
+            )}
+
+            <div
+              data-pencil-name="Título Clientes Grupo"
+              className="box-border w-fit shrink-0 h-fit flex flex-col gap-[6px] justify-start items-start"
+            >
+              <div
+                data-pencil-name="Breadcrumb Clientes"
+                className="text-[12px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+              >
+                Relacionamento / Clientes
+              </div>
+              <div
+                data-pencil-name="Título Clientes"
+                className="text-[28px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+              >
+                Clientes
+              </div>
             </div>
           </div>
-          <button className="px-4 py-2 bg-warning text-white rounded-lg text-xs font-bold shadow-sm hover:opacity-90">
-            Revisar
-          </button>
-        </div>
-      )}
 
-      {/* Tabs de Aba */}
-      <div className="tab-bar" role="tablist">
-        <button
-          className={`tab-btn ${abaAtiva === 'ativos' ? 'active' : ''}`}
-          onClick={() => setAbaAtiva('ativos')}
-        >
-          Ativos
-        </button>
-        <button
-          className={`tab-btn ${abaAtiva === 'arquivados' ? 'active' : ''}`}
-          onClick={() => setAbaAtiva('arquivados')}
-        >
-          Arquivados
-        </button>
-      </div>
-
-      {/* Toolbar / Busca */}
-      <div className="page-toolbar mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="filter-bar">
-          <input
-            type="text"
-            className="search-input"
-            placeholder="Buscar por nome, e-mail ou telefone..."
-            style={{ width: '300px' }}
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-          />
-        </div>
-
-        {abaAtiva === 'ativos' && (
-          <button
-            className="btn-primary"
-            onClick={() => {
-              resetForm();
-              setActiveModal('novo-cliente');
-            }}
+          <div
+            data-pencil-name="Ações Cabeçalho Clientes"
+            className="box-border w-fit shrink-0 h-fit flex flex-wrap gap-[10px] justify-start items-center"
           >
-            + Novo Cliente
-          </button>
-        )}
-      </div>
+            {/* Botão Novo Cliente */}
+            <button
+              data-pencil-name="Novo Cliente"
+              type="button"
+              onClick={() => {
+                resetForm();
+                setActiveModal('novo-cliente');
+              }}
+              className="box-border w-fit shrink-0 h-[42px] flex flex-row gap-[8px] px-[16px] justify-start items-center bg-[#071915] hover:bg-[#122822] rounded-[10px] cursor-pointer transition-colors"
+            >
+              <Plus size={16} className="text-[#C9FF3B]" />
+              <div
+                data-pencil-name="Texto Novo Cliente"
+                className="text-[13px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+              >
+                Novo cliente
+              </div>
+            </button>
 
-      {/* Tabela de Clientes */}
-      <div className="table-card">
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Nome</th>
-                <th>Telefone</th>
-                <th>E-mail</th>
-                <th>Cadastro</th>
-                <th>Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', padding: '20px' }}>Carregando clientes...</td>
-                </tr>
-              ) : clientesFiltrados.length === 0 ? (
-                <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', padding: '20px' }}>Nenhum cliente encontrado.</td>
-                </tr>
-              ) : (
-                clientesFiltrados.map(c => {
-                  const dataCadastro = c.criado_em 
-                    ? new Date(c.criado_em).toLocaleDateString('pt-BR') 
-                    : '—';
-                  return (
-                    <tr key={c.id}>
-                      <td><strong>{c.nome}</strong></td>
-                      <td>{c.telefone || '—'}</td>
-                      <td>{c.email || '—'}</td>
-                      <td>{dataCadastro}</td>
-                      <td>
-                        <button 
-                          className="btn-ghost btn-sm" 
-                          onClick={() => {
-                            setSelectedClienteId(c.id);
-                            setActiveModal('detalhe-cliente');
-                          }}
+            {/* Acesso usuário Clientes */}
+            <div
+              data-pencil-name="Acesso usuário Clientes"
+              className="box-border w-fit shrink-0 h-fit flex flex-row gap-[10px] justify-start items-center"
+            >
+              {/* Portal do Cliente Pill */}
+              <a
+                data-pencil-name="Portal do Cliente Clientes"
+                href={`/portal/${arenaSlug}`}
+                target="_blank"
+                rel="noreferrer"
+                className="box-border w-fit shrink-0 h-[34px] flex flex-row gap-[7px] px-[12px] justify-start items-center bg-[#ECFFF4] hover:bg-[#d8fae4] rounded-[17px] cursor-pointer transition-colors text-decoration-none"
+                title="Acessar Portal do Atleta / Cliente"
+              >
+                <Globe size={14} className="text-[#008A5A]" />
+                <div
+                  data-pencil-name="Texto Portal Clientes"
+                  className="text-[12px]/[normal] box-border text-[#007A50] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                >
+                  Portal do Cliente
+                </div>
+              </a>
+
+              {/* Usuário logado */}
+              <div
+                data-pencil-name="Usuário logado Clientes"
+                className="box-border w-fit shrink-0 h-[34px] flex flex-row gap-[7px] px-[11px] justify-start items-center bg-[#F1EDE6] rounded-[17px]"
+              >
+                <div
+                  data-pencil-name="Status online Clientes"
+                  className="box-border w-[7px] shrink-0 h-[7px] bg-[#188A45] rounded-full"
+                ></div>
+                <div
+                  data-pencil-name="Nome usuário Clientes"
+                  className="text-[12px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                >
+                  {userName}
+                </div>
+              </div>
+
+              {/* Notificações Bell */}
+              <div className="relative">
+                <button
+                  data-pencil-name="Notificações Clientes"
+                  type="button"
+                  onClick={() => setShowNotifDropdown(!showNotifDropdown)}
+                  className="box-border w-[34px] shrink-0 h-[34px] bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[17px] flex items-center justify-center hover:bg-[#FAF7F2] transition-colors relative"
+                  title="Notificações"
+                >
+                  <Bell size={16} className="text-[#071915]" />
+                  {notifications.length > 0 && (
+                    <div
+                      data-pencil-name="Bolinha notificação Clientes"
+                      className="box-border w-[7px] h-[7px] absolute left-[22px] top-[7px] bg-[#D11F2A] outline outline-1 outline-[#FFFFFF] rounded-full"
+                    ></div>
+                  )}
+                </button>
+
+                {/* Dropdown de Notificações */}
+                {showNotifDropdown && (
+                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl outline outline-1 outline-[#E6DED2] py-2 z-50 animate-scale-in">
+                    <div className="px-4 py-2 border-b border-[#F0EBE4] flex items-center justify-between">
+                      <span className="font-bold text-xs text-[#071915]">Notificações</span>
+                      <span className="text-[10px] text-[#6F766F]">
+                        {notifications.length} nova(s)
+                      </span>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto divide-y divide-[#F4EFE8]">
+                      {notifications.length === 0 ? (
+                        <div className="px-4 py-6 text-center text-xs text-[#6F766F]">
+                          Nenhuma notificação no momento.
+                        </div>
+                      ) : (
+                        notifications.map((n) => (
+                          <div key={n.id} className="px-4 py-2.5 hover:bg-[#FAF8F5]">
+                            <div className="text-xs text-[#071915] font-medium">{n.message}</div>
+                            <div className="text-[10px] text-[#6F766F] mt-0.5">
+                              {new Date(n.createdAt || Date.now()).toLocaleDateString('pt-BR')}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Resumo Clientes (4 cards) */}
+        <div
+          data-pencil-name="Resumo Clientes"
+          className="box-border w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-[14px] justify-start items-start"
+        >
+          {/* Card 1: CLIENTES ATIVOS */}
+          <div
+            data-pencil-name="Card Clientes Clientes ativos"
+            className="box-border h-[104px] flex flex-row gap-[12px] p-[16px] justify-start items-center bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[16px] shadow-sm hover:shadow-md transition-shadow"
+          >
+            <div
+              data-pencil-name="Ícone Clientes Clientes ativos"
+              className="box-border w-[42px] shrink-0 h-[42px] flex flex-row gap-0 justify-center items-center bg-[#F1EDE6] rounded-[14px]"
+            >
+              <Users size={18} className="text-[#071915]" />
+            </div>
+            <div
+              data-pencil-name="Texto Clientes Clientes ativos"
+              className="box-border flex-1 h-fit flex flex-col gap-[5px] justify-start items-start min-w-0"
+            >
+              <div
+                data-pencil-name="Topo Clientes Clientes ativos"
+                className="box-border w-full h-fit shrink-0 flex flex-row gap-[7px] justify-start items-center"
+              >
+                <div
+                  data-pencil-name="Label Clientes Clientes ativos"
+                  className="text-[10px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.8px] text-left whitespace-nowrap"
+                >
+                  CLIENTES ATIVOS
+                </div>
+                <div
+                  data-pencil-name="Pill Clientes Clientes ativos"
+                  className="box-border w-fit shrink-0 h-fit flex flex-row gap-0 px-[7px] py-[3px] justify-start items-center bg-[#F1EDE6] rounded-[10px]"
+                >
+                  <div
+                    data-pencil-name="Texto Pill Clientes Clientes ativos"
+                    className="text-[9px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                  >
+                    Base
+                  </div>
+                </div>
+              </div>
+              <div
+                data-pencil-name="Valor Clientes Clientes ativos"
+                className="text-[23px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap leading-none"
+              >
+                {kpis.totalAtivos}
+              </div>
+              <div
+                data-pencil-name="Descrição Clientes Clientes ativos"
+                className="text-[11px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+              >
+                Clientes prontos para reservar
+              </div>
+            </div>
+          </div>
+
+          {/* Card 2: COM RESERVAS */}
+          <div
+            data-pencil-name="Card Clientes Com reservas"
+            className="box-border h-[104px] flex flex-row gap-[12px] p-[16px] justify-start items-center bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[16px] shadow-sm hover:shadow-md transition-shadow"
+          >
+            <div
+              data-pencil-name="Ícone Clientes Com reservas"
+              className="box-border w-[42px] shrink-0 h-[42px] flex flex-row gap-0 justify-center items-center bg-[#EAF8EF] rounded-[14px]"
+            >
+              <CalendarCheck size={18} className="text-[#138A4B]" />
+            </div>
+            <div
+              data-pencil-name="Texto Clientes Com reservas"
+              className="box-border flex-1 h-fit flex flex-col gap-[5px] justify-start items-start min-w-0"
+            >
+              <div
+                data-pencil-name="Topo Clientes Com reservas"
+                className="box-border w-full h-fit shrink-0 flex flex-row gap-[7px] justify-start items-center"
+              >
+                <div
+                  data-pencil-name="Label Clientes Com reservas"
+                  className="text-[10px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.8px] text-left whitespace-nowrap"
+                >
+                  COM RESERVAS
+                </div>
+                <div
+                  data-pencil-name="Pill Clientes Com reservas"
+                  className="box-border w-fit shrink-0 h-fit flex flex-row gap-0 px-[7px] py-[3px] justify-start items-center bg-[#F1EDE6] rounded-[10px]"
+                >
+                  <div
+                    data-pencil-name="Texto Pill Clientes Com reservas"
+                    className="text-[9px]/[normal] box-border text-[#138A4B] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                  >
+                    Engajados
+                  </div>
+                </div>
+              </div>
+              <div
+                data-pencil-name="Valor Clientes Com reservas"
+                className="text-[23px]/[normal] box-border text-[#138A4B] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap leading-none"
+              >
+                {kpis.comReservas}
+              </div>
+              <div
+                data-pencil-name="Descrição Clientes Com reservas"
+                className="text-[11px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+              >
+                Usaram a arena no período
+              </div>
+            </div>
+          </div>
+
+          {/* Card 3: NOVOS NO MÊS */}
+          <div
+            data-pencil-name="Card Clientes Novos no mês"
+            className="box-border h-[104px] flex flex-row gap-[12px] p-[16px] justify-start items-center bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[16px] shadow-sm hover:shadow-md transition-shadow"
+          >
+            <div
+              data-pencil-name="Ícone Clientes Novos no mês"
+              className="box-border w-[42px] shrink-0 h-[42px] flex flex-row gap-0 justify-center items-center bg-[#EEF3FF] rounded-[14px]"
+            >
+              <UserPlus size={18} className="text-[#2563EB]" />
+            </div>
+            <div
+              data-pencil-name="Texto Clientes Novos no mês"
+              className="box-border flex-1 h-fit flex flex-col gap-[5px] justify-start items-start min-w-0"
+            >
+              <div
+                data-pencil-name="Topo Clientes Novos no mês"
+                className="box-border w-full h-fit shrink-0 flex flex-row gap-[7px] justify-start items-center"
+              >
+                <div
+                  data-pencil-name="Label Clientes Novos no mês"
+                  className="text-[10px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.8px] text-left whitespace-nowrap"
+                >
+                  NOVOS NO MÊS
+                </div>
+                <div
+                  data-pencil-name="Pill Clientes Novos no mês"
+                  className="box-border w-fit shrink-0 h-fit flex flex-row gap-0 px-[7px] py-[3px] justify-start items-center bg-[#F1EDE6] rounded-[10px]"
+                >
+                  <div
+                    data-pencil-name="Texto Pill Clientes Novos no mês"
+                    className="text-[9px]/[normal] box-border text-[#2563EB] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                  >
+                    Crescimento
+                  </div>
+                </div>
+              </div>
+              <div
+                data-pencil-name="Valor Clientes Novos no mês"
+                className="text-[23px]/[normal] box-border text-[#2563EB] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap leading-none"
+              >
+                {kpis.novosMes}
+              </div>
+              <div
+                data-pencil-name="Descrição Clientes Novos no mês"
+                className="text-[11px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+              >
+                Cadastros recentes
+              </div>
+            </div>
+          </div>
+
+          {/* Card 4: ARQUIVADOS */}
+          <div
+            data-pencil-name="Card Clientes Arquivados"
+            className="box-border h-[104px] flex flex-row gap-[12px] p-[16px] justify-start items-center bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[16px] shadow-sm hover:shadow-md transition-shadow"
+          >
+            <div
+              data-pencil-name="Ícone Clientes Arquivados"
+              className="box-border w-[42px] shrink-0 h-[42px] flex flex-row gap-0 justify-center items-center bg-[#FFF3D9] rounded-[14px]"
+            >
+              <Archive size={18} className="text-[#A85B00]" />
+            </div>
+            <div
+              data-pencil-name="Texto Clientes Arquivados"
+              className="box-border flex-1 h-fit flex flex-col gap-[5px] justify-start items-start min-w-0"
+            >
+              <div
+                data-pencil-name="Topo Clientes Arquivados"
+                className="box-border w-full h-fit shrink-0 flex flex-row gap-[7px] justify-start items-center"
+              >
+                <div
+                  data-pencil-name="Label Clientes Arquivados"
+                  className="text-[10px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.8px] text-left whitespace-nowrap"
+                >
+                  ARQUIVADOS
+                </div>
+                <div
+                  data-pencil-name="Pill Clientes Arquivados"
+                  className="box-border w-fit shrink-0 h-fit flex flex-row gap-0 px-[7px] py-[3px] justify-start items-center bg-[#F1EDE6] rounded-[10px]"
+                >
+                  <div
+                    data-pencil-name="Texto Pill Clientes Arquivados"
+                    className="text-[9px]/[normal] box-border text-[#A85B00] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                  >
+                    Arquivo
+                  </div>
+                </div>
+              </div>
+              <div
+                data-pencil-name="Valor Clientes Arquivados"
+                className="text-[23px]/[normal] box-border text-[#A85B00] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap leading-none"
+              >
+                {kpis.arquivados}
+              </div>
+              <div
+                data-pencil-name="Descrição Clientes Arquivados"
+                className="text-[11px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+              >
+                Ocultos da operação
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Controles Clientes (Tabs, Busca, Filtro) */}
+        <div
+          data-pencil-name="Controles Clientes"
+          className="box-border w-full min-h-[46px] shrink-0 flex flex-wrap gap-[12px] justify-start items-center"
+        >
+          {/* Tabs Clientes */}
+          <div
+            data-pencil-name="Tabs Clientes"
+            className="box-border w-fit shrink-0 h-[38px] flex flex-row gap-[4px] p-[4px] justify-start items-center bg-[#F1EDE6] rounded-[12px]"
+          >
+            <button
+              data-pencil-name="Tab Clientes Ativos"
+              type="button"
+              onClick={() => setAbaAtiva('ativos')}
+              className={`box-border w-fit shrink-0 h-[30px] flex flex-row gap-0 px-[16px] justify-center items-center rounded-[9px] cursor-pointer transition-colors ${
+                abaAtiva === 'ativos'
+                  ? 'bg-[#071915]'
+                  : 'bg-transparent hover:text-[#071915]'
+              }`}
+            >
+              <div
+                data-pencil-name="Texto Tab Clientes Ativos"
+                className={`text-[12px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap ${
+                  abaAtiva === 'ativos' ? 'text-[#FFFFFF]' : 'text-[#6F766F]'
+                }`}
+              >
+                Ativos
+              </div>
+            </button>
+            <button
+              data-pencil-name="Tab Clientes Arquivados"
+              type="button"
+              onClick={() => setAbaAtiva('arquivados')}
+              className={`box-border w-fit shrink-0 h-[30px] flex flex-row gap-0 px-[16px] justify-center items-center rounded-[9px] cursor-pointer transition-colors ${
+                abaAtiva === 'arquivados'
+                  ? 'bg-[#071915]'
+                  : 'bg-transparent hover:text-[#071915]'
+              }`}
+            >
+              <div
+                data-pencil-name="Texto Tab Clientes Arquivados"
+                className={`text-[12px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap ${
+                  abaAtiva === 'arquivados' ? 'text-[#FFFFFF]' : 'text-[#6F766F]'
+                }`}
+              >
+                Arquivados
+              </div>
+            </button>
+          </div>
+
+          {/* Busca Clientes */}
+          <div
+            data-pencil-name="Busca Clientes"
+            className="box-border w-full sm:w-[320px] shrink-0 h-[38px] flex flex-row gap-[8px] px-[12px] justify-start items-center bg-[#FFFFFF] outline outline-1 outline-[#DED6CA] -outline-offset-1 rounded-[9px] focus-within:outline-[#071915] transition-all"
+          >
+            <Search size={15} className="text-[#6F766F] shrink-0" />
+            <input
+              type="text"
+              placeholder="Buscar por nome, telefone ou e-mail..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="w-full bg-transparent border-none outline-none text-[13px] text-[#071915] placeholder:text-[#94A3B8] font-normal"
+            />
+            {busca && (
+              <button
+                type="button"
+                onClick={() => setBusca('')}
+                className="text-[#94A3B8] hover:text-[#071915] text-xs p-1"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Filtro Clientes Origem / Canal */}
+          <div className="relative">
+            <button
+              data-pencil-name="Filtro Clientes Origem"
+              type="button"
+              onClick={() => setShowFiltroCanalMenu(!showFiltroCanalMenu)}
+              className="box-border w-fit shrink-0 h-[38px] flex flex-row gap-[8px] px-[12px] justify-start items-center bg-[#FFFFFF] outline outline-1 outline-[#DED6CA] -outline-offset-1 rounded-[9px] hover:bg-[#FAF8F5] transition-colors cursor-pointer"
+            >
+              <div
+                data-pencil-name="Texto Filtro Clientes Origem"
+                className="text-[13px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+              >
+                {filtroCanal === 'todos'
+                  ? 'Todos os canais'
+                  : filtroCanal === 'com_reservas'
+                  ? 'Com reservas'
+                  : 'Sem reservas'}
+              </div>
+              <ChevronDown size={15} className="text-[#6F675F]" />
+            </button>
+
+            {showFiltroCanalMenu && (
+              <div className="absolute left-0 mt-1.5 w-44 bg-white rounded-xl shadow-xl outline outline-1 outline-[#E6DED2] py-1.5 z-40 animate-scale-in">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFiltroCanal('todos');
+                    setShowFiltroCanalMenu(false);
+                  }}
+                  className={`w-full px-3.5 py-2 text-left text-xs font-semibold flex items-center justify-between hover:bg-[#FAF8F5] ${
+                    filtroCanal === 'todos' ? 'text-[#071915] bg-[#F7F2EA]' : 'text-[#6F766F]'
+                  }`}
+                >
+                  <span>Todos os canais</span>
+                  {filtroCanal === 'todos' && <Check size={14} className="text-[#071915]" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFiltroCanal('com_reservas');
+                    setShowFiltroCanalMenu(false);
+                  }}
+                  className={`w-full px-3.5 py-2 text-left text-xs font-semibold flex items-center justify-between hover:bg-[#FAF8F5] ${
+                    filtroCanal === 'com_reservas' ? 'text-[#071915] bg-[#F7F2EA]' : 'text-[#6F766F]'
+                  }`}
+                >
+                  <span>Com reservas</span>
+                  {filtroCanal === 'com_reservas' && <Check size={14} className="text-[#071915]" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFiltroCanal('sem_reservas');
+                    setShowFiltroCanalMenu(false);
+                  }}
+                  className={`w-full px-3.5 py-2 text-left text-xs font-semibold flex items-center justify-between hover:bg-[#FAF8F5] ${
+                    filtroCanal === 'sem_reservas' ? 'text-[#071915] bg-[#F7F2EA]' : 'text-[#6F766F]'
+                  }`}
+                >
+                  <span>Sem reservas</span>
+                  {filtroCanal === 'sem_reservas' && <Check size={14} className="text-[#071915]" />}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Corpo Clientes (Tabela + Perfil em destaque) */}
+        <div
+          data-pencil-name="Corpo Clientes"
+          className="box-border w-full flex-1 flex flex-col lg:flex-row gap-[16px] justify-start items-start"
+        >
+          {/* Tabela Clientes */}
+          <div
+            data-pencil-name="Tabela Clientes"
+            className="box-border flex-1 w-full min-w-0 flex flex-col gap-0 justify-start items-start bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[16px] overflow-hidden shadow-sm"
+          >
+            {/* Header Tabela Clientes */}
+            <div
+              data-pencil-name="Header Tabela Clientes"
+              className="box-border w-full h-[55.5px] shrink-0 flex flex-row gap-0 px-[22px] justify-between items-center bg-[#FBFAF7] border-b border-[#F0EBE4]"
+            >
+              <div
+                data-pencil-name="Título Tabela Clientes"
+                className="text-[16px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+              >
+                Lista de clientes
+              </div>
+              <div
+                data-pencil-name="Dica Tabela Clientes"
+                className="text-[12px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+              >
+                {clientesFiltrados.length} cliente{clientesFiltrados.length === 1 ? '' : 's'}{' '}
+                {abaAtiva === 'ativos' ? 'ativos' : 'arquivados'}
+              </div>
+            </div>
+
+            {/* Container responsivo com scroll horizontal para a tabela */}
+            <div className="w-full overflow-x-auto">
+              <div className="min-w-[700px] w-full flex flex-col">
+                {/* Colunas Clientes */}
+                <div
+                  data-pencil-name="Colunas Clientes"
+                  className="box-border w-full h-[35.5px] shrink-0 flex flex-row gap-[14px] px-[22px] justify-start items-center border-b border-[#F0EBE4] bg-white"
+                >
+                  <div
+                    data-pencil-name="Coluna Clientes CLIENTE"
+                    className="text-[10px]/[normal] box-border w-[180px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left"
+                  >
+                    CLIENTE
+                  </div>
+                  <div
+                    data-pencil-name="Coluna Clientes TELEFONE"
+                    className="text-[10px]/[normal] box-border w-[110px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left"
+                  >
+                    TELEFONE
+                  </div>
+                  <div
+                    data-pencil-name="Coluna Clientes E-MAIL"
+                    className="text-[10px]/[normal] box-border w-[145px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left"
+                  >
+                    E-MAIL
+                  </div>
+                  <div
+                    data-pencil-name="Coluna Clientes RESERVAS"
+                    className="text-[10px]/[normal] box-border w-[65px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left"
+                  >
+                    RESERVAS
+                  </div>
+                  <div
+                    data-pencil-name="Coluna Clientes ÚLTIMA VISITA"
+                    className="text-[10px]/[normal] box-border w-[90px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left"
+                  >
+                    ÚLTIMA VISITA
+                  </div>
+                  <div
+                    data-pencil-name="Coluna Clientes AÇÕES"
+                    className="text-[10px]/[normal] box-border w-[50px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left"
+                  >
+                    AÇÕES
+                  </div>
+                </div>
+
+                {/* Linhas da Tabela */}
+                {loading ? (
+                  <div className="w-full py-12 text-center text-xs text-[#6F766F]">
+                    Carregando clientes...
+                  </div>
+                ) : clientesFiltrados.length === 0 ? (
+                  <div className="w-full py-12 text-center text-xs text-[#6F766F]">
+                    Nenhum cliente encontrado.
+                  </div>
+                ) : (
+                  clientesFiltrados.map((c, idx) => {
+                    const isSelected = clienteDestaque?.id === c.id;
+                    const resCount = c.reservas_count ?? c.reservasCount ?? 0;
+                    const dataVisita = formatDateBR(c.ultima_visita || c.criado_em);
+
+                    // Cores de avatar alternadas conforme Penpot
+                    const avatarBg = isSelected
+                      ? 'bg-[#C9FF3B] text-[#071915]'
+                      : idx % 2 === 0
+                      ? 'bg-[#EAF8EF] text-[#138A4B]'
+                      : 'bg-[#F1EDE6] text-[#071915]';
+
+                    return (
+                      <div
+                        key={c.id}
+                        data-pencil-name={`Linha Cliente ${c.nome}`}
+                        onClick={() => setSelectedClienteId(c.id)}
+                        className={`box-border w-full min-h-[49.5px] shrink-0 flex flex-row gap-[14px] px-[22px] justify-start items-center border-b border-[#F4EFE8] cursor-pointer transition-colors ${
+                          isSelected ? 'bg-[#F7F2EA]/60' : 'hover:bg-[#FAF8F5]'
+                        }`}
+                      >
+                        {/* Cliente Cell */}
+                        <div
+                          data-pencil-name={`Cliente Cell ${c.nome}`}
+                          className="box-border w-[180px] shrink-0 h-fit flex flex-row gap-[10px] justify-start items-center min-w-0"
                         >
-                          Ver
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                          <div
+                            data-pencil-name={`Avatar Cliente ${c.nome}`}
+                            className={`box-border w-[30px] shrink-0 h-[30px] rounded-full flex items-center justify-center font-bold text-[11px] ${avatarBg}`}
+                          >
+                            {c.nome.slice(0, 2).toUpperCase()}
+                          </div>
+                          <div
+                            data-pencil-name={`Nome Cliente ${c.nome}`}
+                            className="text-[13px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap truncate"
+                            title={c.nome}
+                          >
+                            {c.nome}
+                          </div>
+                        </div>
+
+                        {/* Telefone */}
+                        <div
+                          data-pencil-name={`Telefone Cliente ${c.nome}`}
+                          className="text-[11px]/[normal] box-border w-[110px] shrink-0 text-[#071915] font-[Inter,system-ui,sans-serif] font-normal text-left truncate"
+                        >
+                          {c.telefone || '—'}
+                        </div>
+
+                        {/* Email */}
+                        <div
+                          data-pencil-name={`Email Cliente ${c.nome}`}
+                          className="text-[11px]/[normal] box-border w-[145px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left truncate"
+                          title={c.email || ''}
+                        >
+                          {c.email || '—'}
+                        </div>
+
+                        {/* Reservas */}
+                        <div
+                          data-pencil-name={`Reservas Cliente ${c.nome}`}
+                          className="text-[12px]/[normal] box-border w-[65px] shrink-0 text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left"
+                        >
+                          {resCount}
+                        </div>
+
+                        {/* Última Visita */}
+                        <div
+                          data-pencil-name={`Última Visita Cliente ${c.nome}`}
+                          className="text-[11px]/[normal] box-border w-[90px] shrink-0 text-[#071915] font-[Inter,system-ui,sans-serif] font-normal text-left"
+                        >
+                          {dataVisita}
+                        </div>
+
+                        {/* Ações (Botão Ver) */}
+                        <div
+                          data-pencil-name={`Ver Cliente ${c.nome}`}
+                          className="box-border w-[50px] shrink-0"
+                        >
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedClienteId(c.id);
+                              setActiveModal('detalhe-cliente');
+                            }}
+                            className="box-border w-[46px] shrink-0 h-[24px] flex flex-row gap-0 justify-center items-center bg-[#FFFFFF] outline outline-1 outline-[#DED6CA] -outline-offset-1 rounded-[8px] hover:bg-[#F1EDE6] transition-colors cursor-pointer"
+                          >
+                            <div
+                              data-pencil-name={`Texto Ver Cliente ${c.nome}`}
+                              className="text-[12px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                            >
+                              Ver
+                            </div>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Resumo Perfil Cliente (Card Lateral em Destaque) */}
+          <div
+            data-pencil-name="Resumo Perfil Cliente"
+            className="box-border w-full lg:w-[270px] shrink-0 h-fit flex flex-col gap-[12px] p-[18px] justify-start items-start bg-[#071915] rounded-[16px] shadow-xl text-white select-none lg:sticky lg:top-6"
+          >
+            <div
+              data-pencil-name="Título Perfil Cliente"
+              className="text-[18px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+            >
+              Cliente em destaque
+            </div>
+
+            {clienteDestaque ? (
+              <>
+                <div
+                  data-pencil-name="Avatar Perfil Cliente"
+                  className="box-border w-[58px] h-[58px] shrink-0 bg-[#C9FF3B] text-[#071915] rounded-full flex items-center justify-center font-extrabold text-xl shadow-md"
+                >
+                  {clienteDestaque.nome.slice(0, 2).toUpperCase()}
+                </div>
+
+                <div
+                  data-pencil-name="Nome Perfil Cliente"
+                  className="text-[22px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap truncate max-w-full leading-tight"
+                  title={clienteDestaque.nome}
+                >
+                  {clienteDestaque.nome}
+                </div>
+
+                <div
+                  data-pencil-name="Contato Perfil Cliente"
+                  className="text-[13px]/[normal] box-border text-[#D5DDD2] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap truncate max-w-full"
+                >
+                  {clienteDestaque.telefone || clienteDestaque.email || 'Sem telefone'}
+                </div>
+
+                {/* Linha Reservas realizadas */}
+                <div
+                  data-pencil-name="Info Perfil Reservas realizadas"
+                  className="box-border w-full h-[34.5px] shrink-0 flex flex-row gap-0 py-[10px] justify-between items-center border-b border-[#243026]"
+                >
+                  <div
+                    data-pencil-name="Label Perfil Reservas realizadas"
+                    className="text-[12px]/[normal] box-border text-[#AAB4A7] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+                  >
+                    Reservas realizadas
+                  </div>
+                  <div
+                    data-pencil-name="Valor Perfil Reservas realizadas"
+                    className="text-[12px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                  >
+                    {clienteDestaque.reservas_count ?? clienteDestaque.reservasCount ?? 0}
+                  </div>
+                </div>
+
+                {/* Linha Última visita */}
+                <div
+                  data-pencil-name="Info Perfil Última visita"
+                  className="box-border w-full h-[34.5px] shrink-0 flex flex-row gap-0 py-[10px] justify-between items-center border-b border-[#243026]"
+                >
+                  <div
+                    data-pencil-name="Label Perfil Última visita"
+                    className="text-[12px]/[normal] box-border text-[#AAB4A7] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+                  >
+                    Última visita
+                  </div>
+                  <div
+                    data-pencil-name="Valor Perfil Última visita"
+                    className="text-[12px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                  >
+                    {formatDateBR(clienteDestaque.ultima_visita || clienteDestaque.criado_em)}
+                  </div>
+                </div>
+
+                {/* Linha Ticket médio */}
+                <div
+                  data-pencil-name="Info Perfil Ticket médio"
+                  className="box-border w-full h-[34.5px] shrink-0 flex flex-row gap-0 py-[10px] justify-between items-center border-b border-[#243026]"
+                >
+                  <div
+                    data-pencil-name="Label Perfil Ticket médio"
+                    className="text-[12px]/[normal] box-border text-[#AAB4A7] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+                  >
+                    Ticket médio
+                  </div>
+                  <div
+                    data-pencil-name="Valor Perfil Ticket médio"
+                    className="text-[12px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                  >
+                    {formatCurrency(clienteDestaque.ticket_medio ?? 0)}
+                  </div>
+                </div>
+
+                {/* Botão Abrir Perfil Cliente */}
+                <button
+                  data-pencil-name="Botão Abrir Perfil Cliente"
+                  type="button"
+                  onClick={() => {
+                    setSelectedClienteId(clienteDestaque.id);
+                    setActiveModal('detalhe-cliente');
+                  }}
+                  className="box-border w-full h-[42px] shrink-0 flex flex-row gap-0 justify-center items-center bg-[#C9FF3B] hover:bg-[#b8f028] rounded-[10px] transition-all cursor-pointer mt-1"
+                >
+                  <div
+                    data-pencil-name="Texto Abrir Perfil Cliente"
+                    className="text-[12px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                  >
+                    Abrir perfil completo
+                  </div>
+                </button>
+              </>
+            ) : (
+              <div className="py-8 text-center text-xs text-[#AAB4A7]">
+                Nenhum cliente selecionado
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -740,75 +2060,16 @@ export function AdminClientes() {
         isOpen={activeModal === 'detalhe-cliente'}
         loadingDetalhe={loadingDetalhe}
         clienteDetalhe={clienteDetalhe}
-        onClose={() => { setActiveModal(null); setSelectedClienteId(null); }}
+        operadorNome={userName}
+        onClose={() => {
+          setActiveModal(null);
+        }}
         onArquivar={handleArquivarCliente}
         onDesarquivar={handleDesarquivarCliente}
         onExcluir={handleExcluirCliente}
         onEditar={abrirEdicao}
       />
 
-      {/* Modal de Vínculos Pendentes */}
-      {showPendingModal && (
-        <div className="modal-overlay open">
-          <div className="modal" style={{ maxWidth: '650px' }}>
-            <div className="modal-header">
-              <h2 className="modal-title">Vínculos Pendentes de Aprovação</h2>
-              <button className="modal-close" onClick={() => setShowPendingModal(false)}>✕</button>
-            </div>
-            <div className="modal-body" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-              <p className="text-xs text-muted mb-4">
-                Estes atletas solicitaram vínculo aos perfis de clientes locais da sua arena. 
-                Aprove os vínculos apenas se tiver certeza de que se trata da mesma pessoa.
-              </p>
-              
-              {pendingLinks.length === 0 ? (
-                <div className="text-center py-6 text-muted text-sm">
-                  Nenhum vínculo pendente no momento.
-                </div>
-              ) : (
-                <div className="flex flex-col gap-3">
-                  {pendingLinks.map(link => (
-                    <div key={`${link.usuario_id}-${link.cliente_id}`} className="border border-edge rounded-xl p-4 bg-surface flex flex-col md:flex-row md:items-center justify-between gap-4">
-                      <div className="flex flex-col gap-1 text-sm">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-charcoal">Atleta (App):</span>
-                          <span className="text-muted">{link.usuario_nome} ({link.usuario_email})</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-charcoal">Cliente Local:</span>
-                          <span className="text-muted">{link.cliente_nome} ({link.cliente_telefone || 'Sem telefone'})</span>
-                        </div>
-                        <div className="text-[11px] text-muted/70 mt-1">
-                          Solicitado em: {new Date(link.created_at || Date.now()).toLocaleString('pt-BR')}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button 
-                          onClick={() => handleRejeitarVinculo(link.usuario_id, link.cliente_id)}
-                          className="px-3 py-1.5 rounded-lg border border-danger/30 text-danger text-xs font-semibold hover:bg-danger/10 transition"
-                        >
-                          Rejeitar
-                        </button>
-                        <button 
-                          onClick={() => handleAprovarVinculo(link.usuario_id, link.cliente_id)}
-                          className="px-3 py-1.5 rounded-lg bg-success text-white text-xs font-semibold hover:opacity-90 shadow-sm transition"
-                        >
-                          Aprovar Vínculo
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="modal-footer">
-              <button className="btn-ghost" type="button" onClick={() => setShowPendingModal(false)}>
-                Fechar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

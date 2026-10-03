@@ -40,6 +40,7 @@ export interface ArenaInfo {
   telefone?: string;
   logo?: string;
   foto_perfil?: string;
+  gateway_public_key?: string;
 }
 
 export interface ReservationInput {

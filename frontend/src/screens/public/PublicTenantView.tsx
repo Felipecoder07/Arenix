@@ -65,6 +65,7 @@ export function PublicTenantView() {
     copia_cola: string;
     qr_code?: string | null;
     valor_total: number;
+    manual_confirmation?: boolean;
   } | null>(null);
 
   const [copied, setCopied] = useState(false);
@@ -127,7 +128,7 @@ export function PublicTenantView() {
 
   // Timer regressivo do Pix (15 min)
   useEffect(() => {
-    if (!pixModal) return;
+    if (!pixModal || pixModal.manual_confirmation) return;
     const timer = setInterval(() => {
       setTimeLeft(prev => (prev > 0 ? prev - 1 : 0));
     }, 1000);
@@ -193,12 +194,15 @@ export function PublicTenantView() {
 
       const data = await res.json();
 
-      if (res.ok) {
+      if (data.payment_pending_review) {
+        setCheckoutError(`Reserva #${data.reserva_id} registrada. A cobrança Pix está em verificação; consulte a arena antes de tentar novamente.`);
+      } else if (res.ok && data.copia_cola) {
         setPixModal({
           reserva_id: data.reserva_id,
           copia_cola: data.copia_cola,
           qr_code: data.qr_code,
-          valor_total: data.valor_total
+          valor_total: data.valor_total,
+          manual_confirmation: Boolean(data.manual_confirmation)
         });
         setSelectedSlot(null);
         fetchDisponibilidade();
@@ -575,14 +579,14 @@ export function PublicTenantView() {
 
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', backgroundColor: 'var(--pending-bg)', color: 'var(--pending)', padding: '6px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 700, marginBottom: '16px' }}>
               <Clock size={14} />
-              <span>Expira em {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}</span>
+              <span>{pixModal.manual_confirmation ? 'Confirmação manual pela arena' : `Expira em ${Math.floor(timeLeft / 60)}:${String(timeLeft % 60).padStart(2, '0')}`}</span>
             </div>
 
             <h3 style={{ fontSize: '20px', fontWeight: 800, margin: '0 0 6px 0', color: 'var(--charcoal)' }}>
               Pagamento via Pix
             </h3>
             <p style={{ fontSize: '13px', color: 'var(--muted)', margin: '0 0 16px 0' }}>
-              Pague <strong style={{ color: 'var(--paid)' }}>R$ {pixModal.valor_total.toFixed(2)}</strong> para confirmar sua reserva instantaneamente.
+              Pague <strong style={{ color: 'var(--paid)' }}>R$ {pixModal.valor_total.toFixed(2)}</strong>. {pixModal.manual_confirmation ? 'A reserva fica pendente até a arena conferir o Pix e registrar o pagamento.' : 'A confirmação será feita pelo Mercado Pago.'}
             </p>
 
             {/* Chave Pix Copia e Cola */}

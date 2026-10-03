@@ -1,0 +1,91 @@
+/* Dashboard geometry from the 1440 × 900 reference in admin-master_telas.md.
+   The 70px header and 202px summary leave the remaining height for operations. */
+.master-dashboard { display: flex; flex-direction: column; gap: 16px; min-height: 832px; height: calc(100dvh - 68px); line-height: normal; }
+.master-dashboard-header { height: 70px; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.master-dashboard-header h1 { font-size: 26px; font-weight: 400; line-height: normal; }
+.master-dashboard-header p { margin-top: 5px; font-size: 12px; color: #66706b; }
+.master-dashboard-actions { display: flex; align-items: center; gap: 10px; }
+.master-dashboard-bell { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; background: #fffdf8; border: 1px solid #e6ded2; color: #43504a; }
+.master-pulse, .master-operations { display: grid; grid-template-columns: minmax(0, 730fr) minmax(0, 372fr); gap: 16px; }
+.master-pulse { height: 202px; flex-shrink: 0; }
+.master-pulse > section { min-height: 0; }
+.master-network { display: grid; grid-template-columns: minmax(0, 260fr) minmax(0, 398fr); gap: 28px; padding: 22px; border-radius: 22px; background: #071915; color: #f7f2ea; }
+.master-network-summary { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.master-network-live { display: flex; align-items: center; gap: 7px; color: #afc0b9; font-size: 9px; font-weight: 700; }
+.master-network-live i { width: 7px; height: 7px; border-radius: 50%; background: #c9ff3b; }
+.master-network-total { font-size: 54px; font-weight: 400; line-height: normal; }
+.master-network-summary p { font-size: 11px; color: #afc0b9; }
+.master-network-growth { display: flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: 10px; background: #17362d; color: #dce9e4; font-size: 10px; }
+.master-network-growth svg { color: #c9ff3b; }
+.master-composition { display: flex; flex-direction: column; gap: 7px; padding: 5px 0; }
+.master-composition-heading { display: flex; justify-content: space-between; color: #81958d; font-size: 9px; font-weight: 700; }
+.master-composition-label { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 5px; color: #e7eeeb; font-size: 10px; }
+.master-progress { height: 7px; border-radius: 4px; background: #1b332c; overflow: hidden; }
+.master-progress span { display: block; height: 100%; border-radius: inherit; }
+.master-network-base { display: flex; gap: 18px; padding-top: 5px; }
+.master-network-base > div { flex: 1; display: flex; align-items: center; gap: 9px; }
+.master-base-icon { display: grid; place-items: center; width: 30px; height: 30px; flex-shrink: 0; background: #17362d; border-radius: 9px; color: #c9ff3b; }
+.master-network-base strong { display: block; font-size: 15px; font-weight: 700; }
+.master-network-base small { display: block; font-size: 9px; margin-top: 1px; color: #81958d; }
+.master-revenue { padding: 22px; border-radius: 22px; background: #c9ff3b; display: flex; flex-direction: column; gap: 9px; }
+.master-revenue-heading { display: flex; align-items: center; justify-content: space-between; font-size: 9px; color: #294016; }
+.master-revenue-icon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: #071915; color: #c9ff3b; }
+.master-revenue > strong { font-size: 32px; font-weight: 400; }
+.master-revenue p { font-size: 10px; color: #294016; }
+.master-revenue footer { display: flex; justify-content: space-between; padding: 9px 11px; border-radius: 11px; background: #b8eb35; font-size: 10px; color: #294016; }
+.master-revenue footer span { font-weight: 600; }
+.master-revenue footer strong { font-weight: 400; color: #071915; }
+.master-operations { flex: 1; min-height: 0; }
+.master-growth { background: #eee7db; border-radius: 22px; padding: 22px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.master-growth header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.master-growth h2 { font-size: 17px; font-weight: 400; }
+.master-growth p { font-size: 10px; color: #66706b; margin-top: 3px; }
+.master-best-month { display: flex; align-items: center; gap: 7px; padding: 7px 10px; background: #071915; color: #f7f2ea; border-radius: 10px; font-size: 9px; font-weight: 700; white-space: nowrap; }
+.master-best-month i { width: 6px; height: 6px; border-radius: 50%; background: #c9ff3b; }
+.master-arenas-chart { flex: 1; min-width: 0; width: 100%; display: flex; align-items: center; min-height: 300px; }
+.master-operational-aside { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.master-reservations, .master-overdue { background: #fffdf8; outline: 1px solid #e6ded2; outline-offset: -.5px; border-radius: 18px; padding: 18px; }
+.master-reservations { height: 152px; flex-shrink: 0; display: flex; flex-direction: column; gap: 13px; }
+.master-reservations header, .master-overdue header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.master-reservations h2, .master-overdue h2 { font-size: 15px; font-weight: 700; }
+.master-live-status { display: flex; align-items: center; gap: 5px; color: #16845b; font-size: 10px; white-space: nowrap; }
+.master-live-status i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.master-reservation-periods { display: flex; gap: 10px; }
+.master-reservation-periods > div { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; }
+.master-reservation-periods span { font-size: 11px; font-weight: 700; color: #7a847f; }
+.master-reservation-periods strong { font-size: 24px; font-weight: 400; }
+.master-reservation-periods small { font-size: 11px; font-weight: 700; color: #16845b; }
+.master-reservation-periods small.is-negative { color: #b93a32; }
+.master-reservation-periods small.period-description { color: #7a847f; font-weight: 400; }
+.master-overdue { display: flex; flex-direction: column; gap: 10px; flex: 1; }
+.master-overdue h2 { display: flex; align-items: center; gap: 7px; }
+.master-overdue h2 svg { color: #c65145; flex-shrink: 0; }
+.master-overdue-count { padding: 4px 8px; background: #fde7e5; color: #b93a32; border-radius: 9px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.master-overdue-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 70px; padding: 9px 0; border-bottom: 1px solid #ece5da; text-align: left; }
+.master-overdue-row > svg { color: #7a847f; flex-shrink: 0; }
+.master-overdue-days { display: flex; flex-direction: column; justify-content: center; align-items: center; width: 34px; height: 34px; flex-shrink: 0; background: #fde7e5; color: #b93a32; border-radius: 9px; }
+.master-overdue-days strong { font-size: 14px; font-weight: 400; }
+.master-overdue-days small { font-size: 9px; font-weight: 600; }
+.master-overdue-name { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
+.master-overdue-name strong { font-size: 13px; font-weight: 400; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.master-overdue-name small { font-size: 11px; color: #7a847f; }
+.master-overdue-amount { font-size: 13px; font-weight: 700; color: #b93a32; white-space: nowrap; }
+.master-finance-link { display: flex; align-items: center; justify-content: center; gap: 7px; height: 36px; flex-shrink: 0; background: #071915; color: #f7f2ea; border-radius: 10px; font-size: 12px; }
+.master-overdue-empty { padding: 24px 0; font-size: 11px; color: #66706b; }
+.master-dashboard button:focus-visible { outline: 2px solid #72982a; outline-offset: 3px; }
+@media (max-width: 1200px) {
+  .master-dashboard { min-height: 832px; height: auto; }
+  .master-pulse, .master-operations { grid-template-columns: minmax(0, 1.5fr) minmax(270px, 1fr); }
+  .master-pulse { height: auto; }
+  .master-network { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .master-operations { min-height: 460px; }
+}
+@media (max-width: 767px) {
+  .master-dashboard { min-height: 0; }
+  .master-dashboard-header { height: auto; min-height: 70px; }
+  .master-dashboard-header h1 { font-size: 24px; }
+  .master-dashboard-header p { font-size: 11px; }
+  .master-pulse, .master-operations { grid-template-columns: minmax(0, 1fr); }
+  .master-growth { min-height: 390px; }
+  .master-overdue { min-height: 300px; }
+}

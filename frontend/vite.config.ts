@@ -19,6 +19,12 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: ['lucide-react'],
+    include: [
+      '@mui/x-charts',
+      '@mui/material',
+      '@emotion/react',
+      '@emotion/styled',
+    ],
   },
 });
 

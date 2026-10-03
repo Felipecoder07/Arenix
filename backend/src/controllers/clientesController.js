@@ -7,14 +7,48 @@ const listarClientes = async (req, res) => {
     const tenant_id = req.user.tenant_id;
     // Suporta ?ativo=0 para arquivados, ?ativo=1 ou sem param para ativos
     const ativo = req.query.ativo !== undefined ? Number.parseInt(req.query.ativo) : 1;
-    const clientes = await db.allAsync(
-      'SELECT id, nome, email, telefone, ativo, criado_em FROM Clientes WHERE tenant_id = ? AND ativo = ? ORDER BY nome ASC',
-      [tenant_id, ativo]
-    );
+    const clientes = await db.allAsync(`
+      SELECT 
+        c.id, c.nome, c.email, c.telefone, c.ativo, c.criado_em,
+        COUNT(CASE WHEN r.status != 'Cancelada' THEN r.id ELSE NULL END) as reservas_count,
+        MAX(CASE WHEN r.status != 'Cancelada' THEN r.data_reserva ELSE NULL END) as ultima_visita,
+        AVG(CASE WHEN r.status != 'Cancelada' THEN r.valor_total ELSE NULL END) as ticket_medio
+      FROM Clientes c
+      LEFT JOIN Reservas r ON r.cliente_id = c.id AND r.tenant_id = c.tenant_id
+      WHERE c.tenant_id = ? AND c.ativo = ?
+      GROUP BY c.id
+      ORDER BY c.nome ASC
+    `, [tenant_id, ativo]);
     res.json(clientes);
   } catch (error) {
     logger.error('Erro ao listar clientes:', error);
     res.status(500).json({ error: 'Erro interno ao listar clientes.' });
+  }
+};
+
+const obterEstatisticasClientes = async (req, res) => {
+  try {
+    const tenant_id = req.user.tenant_id;
+    const stats = await db.getAsync(`
+      SELECT
+        COUNT(DISTINCT CASE WHEN c.ativo = 1 THEN c.id END) as total_ativos,
+        COUNT(DISTINCT CASE WHEN c.ativo = 1 AND r.id IS NOT NULL AND r.status != 'Cancelada' THEN c.id END) as com_reservas,
+        COUNT(DISTINCT CASE WHEN c.ativo = 1 AND strftime('%Y-%m', c.criado_em) = strftime('%Y-%m', 'now') THEN c.id END) as novos_mes,
+        COUNT(DISTINCT CASE WHEN c.ativo = 0 THEN c.id END) as arquivados
+      FROM Clientes c
+      LEFT JOIN Reservas r ON r.cliente_id = c.id AND r.tenant_id = c.tenant_id
+      WHERE c.tenant_id = ?
+    `, [tenant_id]);
+
+    res.json({
+      totalAtivos: stats?.total_ativos ?? 0,
+      comReservas: stats?.com_reservas ?? 0,
+      novosMes: stats?.novos_mes ?? 0,
+      arquivados: stats?.arquivados ?? 0
+    });
+  } catch (error) {
+    logger.error('Erro ao obter estatísticas de clientes:', error);
+    res.status(500).json({ error: 'Erro interno ao obter estatísticas.' });
   }
 };
 
@@ -77,7 +111,7 @@ const obterCliente = async (req, res) => {
     const saldo = await db.getAsync('SELECT SUM(valor_total) as total FROM Reservas WHERE cliente_id = ? AND tenant_id = ? AND status_pagamento = "Pendente" AND status != "Cancelada"', [id, tenant_id]);
 
     const reservas = await db.allAsync(`
-      SELECT r.id, r.data_reserva, r.hora_inicio, r.status, r.status_pagamento, q.nome as quadra_nome 
+      SELECT r.id, r.data_reserva, r.hora_inicio, r.status, r.status_pagamento, r.valor_total, q.nome as quadra_nome 
       FROM Reservas r 
       JOIN Quadras q ON r.quadra_id = q.id 
       WHERE r.cliente_id = ? AND r.tenant_id = ? 
@@ -212,68 +246,6 @@ const excluirCliente = async (req, res) => {
   }
 };
 
-const listarVinculosPendentes = async (req, res) => {
-  try {
-    const tenant_id = req.user.tenant_id;
-    const pendentes = await db.allAsync(`
-      SELECT m.usuario_id, m.cliente_id, m.created_at,
-             c.nome as cliente_nome, c.telefone as cliente_telefone, c.email as cliente_email,
-             u.nome as usuario_nome, u.email as usuario_email
-      FROM ClientMemberships m
-      JOIN Clientes c ON m.cliente_id = c.id
-      JOIN Usuarios u ON m.usuario_id = u.id
-      WHERE m.tenant_id = ? AND m.verified = 0
-      ORDER BY m.created_at DESC
-    `, [tenant_id]);
-    res.json(pendentes);
-  } catch (error) {
-    logger.error('Erro ao listar vínculos pendentes:', error);
-    res.status(500).json({ error: 'Erro interno ao listar vínculos pendentes.' });
-  }
-};
-
-const aprovarVinculo = async (req, res) => {
-  try {
-    const tenant_id = req.user.tenant_id;
-    const { usuario_id, cliente_id } = req.params;
-
-    const result = await db.runAsync(
-      'UPDATE ClientMemberships SET verified = 1 WHERE usuario_id = ? AND cliente_id = ? AND tenant_id = ? AND verified = 0',
-      [usuario_id, cliente_id, tenant_id]
-    );
-
-    if (result.changes === 0) return res.status(404).json({ error: 'Vínculo pendente não encontrado.' });
-
-    logAuditEvent(req.user.id, 'Aprovação de Vínculo', `Aprovou vínculo do usuário ${usuario_id} ao cliente ${cliente_id}`, req.ip);
-    res.json({ message: 'Vínculo aprovado com sucesso.' });
-  } catch (error) {
-    logger.error('Erro ao aprovar vínculo:', error);
-    res.status(500).json({ error: 'Erro interno ao aprovar vínculo.' });
-  }
-};
-
-const rejeitarVinculo = async (req, res) => {
-  try {
-    const tenant_id = req.user.tenant_id;
-    const { usuario_id, cliente_id } = req.params;
-
-    const result = await db.runAsync(
-      'DELETE FROM ClientMemberships WHERE usuario_id = ? AND cliente_id = ? AND tenant_id = ? AND verified = 0',
-      [usuario_id, cliente_id, tenant_id]
-    );
-
-    if (result.changes === 0) return res.status(404).json({ error: 'Vínculo pendente não encontrado.' });
-
-    logAuditEvent(req.user.id, 'Rejeição de Vínculo', `Rejeitou vínculo do usuário ${usuario_id} ao cliente ${cliente_id}`, req.ip);
-    res.json({ message: 'Vínculo rejeitado com sucesso.' });
-  } catch (error) {
-    logger.error('Erro ao rejeitar vínculo:', error);
-    res.status(500).json({ error: 'Erro interno ao rejeitar vínculo.' });
-  }
-};
-
 module.exports = { 
-  listarClientes, criarCliente, obterCliente, atualizarCliente, excluirCliente, arquivarCliente, desarquivarCliente,
-  listarVinculosPendentes, aprovarVinculo, rejeitarVinculo
+  listarClientes, obterEstatisticasClientes, criarCliente, obterCliente, atualizarCliente, excluirCliente, arquivarCliente, desarquivarCliente,
 };
-

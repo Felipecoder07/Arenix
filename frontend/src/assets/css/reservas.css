@@ -167,3 +167,48 @@
   min-width: 160px;
   text-align: center;
 }
+
+/* Remover seta duplicada do background quando o select possui ChevronDown customizado */
+.admin-reservas-page select.appearance-none,
+select.select-clean {
+  background-image: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  appearance: none !important;
+}
+.admin-reservas-page select.appearance-none::-ms-expand,
+select.select-clean::-ms-expand {
+  display: none !important;
+}
+
+/* Esconde o ícone nativo de calendário do input[type=date] nos modais para manter apenas o ícone customizado à esquerda */
+#bq-data::-webkit-calendar-picker-indicator,
+#nr-data::-webkit-calendar-picker-indicator,
+input[type="date"].hide-native-picker::-webkit-calendar-picker-indicator {
+  display: none !important;
+  -webkit-appearance: none !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  pointer-events: none !important;
+}
+
+#bq-data::-webkit-inner-spin-button,
+#bq-data::-webkit-clear-button,
+#nr-data::-webkit-inner-spin-button,
+#nr-data::-webkit-clear-button,
+input[type="date"].hide-native-picker::-webkit-inner-spin-button,
+input[type="date"].hide-native-picker::-webkit-clear-button {
+  display: none !important;
+  -webkit-appearance: none !important;
+}
+
+#bq-data,
+#nr-data,
+input[type="date"].hide-native-picker {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}

@@ -30,8 +30,11 @@ const obterResumoDia = async (req, res) => {
     `, [hoje, tenant_id]);
     
     let faturamentoPendente = 0;
+    let reservasPendentesDia = 0;
     reservasPendentesResult.forEach(r => {
-      faturamentoPendente += (r.valor_total - r.pago);
+      const saldo = Math.max(0, r.valor_total - r.pago);
+      faturamentoPendente += saldo;
+      if (saldo > 0) reservasPendentesDia++;
     });
 
     // RF-DASH-003: Reservas do Dia
@@ -156,6 +159,7 @@ const obterResumoDia = async (req, res) => {
       hoje,
       faturamentoDia,
       faturamentoPendente,
+      reservasPendentesDia,
       reservasDia,
       taxaOcupacao,
       proximasReservas,

@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { X, ArrowRight, User, Phone, CreditCard, Check, Clock } from 'lucide-react';
 import type { Slot, Court } from '../types';
 import { brl, maskPhone, maskCPF, formatLongDate } from '../lib/format';
+import MercadoPagoCardForm, { type CardPaymentData } from './MercadoPagoCardForm';
 
 interface Props {
   open: boolean;
@@ -11,8 +12,9 @@ interface Props {
   onSportChange?: (sport: string) => void;
   initialName?: string;
   initialPhone?: string;
+  publicKey?: string;
   onClose: () => void;
-  onConfirm: (data: { slots: Slot[]; name: string; phone: string; cpf: string; sport?: string }) => Promise<void> | void;
+  onConfirm: (data: { slots: Slot[]; name: string; phone: string; cpf: string; sport?: string; paymentMethod: 'pix' | 'card'; cardData?: CardPaymentData }) => Promise<void> | void;
 }
 
 export default function CheckoutDrawer({ 
@@ -22,6 +24,7 @@ export default function CheckoutDrawer({
   selectedSport,
   initialName = '', 
   initialPhone = '', 
+  publicKey = '',
   onClose, 
   onConfirm 
 }: Readonly<Props>) {
@@ -30,6 +33,7 @@ export default function CheckoutDrawer({
   const [cpf, setCpf] = useState('');
   const [touched, setTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card'>('pix');
 
   const [translateY, setTranslateY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -71,6 +75,7 @@ export default function CheckoutDrawer({
     if (open) {
       setTouched(false);
       setSubmitting(false);
+      setPaymentMethod('pix');
       setTranslateY(0);
       if (initialName) setName(initialName);
       if (initialPhone) setPhone(initialPhone);
@@ -97,11 +102,20 @@ export default function CheckoutDrawer({
         name: name.trim(),
         phone,
         cpf,
-        sport: currentSport
+        sport: currentSport,
+        paymentMethod: 'pix'
       });
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleCardSubmit = async (cardData: CardPaymentData) => {
+    if (!nameValid || !phoneValid || !cpfValid) {
+      setTouched(true);
+      throw new Error('Confira nome e telefone antes de pagar.');
+    }
+    await onConfirm({ slots, name: name.trim(), phone, cpf, sport: currentSport, paymentMethod: 'card', cardData });
   };
 
   return (
@@ -163,6 +177,12 @@ export default function CheckoutDrawer({
           </div>
 
           <div className="space-y-3.5">
+            {import.meta.env.VITE_ENABLE_PUBLIC_BOOKING_CARD === 'true' && publicKey && (
+              <fieldset className="grid grid-cols-2 gap-2" aria-label="Forma de pagamento">
+                <button type="button" onClick={() => setPaymentMethod('pix')} aria-pressed={paymentMethod === 'pix'} className={`rounded-xl border px-3 py-2 text-sm font-semibold ${paymentMethod === 'pix' ? 'border-available-text text-available-text' : 'border-edge text-muted'}`}>Pix</button>
+                <button type="button" onClick={() => setPaymentMethod('card')} aria-pressed={paymentMethod === 'card'} className={`rounded-xl border px-3 py-2 text-sm font-semibold ${paymentMethod === 'card' ? 'border-available-text text-available-text' : 'border-edge text-muted'}`}>Cartão</button>
+              </fieldset>
+            )}
             <Field
               icon={<User size={18} />}
               label="Nome completo"
@@ -195,7 +215,7 @@ export default function CheckoutDrawer({
 
             <Field
               icon={<CreditCard size={18} />}
-              label="CPF (Opcional para recibo Pix)"
+              label={paymentMethod === 'pix' ? 'CPF (Opcional para recibo Pix)' : 'CPF (opcional)'}
               error={touched && !cpfValid ? 'CPF inválido' : ''}
             >
               <input
@@ -208,11 +228,18 @@ export default function CheckoutDrawer({
               />
             </Field>
           </div>
+            {import.meta.env.VITE_ENABLE_PUBLIC_BOOKING_CARD === 'true' && paymentMethod === 'card' && publicKey && (
+            <div className="mt-4">
+              <MercadoPagoCardForm publicKey={publicKey} amount={totalPrice} onSubmit={handleCardSubmit} onBusyChange={setSubmitting} />
+            </div>
+          )}
         </div>
 
         <div className="shrink-0 px-5 pt-3 pb-5 safe-bottom border-t border-edge bg-card rounded-b-3xl">
           <button
-            onClick={handleSubmit}
+            type={paymentMethod === 'card' ? 'submit' : 'button'}
+            form={paymentMethod === 'card' ? 'mercado-pago-card-form' : undefined}
+            onClick={paymentMethod === 'pix' ? handleSubmit : undefined}
             disabled={!canSubmit}
             className={`tap w-full flex items-center justify-center gap-2 rounded-2xl text-base font-bold transition active:scale-[0.98] h-13 ${
               canSubmit
@@ -221,10 +248,10 @@ export default function CheckoutDrawer({
             }`}
           >
             {submitting ? (
-              <span className="flex items-center gap-2">Gerando Pix...</span>
+              <span className="flex items-center gap-2">{paymentMethod === 'pix' ? 'Gerando Pix...' : 'Processando cartão...'}</span>
             ) : (
               <>
-                Pagar Pix ({brl(totalPrice)})
+                Pagar {paymentMethod === 'pix' ? 'Pix' : 'com cartão'} ({brl(totalPrice)})
                 <ArrowRight size={18} />
               </>
             )}

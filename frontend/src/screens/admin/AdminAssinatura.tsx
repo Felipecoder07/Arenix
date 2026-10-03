@@ -1,11 +1,34 @@
-import { useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { useOutletContext, Link } from 'react-router-dom';
+import QRCode from 'react-qr-code';
+import {
+  Zap,
+  Repeat2,
+  Globe,
+  Bell,
+  Sparkles,
+  Star,
+  Landmark,
+  Users,
+  ArrowRight,
+  Check,
+  AlertTriangle,
+  ShieldCheck,
+  X,
+  CreditCard,
+  FileText,
+  Copy,
+  CheckCheck,
+  ExternalLink,
+  Menu,
+} from 'lucide-react';
 import { enterpriseContactUrl } from '../../utils/commercialContact';
 import { errorMessage } from '../../utils/errorMessage';
 import { apiFetch as fetch } from '../../utils/apiFetch';
-import React, { useState, useEffect } from 'react';
-import QRCode from 'react-qr-code';
-import '../../assets/css/configuracoes.css';
-import '../../assets/css/pagamentos.css';
+import { safeStorage } from '../../utils/safeStorage';
+import { getStoredUser } from '../../utils/session';
+import type { Announcement } from '../../types/api';
 
 interface PlanoDados {
   arena_id: number;
@@ -108,225 +131,15 @@ interface ReciboData {
   };
 }
 
-interface PlanoCardModalProps {
-  plano: PlanoItem;
-  dados: PlanoDados | null;
-  cicloSelecionado: 'mensal' | 'anual';
-  solicitandoUpgradeId: number | null;
-  onSolicitarUpgrade: (planoId: number, ciclo: 'mensal' | 'anual') => void;
-}
-
-function PlanoCardModal({ plano: p, dados, cicloSelecionado, solicitandoUpgradeId, onSolicitarUpgrade }: Readonly<PlanoCardModalProps>) {
-  const isPlanoAtual = dados?.plano.id === p.id;
-  const isPro = p.nome === 'Pro';
-  const isEnterprise = p.nome === 'Enterprise';
-
-  const precoMensalExibicao = cicloSelecionado === 'anual' && p.valor_anual > 0
-    ? p.valor_anual
-    : p.valor_mensal;
-
-  const totalAnual = cicloSelecionado === 'anual' && p.valor_anual > 0
-    ? p.valor_anual * 12
-    : p.valor_mensal * 12;
-
-  return (
-    <div
-      style={{
-        backgroundColor: isPlanoAtual ? '#f8fafc' : isPro ? '#f0f7ff' : '#fff',
-        border: isPlanoAtual
-          ? '2px solid #94a3b8'
-          : isPro
-          ? '2px solid #2563eb'
-          : '1px solid #e2e8f0',
-        borderRadius: '14px',
-        padding: '24px 20px',
-        display: 'flex',
-        flexDirection: 'column',
-        position: 'relative',
-        boxShadow: isPro ? '0 8px 20px -4px rgba(37,99,235,0.15)' : '0 1px 3px rgba(0,0,0,0.05)'
-      }}
-    >
-      {isPro && (
-        <div
-          style={{
-            position: 'absolute',
-            top: '-12px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            backgroundColor: '#2563eb',
-            color: '#fff',
-            fontSize: '11px',
-            fontWeight: 700,
-            padding: '3px 12px',
-            borderRadius: '12px',
-            letterSpacing: '0.5px',
-            textTransform: 'uppercase'
-          }}
-        >
-          Mais Popular
-        </div>
-      )}
-
-      {isPlanoAtual && (
-        <div
-          style={{
-            position: 'absolute',
-            top: '-12px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            backgroundColor: '#64748b',
-            color: '#fff',
-            fontSize: '11px',
-            fontWeight: 700,
-            padding: '3px 12px',
-            borderRadius: '12px',
-            letterSpacing: '0.5px',
-            textTransform: 'uppercase'
-          }}
-        >
-          Plano Atual
-        </div>
-      )}
-
-      <div style={{ marginBottom: '16px' }}>
-        <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
-          Plano {p.nome}
-        </h3>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-          {isEnterprise ? (
-            <span style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a' }}>
-              Sob Consulta
-            </span>
-          ) : (
-            <>
-              <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 600 }}>R$</span>
-              <span style={{ fontSize: '26px', fontWeight: 800, color: '#0f172a' }}>
-                {precoMensalExibicao.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
-              <span style={{ fontSize: '13px', color: '#64748b' }}>/mês</span>
-            </>
-          )}
-        </div>
-        {cicloSelecionado === 'anual' && !isEnterprise && (
-          <span style={{ fontSize: '11.5px', color: '#16a34a', fontWeight: 600, display: 'block', marginTop: '2px' }}>
-            Faturado anualmente (R$ {totalAnual.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/ano)
-          </span>
-        )}
-      </div>
-
-      <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '16px', flex: 1, marginBottom: '20px' }}>
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: '#334155' }}>
-          <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✓</span>
-            <span><strong>{p.max_quadras === 999 ? 'Quadras Ilimitadas' : `Até ${p.max_quadras} Quadras`}</strong></span>
-          </li>
-          <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✓</span>
-            <span><strong>{p.max_usuarios === 999 ? 'Usuários Ilimitados' : `Até ${p.max_usuarios} Funcionários`}</strong></span>
-          </li>
-          <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✓</span>
-            <span>Portal do Atleta & Agendamento</span>
-          </li>
-          <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✓</span>
-            <span>Gestão de Caixa & Pagamentos</span>
-          </li>
-          {p.nome !== 'Basic' && (
-            <>
-              <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✓</span>
-                <span>Relatórios de BI & Exportação</span>
-              </li>
-              <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✓</span>
-                <span>Auditoria Completa de Ações</span>
-              </li>
-            </>
-          )}
-          {isEnterprise && (
-            <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✓</span>
-              <span>Suporte Prioritário VIP</span>
-            </li>
-          )}
-        </ul>
-      </div>
-
-      {isPlanoAtual ? (
-        <button
-          type="button"
-          disabled
-          style={{
-            width: '100%',
-            padding: '10px',
-            borderRadius: '8px',
-            border: '1px solid #cbd5e1',
-            backgroundColor: '#e2e8f0',
-            color: '#64748b',
-            fontWeight: 600,
-            fontSize: '13px',
-            cursor: 'default'
-          }}
-        >
-          ✓ Plano Ativo
-        </button>
-      ) : isEnterprise ? (
-        <a
-          href={enterpriseContactUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            width: '100%',
-            padding: '10px',
-            borderRadius: '8px',
-            border: 'none',
-            backgroundColor: '#0f172a',
-            color: '#fff',
-            fontWeight: 600,
-            fontSize: '13px',
-            textAlign: 'center',
-            textDecoration: 'none',
-            display: 'block',
-            boxSizing: 'border-box'
-          }}
-        >
-          Falar com Consultor
-        </a>
-      ) : (
-        <button
-          type="button"
-          disabled={solicitandoUpgradeId === p.id}
-          onClick={() => onSolicitarUpgrade(p.id, cicloSelecionado)}
-          style={{
-            width: '100%',
-            padding: '10px',
-            borderRadius: '8px',
-            border: 'none',
-            backgroundColor: '#2563eb',
-            color: '#fff',
-            fontWeight: 600,
-            fontSize: '13px',
-            cursor: solicitandoUpgradeId === p.id ? 'wait' : 'pointer',
-            boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
-          }}
-        >
-          {solicitandoUpgradeId === p.id
-            ? 'Gerando Pix...'
-            : `Fazer Upgrade (${cicloSelecionado === 'anual' ? 'Anual' : 'Mensal'})`}
-        </button>
-      )}
-    </div>
-  );
-}
-
 const DEFAULT_PLANOS: PlanoItem[] = [
-  { id: 1, nome: 'Basic', max_quadras: 3, max_usuarios: 3, valor_mensal: 49.99, valor_anual: 39.99 },
-  { id: 2, nome: 'Pro', max_quadras: 10, max_usuarios: 10, valor_mensal: 79.99, valor_anual: 63.99 },
-  { id: 3, nome: 'Enterprise', max_quadras: 999, max_usuarios: 999, valor_mensal: 0, valor_anual: 0 }
+  { id: 1, nome: 'Basic', max_quadras: 2, max_usuarios: 3, valor_mensal: 49.99, valor_anual: 39.99 },
+  { id: 2, nome: 'Pro', max_quadras: 6, max_usuarios: 8, valor_mensal: 89.99, valor_anual: 71.99 },
+  { id: 3, nome: 'Enterprise', max_quadras: 999, max_usuarios: 999, valor_mensal: 149.99, valor_anual: 119.99 },
 ];
 
 export function AdminAssinatura() {
+  const { onToggleSidebar } = useOutletContext<{ onToggleSidebar?: () => void }>() || {};
+
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -334,9 +147,18 @@ export function AdminAssinatura() {
   const [dados, setDados] = useState<PlanoDados | null>(null);
   const [faturas, setFaturas] = useState<Fatura[]>([]);
 
+  // Arena & Usuário
+  const [arenaSlug, setArenaSlug] = useState(() => safeStorage.getItem('arena_slug') || 'felp-arena');
+  const user = getStoredUser();
+  const userName = user?.nome || 'fefe';
+
+  // Notificações
+  const [notifications, setNotifications] = useState<Announcement[]>([]);
+  const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+
   // Modal Planos / Upgrade
   const [modalPlanosOpen, setModalPlanosOpen] = useState(false);
-  const [planosDisponiveis, setPlanosDisponiveis] = useState<PlanoItem[]>([]);
+  const [planosDisponiveis, setPlanosDisponiveis] = useState<PlanoItem[]>(DEFAULT_PLANOS);
   const [loadingPlanos, setLoadingPlanos] = useState(false);
   const [solicitandoUpgradeId, setSolicitandoUpgradeId] = useState<number | null>(null);
   const [cicloSelecionado, setCicloSelecionado] = useState<'mensal' | 'anual'>('mensal');
@@ -355,6 +177,11 @@ export function AdminAssinatura() {
   const [pixPagoComSucesso, setPixPagoComSucesso] = useState(false);
   const [pixExpirado, setPixExpirado] = useState(false);
 
+  // Modal Todas as Faturas
+  const [modalTodasFaturasOpen, setModalTodasFaturasOpen] = useState(false);
+
+  const [adiantandoMensalidade, setAdiantandoMensalidade] = useState(false);
+
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
@@ -366,12 +193,8 @@ export function AdminAssinatura() {
     setErro(null);
     try {
       const [resPlano, resFaturas] = await Promise.all([
-        fetch('/api/tenant/assinatura/plano', {
-          headers: {  }
-        }),
-        fetch('/api/tenant/assinatura/faturas', {
-          headers: {  }
-        })
+        fetch('/api/tenant/assinatura/plano'),
+        fetch('/api/tenant/assinatura/faturas'),
       ]);
 
       if (!resPlano.ok) {
@@ -387,47 +210,60 @@ export function AdminAssinatura() {
       const dataFaturas = await resFaturas.json();
 
       setDados(dataPlano);
-      setFaturas(dataFaturas);
+      setFaturas(Array.isArray(dataFaturas) ? dataFaturas : []);
     } catch (e) {
       setErro(errorMessage(e) || 'Falha ao conectar com o servidor.');
     } finally {
       setLoading(false);
     }
-  }, [] );
+  }, []);
 
   useEffect(() => {
     carregarDados();
+
+    fetch('/api/arenas/minha', { headers: {} })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && data.slug) {
+          setArenaSlug(data.slug);
+          safeStorage.setItem('arena_slug', data.slug);
+        }
+      })
+      .catch(() => {});
+
+    fetch('/api/auth/comunicados/ativos', { headers: {} })
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setNotifications(data);
+      })
+      .catch(() => {});
   }, [carregarDados]);
 
-  // Polling automático do Pix (a cada 4s quando o modal Pix estiver aberto)
+  // Polling automático do Pix
   useEffect(() => {
     if (!modalPixOpen || !pixData || !pixData.gateway_ref || pixPagoComSucesso || pixExpirado) return;
 
-    // Se a data de expiração já tiver passado no momento da abertura, encerra imediatamente
     if (pixData.expira_em && new Date() >= new Date(pixData.expira_em)) {
       setPixExpirado(true);
       return;
     }
 
     const interval = setInterval(async () => {
-      // Checar se expirou durante a sessão
       if (pixData.expira_em && new Date() >= new Date(pixData.expira_em)) {
         clearInterval(interval);
         setPixExpirado(true);
-        showToast('O prazo de validade deste QR Code Pix expirou. Gere uma nova cobrança.', 'info');
+        showToast('O prazo de validade deste QR Code Pix expirou.', 'info');
         return;
       }
 
       try {
-        const res = await fetch(`/api/tenant/assinatura/status-pagamento/${pixData.gateway_ref}`, {
-          headers: {  }
-        });
+        const res = await fetch(`/api/tenant/assinatura/status-pagamento/${pixData.gateway_ref}`);
         if (res.ok) {
           const statusJson = await res.json();
           if (statusJson.pago) {
             setPixPagoComSucesso(true);
             showToast('🎉 Pagamento Pix confirmado com sucesso! Seu plano foi atualizado.', 'success');
-            carregarDados(); // Atualiza a tela
+            carregarDados();
           }
         }
       } catch (err) {
@@ -438,38 +274,33 @@ export function AdminAssinatura() {
     return () => clearInterval(interval);
   }, [modalPixOpen, pixData, pixPagoComSucesso, pixExpirado, carregarDados]);
 
-  // Ação: Abrir modal de seleção de planos
+  // Abrir modal de seleção de planos
   const abrirModalPlanos = async () => {
     setModalPlanosOpen(true);
-    if (planosDisponiveis.length === 0) {
-      setLoadingPlanos(true);
-      try {
-        const res = await fetch('/api/tenant/assinatura/planos-disponiveis', {
-          headers: {  }
-        });
-        if (res.ok) {
-          const data = await res.json();
+    setLoadingPlanos(true);
+    try {
+      const res = await fetch('/api/tenant/assinatura/planos-disponiveis');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
           setPlanosDisponiveis(data);
         }
-      } catch (err) {
-        console.error('Erro ao buscar planos:', err);
-      } finally {
-        setLoadingPlanos(false);
       }
+    } catch (err) {
+      console.error('Erro ao buscar planos:', err);
+    } finally {
+      setLoadingPlanos(false);
     }
   };
 
-  // Ação: Solicitar upgrade de plano
+  // Solicitar upgrade de plano
   const handleSolicitarUpgrade = async (planoId: number, cicloEscolhido: 'mensal' | 'anual' = cicloSelecionado) => {
     setSolicitandoUpgradeId(planoId);
     try {
       const res = await fetch('/api/tenant/assinatura/solicitar-upgrade', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-
-        },
-        body: JSON.stringify({ plano_id: planoId, ciclo: cicloEscolhido })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plano_id: planoId, ciclo: cicloEscolhido }),
       });
 
       const resData = await res.json();
@@ -488,14 +319,15 @@ export function AdminAssinatura() {
         copia_cola: resData.pix?.copia_cola || null,
         qr_expira_em: resData.pix?.expira_em || null,
         metodo_pagamento: 'Pix Online',
-        plano_nome: resData.plano_nome
+        plano_nome: resData.plano_nome,
       });
       setPixData(resData.pix);
       setModalPixOpen(true);
       setPixPagoComSucesso(false);
       setPixCopiado(false);
       setPixExpirado(false);
-      showToast(`Cobrança Pix gerada para o Plano ${resData.plano_nome} (${resData.ciclo === 'anual' ? 'Anual' : 'Mensal'}). Realize o pagamento para ativar!`, 'info');
+      showToast(`Cobrança Pix gerada para o Plano ${resData.plano_nome}!`, 'info');
+      carregarDados();
     } catch (err) {
       showToast(errorMessage(err) || 'Erro ao processar upgrade de plano.', 'error');
     } finally {
@@ -503,238 +335,25 @@ export function AdminAssinatura() {
     }
   };
 
-  // Ação: Visualizar e imprimir recibo da fatura liquidada
+  // Visualizar recibo
   const handleVisualizarRecibo = async (faturaId: number) => {
     setCarregandoRecibo(true);
     setModalReciboOpen(true);
     setReciboSelecionado(null);
     try {
-      const res = await fetch(`/api/tenant/assinatura/faturas/${faturaId}/recibo`, {
-        headers: {  }
-      });
+      const res = await fetch(`/api/tenant/assinatura/faturas/${faturaId}/recibo`);
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Erro ao carregar recibo.');
-      }
+      if (!res.ok) throw new Error(data.error || 'Erro ao carregar recibo.');
       setReciboSelecionado(data);
     } catch (err) {
-      showToast(errorMessage(err) || 'Erro ao buscar recibo.', 'error');
+      showToast(errorMessage(err) || 'Erro ao carregar recibo.', 'error');
       setModalReciboOpen(false);
     } finally {
       setCarregandoRecibo(false);
     }
   };
 
-  // Ação: Imprimir/Salvar PDF do recibo através de iframe isolado de impressão
-  const handleImprimirRecibo = () => {
-    if (!reciboSelecionado) return;
-
-    const dataPagamentoFormatada = formatarDataBR(reciboSelecionado.fatura.data_pagamento);
-    const dataVencimentoFormatada = formatarDataBR(reciboSelecionado.fatura.data_vencimento);
-    const valorFormatado = Number(reciboSelecionado.fatura.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-    const printHtml = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <title>Comprovante - ${reciboSelecionado.recibo_numero}</title>
-          <style>
-            @page {
-              margin: 15mm;
-              size: portrait;
-            }
-            * {
-              box-sizing: border-box;
-              margin: 0;
-              padding: 0;
-            }
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-              color: #0f172a;
-              background: #ffffff;
-              padding: 24px;
-              display: flex;
-              justify-content: center;
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
-            }
-            .recibo-card {
-              width: 100%;
-              max-width: 520px;
-              border: 1px solid #e2e8f0;
-              border-radius: 12px;
-              padding: 28px;
-              background: #ffffff;
-            }
-            .header {
-              border-bottom: 2px dashed #cbd5e1;
-              padding-bottom: 16px;
-              margin-bottom: 18px;
-              text-align: center;
-            }
-            .icon {
-              font-size: 32px;
-              line-height: 1;
-              margin-bottom: 6px;
-            }
-            .title {
-              font-size: 16px;
-              font-weight: 800;
-              color: #0f172a;
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
-              margin-bottom: 2px;
-            }
-            .subtitle {
-              font-size: 12px;
-              color: #64748b;
-              margin-bottom: 8px;
-            }
-            .badge {
-              display: inline-block;
-              padding: 3px 12px;
-              border-radius: 12px;
-              background-color: #dcfce7;
-              color: #166534;
-              font-weight: 700;
-              font-size: 11.5px;
-            }
-            .details {
-              display: flex;
-              flex-direction: column;
-              gap: 8px;
-              font-size: 12.5px;
-              margin-bottom: 18px;
-            }
-            .row {
-              display: flex;
-              justify-content: space-between;
-              border-bottom: 1px solid #f1f5f9;
-              padding-bottom: 6px;
-            }
-            .row-label {
-              color: #64748b;
-            }
-            .row-val {
-              color: #0f172a;
-              font-weight: 600;
-              text-align: right;
-            }
-            .row-mono {
-              font-family: monospace;
-              font-size: 11px;
-              color: #475569;
-            }
-            .total-box {
-              background-color: #f8fafc;
-              border-radius: 8px;
-              padding: 14px 18px;
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              border: 1px solid #e2e8f0;
-              margin-bottom: 16px;
-            }
-            .total-label {
-              font-size: 14px;
-              font-weight: 700;
-              color: #334155;
-            }
-            .total-val {
-              font-size: 20px;
-              font-weight: 800;
-              color: #16a34a;
-            }
-            .footer {
-              text-align: center;
-              font-size: 11px;
-              color: #94a3b8;
-              border-top: 1px solid #f1f5f9;
-              padding-top: 12px;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="recibo-card">
-            <div class="header">
-              <div class="icon">🧾</div>
-              <h2 class="title">Comprovante de Pagamento</h2>
-              <p class="subtitle">${reciboSelecionado.emissor.empresa}</p>
-              <span class="badge">${reciboSelecionado.recibo_numero} — LIQUIDADO</span>
-            </div>
-
-            <div class="details">
-              <div class="row">
-                <span class="row-label">Arena / Cliente:</span>
-                <span class="row-val">${reciboSelecionado.arena.nome}</span>
-              </div>
-              <div class="row">
-                <span class="row-label">Descrição:</span>
-                <span class="row-val">${reciboSelecionado.fatura.descricao}</span>
-              </div>
-              <div class="row">
-                <span class="row-label">Ciclo / Período:</span>
-                <span class="row-val" style="text-transform: capitalize;">${reciboSelecionado.fatura.ciclo}</span>
-              </div>
-              <div class="row">
-                <span class="row-label">Vencimento:</span>
-                <span class="row-val">${dataVencimentoFormatada}</span>
-              </div>
-              <div class="row">
-                <span class="row-label">Data do Pagamento:</span>
-                <span class="row-val">${dataPagamentoFormatada}</span>
-              </div>
-              <div class="row">
-                <span class="row-label">Método:</span>
-                <span class="row-val">${reciboSelecionado.fatura.metodo_pagamento}</span>
-              </div>
-              <div class="row">
-                <span class="row-label">Autenticação Gateway:</span>
-                <span class="row-val row-mono">${reciboSelecionado.fatura.gateway_ref}</span>
-              </div>
-            </div>
-
-            <div class="total-box">
-              <span class="total-label">Valor Total Pago:</span>
-              <span class="total-val">R$ ${valorFormatado}</span>
-            </div>
-
-            <div class="footer">
-              <p>Autenticação emitida eletronicamente por ${reciboSelecionado.emissor.sistema}</p>
-              <p>Dúvidas e suporte: ${reciboSelecionado.emissor.suporte}</p>
-            </div>
-          </div>
-        </body>
-      </html>
-    `;
-
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    document.body.appendChild(iframe);
-
-    const doc = iframe.contentWindow?.document;
-    if (!doc) return;
-
-    doc.open();
-    doc.write(printHtml);
-    doc.close();
-
-    setTimeout(() => {
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
-      setTimeout(() => {
-        iframe.remove();
-      }, 1500);
-    }, 300);
-  };
-
-  // Ação: Abrir modal e gerar Pix para fatura existente
+  // Gerar Pix de uma fatura
   const handlePagarPix = async (fatura: Fatura) => {
     setFaturaSelecionada(fatura);
     setPixData(null);
@@ -747,7 +366,6 @@ export function AdminAssinatura() {
     try {
       const res = await fetch(`/api/tenant/assinatura/faturas/${fatura.id}/gerar-pix`, {
         method: 'POST',
-        headers: {  }
       });
 
       const json = await res.json();
@@ -762,7 +380,7 @@ export function AdminAssinatura() {
     }
   };
 
-  // Copiar chave Pix Copia e Cola
+  // Copiar chave Pix
   const handleCopiarPix = () => {
     if (!pixData || !pixData.copia_cola) return;
     navigator.clipboard.writeText(pixData.copia_cola);
@@ -772,19 +390,14 @@ export function AdminAssinatura() {
   };
 
   // Adiantamento de Mensalidade
-  const [adiantandoMensalidade, setAdiantandoMensalidade] = useState(false);
-
   const handleAdiantarMensalidade = async () => {
     setAdiantandoMensalidade(true);
     try {
       const res = await fetch('/api/tenant/assinatura/adiantar-fatura', {
         method: 'POST',
-        headers: {  }
       });
       const resData = await res.json();
-      if (!res.ok) {
-        throw new Error(resData.error || 'Erro ao gerar fatura antecipada.');
-      }
+      if (!res.ok) throw new Error(resData.error || 'Erro ao gerar fatura antecipada.');
 
       setFaturaSelecionada({
         id: resData.fatura_id,
@@ -796,7 +409,7 @@ export function AdminAssinatura() {
         copia_cola: resData.pix?.copia_cola || null,
         qr_expira_em: resData.pix?.expira_em || null,
         metodo_pagamento: 'Pix Online',
-        plano_nome: resData.plano_nome
+        plano_nome: resData.plano_nome,
       });
       setPixData(resData.pix);
       setModalPixOpen(true);
@@ -804,7 +417,6 @@ export function AdminAssinatura() {
       setPixCopiado(false);
       setPixExpirado(false);
       showToast(`Cobrança Pix da próxima mensalidade gerada com sucesso!`, 'info');
-      // Recarregar dados para refletir a nova fatura na tabela
       carregarDados();
     } catch (err) {
       showToast(errorMessage(err) || 'Erro ao adiantar mensalidade.', 'error');
@@ -813,1191 +425,1722 @@ export function AdminAssinatura() {
     }
   };
 
-  // Formatar data no padrão brasileiro DD/MM/AAAA de forma ultra-segura
+  // Formatação de data
   const formatarDataBR = (dataStr?: string | null) => {
-    if (!dataStr) return '-';
+    if (!dataStr) return '—';
     try {
       const str = String(dataStr).trim();
       const datePart = str.split('T')[0].split(' ')[0];
       const parts = datePart.split('-');
-      if (parts.length === 3) {
-        return `${parts[2]}/${parts[1]}/${parts[0]}`;
-      }
+      if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
       const d = new Date(str);
-      if (!isNaN(d.getTime())) {
-        return d.toLocaleDateString('pt-BR');
-      }
-    } catch {
-      // fallback
-    }
+      if (!isNaN(d.getTime())) return d.toLocaleDateString('pt-BR');
+    } catch {}
     return String(dataStr);
   };
 
-  // Obter texto amigável do próximo vencimento ou data de renovação
-  const getProximaDataVencimento = () => {
-    if (dados?.proximo_vencimento) {
-      return formatarDataBR(dados.proximo_vencimento);
-    }
-    if (dados?.fatura_atual?.data_vencimento) {
-      return formatarDataBR(dados.fatura_atual.data_vencimento);
-    }
-    return '-';
+  const formatCurrency = (val: number) => {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   };
+
+  // Detalhes da próxima data de cobrança
+  const getProximaDataDetalhada = () => {
+    const dataStr = dados?.proximo_vencimento || dados?.trial_expira_em || dados?.fatura_atual?.data_vencimento;
+    if (!dataStr) {
+      return { dia: '11', mes: 'OUT', formatada: '11/10/2026' };
+    }
+    try {
+      const raw = String(dataStr).split('T')[0];
+      const parts = raw.split('-');
+      if (parts.length === 3) {
+        const dia = parts[2];
+        const meses = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+        const mesIdx = parseInt(parts[1], 10) - 1;
+        const mes = meses[mesIdx] || 'OUT';
+        return { dia, mes, formatada: `${parts[2]}/${parts[1]}/${parts[0]}` };
+      }
+    } catch {}
+    return { dia: '11', mes: 'OUT', formatada: '11/10/2026' };
+  };
+
+  const proximaData = getProximaDataDetalhada();
+
+  // Cálculos de capacidade e trial
+  const quadrasUsadas = dados?.uso?.quadras_usadas ?? 1;
+  const maxQuadras = dados?.plano?.max_quadras ?? 2;
+  const quadrasDisponiveis = Math.max(0, maxQuadras - quadrasUsadas);
+  const quadrasPct = Math.min(100, Math.round((quadrasUsadas / maxQuadras) * 100));
+
+  const usuariosUsados = dados?.uso?.usuarios_usados ?? 1;
+  const maxUsuarios = dados?.plano?.max_usuarios ?? 3;
+  const usuariosDisponiveis = Math.max(0, maxUsuarios - usuariosUsados);
+  const usuariosPct = Math.min(100, Math.round((usuariosUsados / maxUsuarios) * 100));
+
+  const isTrial = dados?.em_trial ?? true;
+  const diasRestantes = dados?.dias_restantes_trial ?? 14;
+  const diasConsumidos = Math.max(0, 30 - diasRestantes);
+  const trialPercentage = Math.min(100, Math.max(0, Math.round((diasConsumidos / 30) * 100))) || 50;
+
+  // Fatura mais recente / pendente
+  const faturaPendente = faturas.find((f) => f.status === 'Pendente' || f.status === 'Atrasada') || dados?.fatura_atual;
+  const valorFaturaAtual = faturaPendente?.valor ?? dados?.plano?.valor_mensal ?? 49.99;
 
   if (loading) {
     return (
-      <div style={{ padding: '32px', textAlign: 'center', color: '#666' }}>
-        <p>Carregando informações da sua assinatura...</p>
+      <div className="w-full py-20 flex flex-col items-center justify-center gap-3 text-[#6F766F] font-[Inter,sans-serif]">
+        <div className="w-8 h-8 rounded-full border-2 border-[#071915] border-t-transparent animate-spin" />
+        <p className="text-sm font-medium">Carregando informações da sua assinatura...</p>
       </div>
     );
   }
 
   if (erro) {
     return (
-      <div style={{ padding: '32px', textAlign: 'center', color: '#d32f2f' }}>
-        <h3>⚠️ Ops! Ocorreu um erro</h3>
-        <p>{erro}</p>
+      <div className="w-full py-16 flex flex-col items-center justify-center gap-4 text-center font-[Inter,sans-serif]">
+        <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center text-xl font-bold">
+          ⚠️
+        </div>
+        <h3 className="text-lg font-bold text-[#071915]">Ocorreu um erro ao carregar assinatura</h3>
+        <p className="text-sm text-[#6F766F] max-w-md">{erro}</p>
         <button
           onClick={carregarDados}
-          style={{
-            marginTop: '12px',
-            padding: '8px 16px',
-            backgroundColor: '#1976d2',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer'
-          }}
+          className="px-5 py-2.5 rounded-xl bg-[#071915] text-[#FFFFFF] font-bold text-xs hover:bg-[#122822] transition-colors"
         >
-          Tentar Novamente
+          Tentar novamente
         </button>
       </div>
     );
   }
 
-  const isBloqueada = dados?.arena_status === 0;
-  const temFaturaPendente = faturas.some(f => f.status === 'Pendente' || f.status === 'Atrasada');
-
-  // Label do botão de pagamento / adiantamento
-  const labelBotaoAdiantar = adiantandoMensalidade
-    ? 'Gerando Pix...'
-    : temFaturaPendente
-    ? '⚡ Pagar Fatura Pendente'
-    : dados?.proxima_competencia
-    ? `⚡ Pagar Mensalidade de ${dados.proxima_competencia}`
-    : '⚡ Pagar Próxima Mensalidade';
-
   return (
-    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
+    <div
+      data-pencil-name="Assinatura"
+      className="admin-assinatura-page w-full flex flex-col min-w-0 font-[Inter,system-ui,sans-serif]"
+    >
       {/* Toast Notification */}
       {toast && (
         <div
-          style={{
-            position: 'fixed',
-            bottom: '24px',
-            right: '24px',
-            backgroundColor:
-              toast.type === 'success'
-                ? '#16a34a'
-                : toast.type === 'info'
-                ? '#2563eb'
-                : '#dc2626',
-            color: '#fff',
-            padding: '12px 24px',
-            borderRadius: '8px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-            zIndex: 9999,
-            fontWeight: 500,
-            fontSize: '14px'
-          }}
+          style={{ zIndex: 999999 }}
+          className={`fixed bottom-5 right-5 px-4 py-3 rounded-xl text-white text-xs font-semibold shadow-2xl flex items-center gap-2.5 animate-slideUp border ${
+            toast.type === 'success'
+              ? 'bg-emerald-600 border-emerald-500'
+              : toast.type === 'info'
+              ? 'bg-blue-600 border-blue-500'
+              : 'bg-rose-600 border-rose-500'
+          }`}
         >
-          {toast.message}
+          <span>{toast.message}</span>
         </div>
       )}
 
-      {/* Title Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
-        <div>
-          <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#1e293b', margin: 0 }}>
-            💳 Minha Assinatura & Mensalidades
-          </h1>
-          <p style={{ fontSize: '14px', color: '#64748b', marginTop: '4px' }}>
-            Gerencie seu plano, acompanhe o limite de uso e pague suas mensalidades com liberação automática.
-          </p>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            disabled={adiantandoMensalidade}
-            onClick={handleAdiantarMensalidade}
-            style={{
-              backgroundColor: '#16a34a',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '8px',
-              padding: '10px 18px',
-              fontSize: '13.5px',
-              fontWeight: 600,
-              cursor: adiantandoMensalidade ? 'wait' : 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-              boxShadow: '0 2px 6px rgba(22,163,74,0.25)',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            {labelBotaoAdiantar}
-          </button>
-
-          <button
-            type="button"
-            onClick={abrirModalPlanos}
-            style={{
-              backgroundColor: '#2563eb',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '8px',
-              padding: '10px 18px',
-              fontSize: '13.5px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-              boxShadow: '0 2px 6px rgba(37,99,235,0.25)',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            🚀 Fazer Upgrade / Trocar de Plano
-          </button>
-        </div>
-      </div>
-
-      {/* Banner de Status Especial (Bloqueio ou Trial) */}
-      {isBloqueada && (
+      {/* Área Principal Assinatura */}
+      <div
+        data-pencil-name="Área Principal Assinatura"
+        className="box-border w-full flex flex-col gap-[18px] justify-start items-start"
+      >
+        {/* Cabeçalho Assinatura Autêntico */}
         <div
-          style={{
-            backgroundColor: '#fef2f2',
-            border: '1px solid #fecaca',
-            borderRadius: '12px',
-            padding: '16px 20px',
-            marginBottom: '24px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px'
-          }}
+          data-pencil-name="Cabeçalho Assinatura Autêntico"
+          className="box-border w-full min-h-[64px] shrink-0 flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center select-none"
         >
-          <span style={{ fontSize: '24px' }}>🛑</span>
-          <div>
-            <h4 style={{ margin: 0, color: '#991b1b', fontSize: '15px', fontWeight: 700 }}>
-              Sua conta está com o acesso suspenso por pendência financeira
-            </h4>
-            <p style={{ margin: '2px 0 0 0', color: '#7f1d1d', fontSize: '13px' }}>
-              Realize o pagamento de uma das faturas em aberto abaixo clicando em <strong>"Pagar com PIX"</strong>. Assim que confirmado, seu acesso será reativado instantaneamente!
-            </p>
-          </div>
-        </div>
-      )}
-
-      {dados?.trial_expira_em && dados?.em_trial && !isBloqueada && (
-        <div
-          style={{
-            backgroundColor: '#eff6ff',
-            border: '1px solid #bfdbfe',
-            borderRadius: '12px',
-            padding: '16px 20px',
-            marginBottom: '24px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '12px'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span style={{ fontSize: '28px' }}>🎉</span>
-            <div>
-              <h4 style={{ margin: 0, color: '#1e40af', fontSize: '15px', fontWeight: 700 }}>
-                Período de Teste Gratuito (Trial) Ativo
-              </h4>
-              <p style={{ margin: '2px 0 0 0', color: '#1e3a8a', fontSize: '13px' }}>
-                Aproveite todos os recursos da plataforma gratuitamente até{' '}
-                <strong>{formatarDataBR(dados.trial_expira_em)}</strong>
-                {dados.dias_restantes_trial !== undefined && (
-                  <span style={{ marginLeft: '6px', fontWeight: 600, color: '#2563eb' }}>
-                    ({dados.dias_restantes_trial} {dados.dias_restantes_trial === 1 ? 'dia restante' : 'dias restantes'})
-                  </span>
-                )}.
-              </p>
+          <div className="flex items-center gap-3">
+            {onToggleSidebar && (
+              <button
+                type="button"
+                onClick={onToggleSidebar}
+                className="md:hidden p-2 rounded-xl bg-white border border-[#E6DED2] text-[#071915] hover:bg-[#F1EDE6] transition-colors"
+                title="Abrir menu"
+              >
+                <Menu size={20} />
+              </button>
+            )}
+            <div
+              data-pencil-name="Título Assinatura Autêntico"
+              className="box-border w-fit shrink-0 h-fit flex flex-col gap-[5px] justify-start items-start"
+            >
+              <div
+                data-pencil-name="Breadcrumb Assinatura Autêntico"
+                className="text-[12px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+              >
+                Conta / Assinatura
+              </div>
+              <div
+                data-pencil-name="Título Minha Assinatura"
+                className="text-[28px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap leading-none"
+              >
+                Minha Assinatura
+              </div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={abrirModalPlanos}
-            style={{
-              backgroundColor: '#2563eb',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '8px',
-              padding: '8px 16px',
-              fontSize: '12.5px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
-            }}
-          >
-            ⭐ Efetivar Assinatura
-          </button>
-        </div>
-      )}
 
-      {/* Grid de KPIs do Plano */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-          gap: '16px',
-          marginBottom: '32px'
-        }}
-      >
-        {/* KPI 1: Plano Atual */}
-        <div
-          style={{
-            backgroundColor: '#fff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '12px',
-            padding: '20px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontSize: '12px', textTransform: 'uppercase', fontWeight: 700, color: '#64748b' }}>
-              Plano Contratado
-            </span>
-            <span
-              style={{
-                backgroundColor: isBloqueada ? '#fee2e2' : '#dcfce7',
-                color: isBloqueada ? '#991b1b' : '#166534',
-                padding: '4px 10px',
-                borderRadius: '20px',
-                fontSize: '12px',
-                fontWeight: 600
-              }}
-            >
-              {isBloqueada ? 'Suspenso' : 'Ativo'}
-            </span>
-          </div>
-          <h2 style={{ fontSize: '28px', fontWeight: 800, color: '#0f172a', margin: '4px 0' }}>
-            {dados?.plano.nome || 'Carregando...'}
-          </h2>
-          <p style={{ fontSize: '13.5px', color: '#475569', margin: '0 0 8px 0', lineHeight: '1.5' }}>
-            R$ {(dados?.plano.valor_mensal || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / {dados?.ciclo_cobranca === 'anual' ? 'ano' : 'mês'} · <strong>{temFaturaPendente ? 'Vencimento:' : 'Próxima Renovação:'} {getProximaDataVencimento()}</strong>
-          </p>
-
-          {dados?.meses_adiantados && dados.meses_adiantados > 0 ? (
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                backgroundColor: '#f0fdf4',
-                color: '#15803d',
-                border: '1px solid #bbf7d0',
-                borderRadius: '6px',
-                padding: '4px 10px',
-                fontSize: '12px',
-                fontWeight: 600
-              }}
-            >
-              <span>🛡️</span>
-              <span>{dados.meses_adiantados} {dados.meses_adiantados === 1 ? 'mês adiantado' : 'meses adiantados'} (Cobertura até {formatarDataBR(dados.cobertura_ate)})</span>
-            </div>
-          ) : null}
-        </div>
-
-        {/* KPI 2: Limite de Quadras */}
-        <div
-          style={{
-            backgroundColor: '#fff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '12px',
-            padding: '20px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontSize: '12px', textTransform: 'uppercase', fontWeight: 700, color: '#64748b' }}>
-              Quadras Cadastradas
-            </span>
-            <span
-              style={{
-                backgroundColor: '#eff6ff',
-                color: '#1d4ed8',
-                padding: '4px 10px',
-                borderRadius: '20px',
-                fontSize: '12px',
-                fontWeight: 600
-              }}
-            >
-              {dados?.plano.max_quadras === 999 ? 'Ilimitado' : `${Math.round(((dados?.uso.quadras_usadas || 0) / (dados?.plano.max_quadras || 1)) * 100)}% em uso`}
-            </span>
-          </div>
-          <h2 style={{ fontSize: '28px', fontWeight: 800, color: '#0f172a', margin: '4px 0' }}>
-            {dados?.uso.quadras_usadas}{' '}
-            <span style={{ fontSize: '16px', fontWeight: 500, color: '#64748b' }}>
-              / {dados?.plano.max_quadras === 999 ? 'Ilimitadas' : `${dados?.plano.max_quadras} quadras`}
-            </span>
-          </h2>
+          {/* Ações Assinatura Autêntico */}
           <div
-            style={{
-              width: '100%',
-              backgroundColor: '#f1f5f9',
-              height: '6px',
-              borderRadius: '3px',
-              overflow: 'hidden',
-              marginTop: '10px'
-            }}
+            data-pencil-name="Ações Assinatura Autêntico"
+            className="box-border w-fit shrink-0 h-fit flex flex-wrap gap-[10px] justify-start items-center"
           >
-            <div
-              style={{
-                width: `${Math.min(100, ((dados?.uso.quadras_usadas || 0) / (dados?.plano.max_quadras || 1)) * 100)}%`,
-                backgroundColor: '#2563eb',
-                height: '100%',
-                borderRadius: '3px'
-              }}
-            />
-          </div>
-        </div>
-
-        {/* KPI 3: Limite de Usuários */}
-        <div
-          style={{
-            backgroundColor: '#fff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '12px',
-            padding: '20px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontSize: '12px', textTransform: 'uppercase', fontWeight: 700, color: '#64748b' }}>
-              Usuários da Equipe
-            </span>
-            <span
-              style={{
-                backgroundColor: '#f0fdf4',
-                color: '#15803d',
-                padding: '4px 10px',
-                borderRadius: '20px',
-                fontSize: '12px',
-                fontWeight: 600
-              }}
-            >
-              {dados?.plano.max_usuarios === 999 ? 'Ilimitado' : `${Math.round(((dados?.uso.usuarios_usados || 0) / (dados?.plano.max_usuarios || 1)) * 100)}% em uso`}
-            </span>
-          </div>
-          <h2 style={{ fontSize: '28px', fontWeight: 800, color: '#0f172a', margin: '4px 0' }}>
-            {dados?.uso.usuarios_usados}{' '}
-            <span style={{ fontSize: '16px', fontWeight: 500, color: '#64748b' }}>
-              / {dados?.plano.max_usuarios === 999 ? 'Ilimitados' : `${dados?.plano.max_usuarios} contas`}
-            </span>
-          </h2>
-          <div
-            style={{
-              width: '100%',
-              backgroundColor: '#f1f5f9',
-              height: '6px',
-              borderRadius: '3px',
-              overflow: 'hidden',
-              marginTop: '10px'
-            }}
-          >
-            <div
-              style={{
-                width: `${Math.min(100, ((dados?.uso.usuarios_usados || 0) / (dados?.plano.max_usuarios || 1)) * 100)}%`,
-                backgroundColor: '#16a34a',
-                height: '100%',
-                borderRadius: '3px'
-              }}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Tabela de Histórico de Faturas */}
-      <div
-        style={{
-          backgroundColor: '#fff',
-          border: '1px solid #e2e8f0',
-          borderRadius: '12px',
-          padding: '20px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
-          <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', margin: 0 }}>
-            📋 Histórico de Faturas
-          </h3>
-          {!temFaturaPendente && (
+            {/* Ação topo Pagar mensalidade */}
             <button
+              data-pencil-name="Ação topo Pagar mensalidade"
               type="button"
               disabled={adiantandoMensalidade}
               onClick={handleAdiantarMensalidade}
-              style={{
-                backgroundColor: '#f0fdf4',
-                color: '#15803d',
-                border: '1px solid #bbf7d0',
-                borderRadius: '6px',
-                padding: '6px 14px',
-                fontSize: '12.5px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                transition: 'all 0.15s ease'
-              }}
+              className="box-border w-fit shrink-0 h-[38px] flex flex-row gap-[8px] px-[14px] justify-start items-center bg-[#C9FF3B] hover:bg-[#b8f028] rounded-[10px] transition-all cursor-pointer shadow-sm active:scale-95"
             >
-              <span>⚡</span> {dados?.proxima_competencia ? `Pagar ${dados.proxima_competencia} Antecipado` : 'Pagar Próximo Mês Antecipado'}
+              <Zap size={15} className="text-[#071915] shrink-0 fill-[#071915]" />
+              <div
+                data-pencil-name="Texto Pagar mensalidade"
+                className="text-[13px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+              >
+                {adiantandoMensalidade ? 'Gerando...' : 'Pagar mensalidade'}
+              </div>
             </button>
-          )}
+
+            {/* Ação topo Trocar plano */}
+            <button
+              data-pencil-name="Ação topo Trocar plano"
+              type="button"
+              onClick={abrirModalPlanos}
+              className="box-border w-fit shrink-0 h-[38px] flex flex-row gap-[8px] px-[14px] justify-start items-center bg-[#071915] hover:bg-[#122822] rounded-[10px] transition-all cursor-pointer active:scale-95"
+            >
+              <Repeat2 size={15} className="text-[#FFFFFF] shrink-0" />
+              <div
+                data-pencil-name="Texto Trocar plano"
+                className="text-[13px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+              >
+                Trocar plano
+              </div>
+            </button>
+
+            {/* Acesso usuário Assinatura refinado */}
+            <div
+              data-pencil-name="Acesso usuário Assinatura refinado"
+              className="box-border w-fit shrink-0 h-fit flex flex-row gap-[10px] justify-start items-center"
+            >
+              {/* Portal do Cliente */}
+              <Link
+                data-pencil-name="Portal do Cliente Assinatura refinado"
+                to={`/portal/${arenaSlug}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="box-border w-fit shrink-0 h-[34px] flex flex-row gap-[7px] px-[12px] justify-start items-center bg-[#ECFFF4] hover:bg-[#d8fced] transition-colors rounded-[17px] cursor-pointer no-underline"
+              >
+                <Globe size={14} className="text-[#008A5A]" />
+                <div
+                  data-pencil-name="Texto Portal Assinatura refinado"
+                  className="text-[12px]/[normal] box-border text-[#007A50] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                >
+                  Portal do Cliente
+                </div>
+              </Link>
+
+              {/* Usuário fefe */}
+              <div
+                data-pencil-name="Usuário fefe Assinatura refinado"
+                className="box-border w-fit shrink-0 h-[34px] flex flex-row gap-[7px] px-[11px] justify-start items-center bg-[#F1EDE6] rounded-[17px]"
+              >
+                <div
+                  data-pencil-name="Online Assinatura refinado"
+                  className="box-border w-[7px] shrink-0 h-[7px] bg-[#188A45] rounded-full"
+                />
+                <div
+                  data-pencil-name="Nome fefe Assinatura refinado"
+                  className="text-[12px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap truncate max-w-[120px]"
+                >
+                  {userName}
+                </div>
+              </div>
+
+              {/* Notificações */}
+              <div className="relative">
+                <button
+                  data-pencil-name="Notificações Assinatura refinado"
+                  type="button"
+                  onClick={() => setShowNotifDropdown(!showNotifDropdown)}
+                  className="box-border w-[34px] shrink-0 h-[34px] bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[17px] flex items-center justify-center hover:bg-[#F7F2EA] transition-colors cursor-pointer relative"
+                  title="Notificações"
+                >
+                  <Bell size={16} className="text-[#071915]" />
+                  {notifications.length > 0 && (
+                    <div
+                      data-pencil-name="Bolinha Notificação Assinatura refinado"
+                      className="box-border w-[7px] h-[7px] absolute right-2 top-2 bg-[#D11F2A] outline outline-1 outline-[#FFFFFF] -outline-offset-1 rounded-full z-10"
+                    />
+                  )}
+                </button>
+
+                {showNotifDropdown && (
+                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-[#E6DED2] p-4 z-50 text-[#071915] text-xs">
+                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#F0EBE4] font-bold">
+                      <span>Comunicados do Sistema</span>
+                      <span className="text-[10px] bg-[#F1EDE6] px-2 py-0.5 rounded-full">
+                        {notifications.length}
+                      </span>
+                    </div>
+                    {notifications.length === 0 ? (
+                      <p className="text-[#6F766F] text-center py-4">Nenhum comunicado no momento.</p>
+                    ) : (
+                      <div className="max-h-60 overflow-y-auto flex flex-col gap-2">
+                        {notifications.map((n) => (
+                          <div key={n.id} className="p-2.5 rounded-xl bg-[#FAF8F5] border border-[#F0EBE4]">
+                            <p className="font-semibold text-xs mb-1">{n.message}</p>
+                            <p className="text-[11px] text-[#6F766F]">{new Date(n.createdAt).toLocaleDateString('pt-BR')}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
 
-        {faturas.length === 0 ? (
-          <p style={{ color: '#64748b', fontSize: '14px', textAlign: 'center', padding: '24px 0' }}>
-            Nenhuma fatura gerada até o momento.
-          </p>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', textIndent: 0 }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#64748b', textAlign: 'left' }}>
-                  <th style={{ padding: '12px 16px', fontWeight: 600 }}>Fatura #</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600 }}>Plano</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600 }}>Competência</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600 }}>Vencimento</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600 }}>Valor</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600 }}>Método</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600 }}>Status</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600, textAlign: 'right' }}>Ação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {faturas.map((fat) => {
-                  const isPaga = fat.status === 'Paga';
-                  const isAtrasada = fat.status === 'Atrasada';
+        {/* Painel do Plano Atual */}
+        <div
+          data-pencil-name="Painel do Plano Atual"
+          className="box-border w-full min-h-[238px] shrink-0 flex flex-col lg:flex-row gap-[22px] p-[24px] justify-between items-start bg-[#071915] rounded-[22px] overflow-hidden shadow-xl"
+        >
+          {/* Plano Atual Conteúdo */}
+          <div
+            data-pencil-name="Plano Atual Conteúdo"
+            className="box-border flex-1 h-full flex flex-col gap-[12px] justify-start items-start min-w-0"
+          >
+            {isTrial ? (
+              <div
+                data-pencil-name="Tag Trial Ativo"
+                className="box-border w-fit h-fit shrink-0 flex flex-row gap-[8px] px-[10px] py-[6px] justify-start items-center bg-[#C9FF3B] rounded-[14px]"
+              >
+                <Sparkles size={14} className="text-[#071915]" />
+                <div
+                  data-pencil-name="Texto Trial"
+                  className="text-[11px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left whitespace-nowrap"
+                >
+                  TRIAL ATIVO · {diasRestantes} DIAS RESTANTES
+                </div>
+              </div>
+            ) : (
+              <div
+                data-pencil-name="Tag Assinatura Ativa"
+                className="box-border w-fit h-fit shrink-0 flex flex-row gap-[8px] px-[10px] py-[6px] justify-start items-center bg-[#EAF8EF] rounded-[14px]"
+              >
+                <Check size={14} className="text-[#138A4B]" />
+                <div className="text-[11px]/[normal] box-border text-[#138A4B] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left whitespace-nowrap">
+                  ASSINATURA ATIVA
+                </div>
+              </div>
+            )}
 
-                  return (
-                    <tr
-                      key={fat.id}
-                      style={{
-                        borderBottom: '1px solid #f1f5f9',
-                        backgroundColor: isAtrasada ? '#fef2f2' : 'transparent'
-                      }}
+            <div
+              data-pencil-name="Plano Basic Hero"
+              className="text-[31px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap leading-tight"
+            >
+              Plano {dados?.plano?.nome || 'Basic'}
+            </div>
+
+            <div
+              data-pencil-name="Descrição Plano Hero"
+              className="text-[12px]/[normal] box-border w-full max-w-[620px] text-[#D5DDD2] font-[Inter,system-ui,sans-serif] font-normal text-left leading-relaxed"
+            >
+              {isTrial
+                ? 'Sua arena está operando no período gratuito. Ao efetivar, você mantém reservas, pagamentos, relatórios e portal do cliente sem interrupção.'
+                : 'Sua arena está operando com todos os recursos e integrações ativas, garantindo automação total de reservas e pagamentos.'}
+            </div>
+
+            {/* Metadados Plano */}
+            <div
+              data-pencil-name="Metadados Plano"
+              className="box-border w-fit h-fit shrink-0 flex flex-wrap gap-[12px] justify-start items-start pt-1"
+            >
+              {/* Meta Próxima renovação */}
+              <div
+                data-pencil-name="Meta Próxima renovação"
+                className="box-border w-fit shrink-0 h-fit flex flex-col gap-[4px] px-[12px] py-[10px] justify-start items-start bg-[#152018] rounded-[12px]"
+              >
+                <div
+                  data-pencil-name="Valor Próxima renovação"
+                  className="text-[15px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                >
+                  {formatCurrency(dados?.plano?.valor_mensal || 49.99)}/mês
+                </div>
+                <div
+                  data-pencil-name="Label Próxima renovação"
+                  className="text-[10px]/[normal] box-border text-[#AAB4A7] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+                >
+                  Próxima renovação
+                </div>
+              </div>
+
+              {/* Meta Fim do trial */}
+              <div
+                data-pencil-name="Meta Fim do trial"
+                className="box-border w-fit shrink-0 h-fit flex flex-col gap-[4px] px-[12px] py-[10px] justify-start items-start bg-[#152018] rounded-[12px]"
+              >
+                <div
+                  data-pencil-name="Valor Fim do trial"
+                  className="text-[15px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                >
+                  {proximaData.formatada}
+                </div>
+                <div
+                  data-pencil-name="Label Fim do trial"
+                  className="text-[10px]/[normal] box-border text-[#AAB4A7] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+                >
+                  {isTrial ? 'Fim do trial' : 'Próximo vencimento'}
+                </div>
+              </div>
+
+              {/* Meta Plano contratado */}
+              <div
+                data-pencil-name="Meta Plano contratado"
+                className="box-border w-fit shrink-0 h-fit flex flex-col gap-[4px] px-[12px] py-[10px] justify-start items-start bg-[#152018] rounded-[12px]"
+              >
+                <div
+                  data-pencil-name="Valor Plano contratado"
+                  className="text-[15px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                >
+                  {dados?.plano?.nome || 'Basic'}
+                </div>
+                <div
+                  data-pencil-name="Label Plano contratado"
+                  className="text-[10px]/[normal] box-border text-[#AAB4A7] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+                >
+                  Plano contratado
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Medidor de continuidade */}
+          <div
+            data-pencil-name="Medidor de continuidade"
+            className="box-border w-full lg:w-[310px] shrink-0 h-full flex flex-col gap-[12px] p-[16px] justify-start items-start bg-[#101A13] rounded-[18px]"
+          >
+            <div
+              data-pencil-name="Título Continuidade"
+              className="text-[16px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+            >
+              Continuidade do serviço
+            </div>
+            <div
+              data-pencil-name="Texto Continuidade"
+              className="text-[12px]/[normal] box-border w-full text-[#C6D0C3] font-[Inter,system-ui,sans-serif] font-normal text-left leading-snug"
+            >
+              Efetive a assinatura antes do fim do trial para evitar bloqueio de automações e portal.
+            </div>
+
+            {/* Linha Trial Progresso */}
+            <div
+              data-pencil-name="Linha Trial Progresso"
+              className="box-border w-full h-fit shrink-0 flex flex-col gap-[8px] justify-start items-start"
+            >
+              <div
+                data-pencil-name="Topo Trial Progresso"
+                className="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-between items-start"
+              >
+                <div
+                  data-pencil-name="Label Trial Progresso"
+                  className="text-[11px]/[normal] box-border text-[#C6D0C3] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                >
+                  Trial consumido
+                </div>
+                <div
+                  data-pencil-name="Valor Trial Progresso"
+                  className="text-[11px]/[normal] box-border text-[#C9FF3B] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                >
+                  {trialPercentage}%
+                </div>
+              </div>
+              <div
+                data-pencil-name="Barra Trial"
+                className="box-border w-full h-[9px] shrink-0 bg-[#2A342D] rounded-[9px] relative overflow-hidden"
+              >
+                <div
+                  data-pencil-name="Preenchimento Trial"
+                  style={{ width: `${trialPercentage}%` }}
+                  className="box-border h-[9px] absolute left-0 top-0 bg-[#C9FF3B] rounded-[9px] transition-all duration-500"
+                />
+              </div>
+            </div>
+
+            {/* CTA Hero Assinatura */}
+            <button
+              data-pencil-name="CTA Hero Assinatura"
+              type="button"
+              onClick={handleAdiantarMensalidade}
+              disabled={adiantandoMensalidade}
+              className="box-border w-full h-[36px] shrink-0 flex flex-row gap-[8px] justify-center items-center bg-[#C9FF3B] hover:bg-[#b8f028] rounded-[10px] transition-all cursor-pointer active:scale-95 shadow-md mt-auto"
+            >
+              <Star size={15} className="text-[#071915] fill-[#071915]" />
+              <div
+                data-pencil-name="Texto CTA Hero"
+                className="text-[13px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+              >
+                Efetivar assinatura agora
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {/* Corpo Assinatura Autêntico */}
+        <div
+          data-pencil-name="Corpo Assinatura Autêntico"
+          className="box-border w-full flex flex-col lg:flex-row gap-[18px] justify-start items-stretch"
+        >
+          {/* Uso do Plano Assinatura (Capacidade do plano) */}
+          <div
+            data-pencil-name="Uso do Plano Assinatura"
+            className="box-border w-full lg:w-[430px] shrink-0 flex flex-col gap-[16px] p-[20px] justify-start items-start bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[20px] shadow-sm"
+          >
+            <div
+              data-pencil-name="Header Uso Premium"
+              className="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-between items-center"
+            >
+              <div
+                data-pencil-name="Título Uso Premium"
+                className="text-[18px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+              >
+                Capacidade do plano
+              </div>
+              <div
+                data-pencil-name="Selo Uso Premium"
+                className="text-[12px]/[normal] box-border text-[#2563EB] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+              >
+                {dados?.plano?.nome || 'Basic'}
+              </div>
+            </div>
+
+            {/* Tile Uso Quadras */}
+            <div
+              data-pencil-name="Tile Uso Quadras"
+              className="box-border w-full flex-1 flex flex-row gap-[12px] p-[12px] justify-start items-center bg-[#FBFAF7] rounded-[14px]"
+            >
+              <div
+                data-pencil-name="Ícone Tile Quadras"
+                className="box-border w-[40px] shrink-0 h-[40px] flex flex-row gap-0 justify-center items-center bg-[#F1EDE6] rounded-[13px]"
+              >
+                <Landmark size={18} className="text-[#2563EB]" />
+              </div>
+              <div
+                data-pencil-name="Texto Tile Quadras"
+                className="box-border flex-1 h-fit flex flex-col gap-[5px] justify-start items-start min-w-0"
+              >
+                <div
+                  data-pencil-name="Topo Tile Quadras"
+                  className="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-between items-start"
+                >
+                  <div
+                    data-pencil-name="Label Tile Quadras"
+                    className="text-[13px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                  >
+                    Quadras
+                  </div>
+                  <div
+                    data-pencil-name="Valor Tile Quadras"
+                    className="text-[13px]/[normal] box-border text-[#2563EB] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                  >
+                    {quadrasUsadas}/{maxQuadras}
+                  </div>
+                </div>
+                <div
+                  data-pencil-name="Barra Tile Quadras"
+                  className="box-border w-full h-[7px] shrink-0 bg-[#F1EDE6] rounded-[7px] relative overflow-hidden"
+                >
+                  <div
+                    data-pencil-name="Preenchimento Tile Quadras"
+                    style={{ width: `${quadrasPct}%` }}
+                    className="box-border h-[7px] absolute left-0 top-0 bg-[#2563EB] rounded-[7px] transition-all"
+                  />
+                </div>
+                <div
+                  data-pencil-name="Sub Tile Quadras"
+                  className="text-[11px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+                >
+                  {quadrasDisponiveis} {quadrasDisponiveis === 1 ? 'quadra disponível' : 'quadras disponíveis'}
+                </div>
+              </div>
+            </div>
+
+            {/* Tile Uso Equipe */}
+            <div
+              data-pencil-name="Tile Uso Equipe"
+              className="box-border w-full flex-1 flex flex-row gap-[12px] p-[12px] justify-start items-center bg-[#FBFAF7] rounded-[14px]"
+            >
+              <div
+                data-pencil-name="Ícone Tile Equipe"
+                className="box-border w-[40px] shrink-0 h-[40px] flex flex-row gap-0 justify-center items-center bg-[#F1EDE6] rounded-[13px]"
+              >
+                <Users size={18} className="text-[#16A34A]" />
+              </div>
+              <div
+                data-pencil-name="Texto Tile Equipe"
+                className="box-border flex-1 h-fit flex flex-col gap-[5px] justify-start items-start min-w-0"
+              >
+                <div
+                  data-pencil-name="Topo Tile Equipe"
+                  className="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-between items-start"
+                >
+                  <div
+                    data-pencil-name="Label Tile Equipe"
+                    className="text-[13px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                  >
+                    Equipe
+                  </div>
+                  <div
+                    data-pencil-name="Valor Tile Equipe"
+                    className="text-[13px]/[normal] box-border text-[#16A34A] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                  >
+                    {usuariosUsados}/{maxUsuarios}
+                  </div>
+                </div>
+                <div
+                  data-pencil-name="Barra Tile Equipe"
+                  className="box-border w-full h-[7px] shrink-0 bg-[#F1EDE6] rounded-[7px] relative overflow-hidden"
+                >
+                  <div
+                    data-pencil-name="Preenchimento Tile Equipe"
+                    style={{ width: `${usuariosPct}%` }}
+                    className="box-border h-[7px] absolute left-0 top-0 bg-[#16A34A] rounded-[7px] transition-all"
+                  />
+                </div>
+                <div
+                  data-pencil-name="Sub Tile Equipe"
+                  className="text-[11px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+                >
+                  {usuariosDisponiveis} {usuariosDisponiveis === 1 ? 'acesso livre' : 'acessos livres'}
+                </div>
+              </div>
+            </div>
+
+            {/* Tile Uso Portal */}
+            <div
+              data-pencil-name="Tile Uso Portal"
+              className="box-border w-full flex-1 flex flex-row gap-[12px] p-[12px] justify-start items-center bg-[#FBFAF7] rounded-[14px]"
+            >
+              <div
+                data-pencil-name="Ícone Tile Portal"
+                className="box-border w-[40px] shrink-0 h-[40px] flex flex-row gap-0 justify-center items-center bg-[#F1EDE6] rounded-[13px]"
+              >
+                <Globe size={18} className="text-[#A85B00]" />
+              </div>
+              <div
+                data-pencil-name="Texto Tile Portal"
+                className="box-border flex-1 h-fit flex flex-col gap-[5px] justify-start items-start min-w-0"
+              >
+                <div
+                  data-pencil-name="Topo Tile Portal"
+                  className="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-between items-start"
+                >
+                  <div
+                    data-pencil-name="Label Tile Portal"
+                    className="text-[13px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                  >
+                    Portal
+                  </div>
+                  <div
+                    data-pencil-name="Valor Tile Portal"
+                    className="text-[13px]/[normal] box-border text-[#A85B00] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                  >
+                    Ativo
+                  </div>
+                </div>
+                <div
+                  data-pencil-name="Barra Tile Portal"
+                  className="box-border w-full h-[7px] shrink-0 bg-[#F1EDE6] rounded-[7px] relative overflow-hidden"
+                >
+                  <div
+                    data-pencil-name="Preenchimento Tile Portal"
+                    className="box-border w-full h-[7px] absolute left-0 top-0 bg-[#A85B00] rounded-[7px]"
+                  />
+                </div>
+                <div
+                  data-pencil-name="Sub Tile Portal"
+                  className="text-[11px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+                >
+                  Liberado no trial
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Linha do tempo de cobrança */}
+          <div
+            data-pencil-name="Linha do tempo de cobrança"
+            className="box-border flex-1 h-full flex flex-col gap-[14px] p-[20px] justify-start items-start bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[20px] shadow-sm min-w-0"
+          >
+            <div
+              data-pencil-name="Header Timeline Premium"
+              className="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-between items-center"
+            >
+              <div
+                data-pencil-name="Título Timeline Premium"
+                className="text-[18px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+              >
+                Próxima cobrança
+              </div>
+              <div
+                data-pencil-name="Tag Timeline Premium"
+                className="box-border w-fit shrink-0 h-fit flex flex-row gap-0 px-[9px] py-[4px] justify-start items-center bg-[#EEF3FF] rounded-[12px]"
+              >
+                <div
+                  data-pencil-name="Texto Tag Timeline"
+                  className="text-[11px]/[normal] box-border text-[#2563EB] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                >
+                  {diasRestantes} dias
+                </div>
+              </div>
+            </div>
+
+            {/* Cobrança Destaque */}
+            <div
+              data-pencil-name="Cobrança Destaque"
+              onClick={handleAdiantarMensalidade}
+              className="box-border w-full min-h-[72px] shrink-0 flex flex-row gap-[14px] p-[14px] justify-start items-center bg-[#071915] rounded-[16px] cursor-pointer hover:bg-[#122822] transition-colors"
+            >
+              <div
+                data-pencil-name="Data Cobrança Destaque"
+                className="box-border w-[54px] shrink-0 h-[54px] flex flex-col gap-0 justify-center items-center bg-[#C9FF3B] rounded-[14px] select-none"
+              >
+                <div
+                  data-pencil-name="Dia Cobrança"
+                  className="text-[21px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-center whitespace-nowrap leading-none"
+                >
+                  {proximaData.dia}
+                </div>
+                <div
+                  data-pencil-name="Mês Cobrança"
+                  className="text-[9px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-center whitespace-nowrap leading-none mt-0.5"
+                >
+                  {proximaData.mes}
+                </div>
+              </div>
+              <div
+                data-pencil-name="Texto Cobrança Destaque"
+                className="box-border flex-1 h-fit flex flex-col gap-[5px] justify-start items-start min-w-0"
+              >
+                <div
+                  data-pencil-name="Título Cobrança Destaque"
+                  className="text-[16px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap truncate"
+                >
+                  {isTrial ? 'Primeira mensalidade' : 'Mensalidade regular'}
+                </div>
+                <div
+                  data-pencil-name="Sub Cobrança Destaque"
+                  className="text-[12px]/[normal] box-border text-[#D5DDD2] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap truncate"
+                >
+                  {formatCurrency(valorFaturaAtual)} · liberação automática após pagamento
+                </div>
+              </div>
+              <ArrowRight size={18} className="text-[#C9FF3B] shrink-0" />
+            </div>
+
+            {/* Fluxo Pós Trial */}
+            <div
+              data-pencil-name="Fluxo Pós Trial"
+              className="box-border w-full flex-1 flex flex-col gap-[7px] justify-start items-start pt-1"
+            >
+              <div
+                data-pencil-name="Título Depois Trial Compacto"
+                className="text-[14px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+              >
+                O que acontece depois do trial
+              </div>
+              <div
+                data-pencil-name="Bullet Pós Trial Assinando até 11/10, nada é interrompido."
+                className="box-border w-full h-[28px] shrink-0 flex flex-row gap-[9px] px-[8px] justify-start items-center bg-[#FBFAF7] rounded-[10px]"
+              >
+                <div
+                  data-pencil-name="Ícone Bullet Pós Trial Assinando até 11/10, nada é interrompido."
+                  className="box-border w-[22px] shrink-0 h-[22px] flex flex-row gap-0 justify-center items-center bg-[#F1EDE6] rounded-[8px]"
+                >
+                  <Check size={12} className="text-[#138A4B]" />
+                </div>
+                <div
+                  data-pencil-name="Texto Bullet Pós Trial Assinando até 11/10, nada é interrompido."
+                  className="text-[11px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap truncate"
+                >
+                  Assinando até {proximaData.formatada}, nada é interrompido.
+                </div>
+              </div>
+
+              <div
+                data-pencil-name="Bullet Pós Trial Sem pagamento, portal e automações podem pausar."
+                className="box-border w-full h-[28px] shrink-0 flex flex-row gap-[9px] px-[8px] justify-start items-center bg-[#FBFAF7] rounded-[10px]"
+              >
+                <div
+                  data-pencil-name="Ícone Bullet Pós Trial Sem pagamento, portal e automações podem pausar."
+                  className="box-border w-[22px] shrink-0 h-[22px] flex flex-row gap-0 justify-center items-center bg-[#F1EDE6] rounded-[8px]"
+                >
+                  <AlertTriangle size={12} className="text-[#A85B00]" />
+                </div>
+                <div
+                  data-pencil-name="Texto Bullet Pós Trial Sem pagamento, portal e automações podem pausar."
+                  className="text-[11px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap truncate"
+                >
+                  Sem pagamento, portal e automações podem pausar.
+                </div>
+              </div>
+
+              <div
+                data-pencil-name="Bullet Pós Trial Você pode trocar o plano antes da cobrança."
+                className="box-border w-full h-[28px] shrink-0 flex flex-row gap-[9px] px-[8px] justify-start items-center bg-[#FBFAF7] rounded-[10px]"
+              >
+                <div
+                  data-pencil-name="Ícone Bullet Pós Trial Você pode trocar o plano antes da cobrança."
+                  className="box-border w-[22px] shrink-0 h-[22px] flex flex-row gap-0 justify-center items-center bg-[#F1EDE6] rounded-[8px]"
+                >
+                  <Repeat2 size={12} className="text-[#2563EB]" />
+                </div>
+                <div
+                  data-pencil-name="Texto Bullet Pós Trial Você pode trocar o plano antes da cobrança."
+                  className="text-[11px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap truncate"
+                >
+                  Você pode trocar o plano antes da cobrança.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Faturas e Pagamentos Autêntico */}
+        <div
+          data-pencil-name="Faturas e Pagamentos Autêntico"
+          className="box-border w-full flex flex-col gap-0 justify-start items-start bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[20px] overflow-hidden shadow-sm"
+        >
+          {/* Header Faturas Premium */}
+          <div
+            data-pencil-name="Header Faturas Premium"
+            className="box-border w-full h-[57.5px] shrink-0 flex flex-row gap-0 px-[22px] justify-between items-center bg-[#FBFAF7] border-b border-[#F0EBE4]"
+          >
+            <div
+              data-pencil-name="Título Faturas Premium"
+              className="text-[18px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+            >
+              Faturas
+            </div>
+            <button
+              data-pencil-name="Pagar Antecipado Premium"
+              type="button"
+              disabled={adiantandoMensalidade}
+              onClick={handleAdiantarMensalidade}
+              className="box-border w-fit shrink-0 h-[34px] flex flex-row gap-[8px] px-[12px] justify-start items-center bg-[#ECFFF4] outline outline-1 outline-[#B8F0D0] -outline-offset-1 rounded-[10px] hover:bg-[#d8fced] transition-colors cursor-pointer"
+            >
+              <Zap size={14} className="text-[#138A4B] fill-[#138A4B]" />
+              <div
+                data-pencil-name="Texto Pagar Premium"
+                className="text-[12px]/[normal] box-border text-[#138A4B] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+              >
+                Pagar antecipado
+              </div>
+            </button>
+          </div>
+
+          {/* Resumo Faturas Compacto */}
+          <div
+            data-pencil-name="Resumo Faturas Compacto"
+            className="box-border w-full flex flex-col lg:flex-row gap-[16px] p-[18px] justify-start items-stretch"
+          >
+            {/* Fatura Atual Compacta */}
+            <div
+              data-pencil-name="Fatura Atual Compacta"
+              className="box-border w-full lg:w-[340px] shrink-0 flex flex-col gap-[8px] p-[16px] justify-start items-start bg-[#071915] rounded-[16px] text-white shadow-md"
+            >
+              <div
+                data-pencil-name="Topo Fatura Atual Compacta"
+                className="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-between items-center"
+              >
+                <div
+                  data-pencil-name="Label Fatura Atual Compacta"
+                  className="text-[10px]/[normal] box-border text-[#AAB4A7] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.8px] text-left whitespace-nowrap"
+                >
+                  FATURA ATUAL
+                </div>
+                <div
+                  data-pencil-name="Status Fatura Atual Compacta"
+                  className="text-[11px]/[normal] box-border text-[#C9FF3B] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                >
+                  {faturaPendente ? (faturaPendente.status === 'Paga' ? 'Paga' : 'Em aberto') : 'Em aberto'}
+                </div>
+              </div>
+              <div
+                data-pencil-name="Valor Fatura Atual Compacta"
+                className="text-[30px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap leading-none mt-1"
+              >
+                {formatCurrency(valorFaturaAtual)}
+              </div>
+              <div
+                data-pencil-name="Vencimento Fatura Atual Compacta"
+                className="text-[12px]/[normal] box-border text-[#D5DDD2] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+              >
+                Vence em {proximaData.formatada} · Plano {dados?.plano?.nome || 'Basic'}
+              </div>
+
+              {/* Botão de Pagamento na Fatura Atual */}
+              <button
+                type="button"
+                onClick={handleAdiantarMensalidade}
+                disabled={adiantandoMensalidade}
+                className="mt-3 w-full h-[36px] bg-[#C9FF3B] hover:bg-[#b8f028] text-[#071915] font-bold text-xs rounded-[10px] flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow active:scale-95"
+              >
+                <Zap size={14} className="fill-[#071915]" />
+                {faturaPendente ? 'Pagar Fatura com Pix' : 'Adiantar Mensalidade com Pix'}
+              </button>
+            </div>
+
+            {/* Histórico Recente Compacto */}
+            <div
+              data-pencil-name="Histórico Recente Compacto"
+              className="box-border flex-1 flex flex-col gap-[10px] p-[16px] justify-start items-start bg-[#FBFAF7] outline outline-1 outline-[#F0EBE4] -outline-offset-1 rounded-[16px] min-w-0"
+            >
+              <div
+                data-pencil-name="Header Histórico Compacto"
+                className="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-between items-center pb-1 border-b border-[#F0EBE4]"
+              >
+                <div
+                  data-pencil-name="Título Histórico Compacto"
+                  className="text-[15px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                >
+                  Histórico recente
+                </div>
+                <button
+                  data-pencil-name="Link Histórico Compacto"
+                  type="button"
+                  onClick={() => setModalTodasFaturasOpen(true)}
+                  className="text-[12px]/[normal] box-border text-[#138A4B] hover:text-[#0e6336] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap cursor-pointer transition-colors"
+                >
+                  Ver tudo ({faturas.length})
+                </button>
+              </div>
+
+              {/* Lista de Faturas Recentes */}
+              <div className="w-full flex flex-col gap-1 overflow-y-auto max-h-[160px]">
+                {faturas.length === 0 ? (
+                  /* Fallback idêntico ao Penpot quando está em período de trial inicial */
+                  <div
+                    data-pencil-name="Linha Histórico Compacto Setembro/2026"
+                    className="box-border w-full h-[35.5px] shrink-0 flex flex-row gap-[12px] py-[8px] justify-between items-center border-b border-[#F0EBE4]"
+                  >
+                    <div
+                      data-pencil-name="Mês Histórico Compacto Setembro/2026"
+                      className="text-[12px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left"
                     >
-                      <td style={{ padding: '14px 16px', fontWeight: 600, color: '#334155' }}>
-                        #{fat.id}
-                      </td>
-                      <td style={{ padding: '14px 16px', color: '#475569' }}>
-                        {fat.plano_nome}
-                      </td>
-                      <td style={{ padding: '14px 16px', color: '#334155', fontWeight: 500 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span>{fat.competencia || 'Mensalidade'}</span>
-                          {fat.antecipada && (
-                            <span
-                              style={{
-                                fontSize: '10.5px',
-                                backgroundColor: '#f0fdf4',
-                                color: '#16a34a',
-                                border: '1px solid #bbf7d0',
-                                padding: '1px 6px',
-                                borderRadius: '10px',
-                                fontWeight: 700
-                              }}
-                            >
-                              Antecipada
-                            </span>
-                          )}
+                      {new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                    </div>
+                    <div
+                      data-pencil-name="Valor Histórico Compacto Setembro/2026"
+                      className="text-[12px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-normal text-left"
+                    >
+                      R$ 0,00
+                    </div>
+                    <div
+                      data-pencil-name="Pill Histórico Compacto Setembro/2026"
+                      className="box-border w-fit shrink-0 h-[22px] flex flex-row gap-0 px-[8px] justify-center items-center bg-[#EAF8EF] rounded-[12px]"
+                    >
+                      <div
+                        data-pencil-name="Texto Pill Histórico Compacto Setembro/2026"
+                        className="text-[10px]/[normal] box-border text-[#138A4B] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                      >
+                        Trial ativo
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  faturas.slice(0, 4).map((fat) => {
+                    const isPaga = fat.status === 'Paga';
+                    const isAtrasada = fat.status === 'Atrasada';
+
+                    return (
+                      <div
+                        key={fat.id}
+                        className="box-border w-full min-h-[35.5px] shrink-0 flex flex-row gap-[12px] py-[6px] justify-between items-center border-b border-[#F0EBE4] hover:bg-[#F1EDE6]/50 px-1 rounded-md transition-colors"
+                      >
+                        <div className="text-[12px]/[normal] text-[#071915] font-bold truncate max-w-[160px]">
+                          {fat.competencia || fat.descricao || formatarDataBR(fat.data_vencimento)}
                         </div>
-                      </td>
-                      <td style={{ padding: '14px 16px', color: '#475569' }}>
-                        {formatarDataBR(fat.data_vencimento)}
-                      </td>
-                      <td style={{ padding: '14px 16px', fontWeight: 700, color: '#0f172a' }}>
-                        R$ {Number(fat.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </td>
-                      <td style={{ padding: '14px 16px', color: '#64748b' }}>
-                        {fat.metodo_pagamento || '-'}
-                      </td>
-                      <td style={{ padding: '14px 16px' }}>
-                        <span
-                          style={{
-                            padding: '4px 10px',
-                            borderRadius: '20px',
-                            fontSize: '12px',
-                            fontWeight: 600,
-                            backgroundColor: isPaga ? '#dcfce7' : isAtrasada ? '#fee2e2' : '#fef3c7',
-                            color: isPaga ? '#166534' : isAtrasada ? '#991b1b' : '#92400e'
-                          }}
-                        >
-                          {isPaga ? '✓ Paga' : isAtrasada ? '⚠️ Atrasada' : '⏳ Pendente'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '14px 16px', textAlign: 'right' }}>
-                        {!isPaga ? (
-                          <button
-                            onClick={() => handlePagarPix(fat)}
-                            style={{
-                              backgroundColor: '#2563eb',
-                              color: '#fff',
-                              border: 'none',
-                              borderRadius: '6px',
-                              padding: '8px 16px',
-                              fontSize: '13px',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
-                            }}
+                        <div className="text-[12px]/[normal] text-[#071915] font-medium whitespace-nowrap">
+                          {formatCurrency(fat.valor)}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={`box-border w-fit shrink-0 h-[22px] flex flex-row gap-0 px-[8px] justify-center items-center rounded-[12px] ${
+                              isPaga
+                                ? 'bg-[#EAF8EF] text-[#138A4B]'
+                                : isAtrasada
+                                ? 'bg-red-50 text-red-600'
+                                : 'bg-[#FFF3D9] text-[#A85B00]'
+                            }`}
                           >
-                            ⚡ Pagar com PIX
-                          </button>
-                        ) : (
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '12px', color: '#16a34a', fontWeight: 500 }}>
-                              Pago em {formatarDataBR(fat.data_pagamento)}
+                            <span className="text-[10px]/[normal] font-bold whitespace-nowrap">
+                              {fat.status}
                             </span>
+                          </div>
+
+                          {isPaga ? (
                             <button
                               type="button"
                               onClick={() => handleVisualizarRecibo(fat.id)}
-                              style={{
-                                backgroundColor: '#f8fafc',
-                                color: '#334155',
-                                border: '1px solid #cbd5e1',
-                                borderRadius: '6px',
-                                padding: '4px 8px',
-                                fontSize: '11.5px',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }}
+                              className="text-[11px] font-bold text-[#138A4B] hover:underline flex items-center gap-0.5"
+                              title="Ver Recibo"
                             >
-                              📄 Recibo
+                              <FileText size={12} /> Recibo
                             </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handlePagarPix(fat)}
+                              className="text-[11px] font-bold text-[#2563EB] hover:underline flex items-center gap-0.5"
+                              title="Pagar com Pix"
+                            >
+                              <Zap size={12} /> Pagar
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* Modal de Pagamento via PIX */}
-      {modalPixOpen && faturaSelecionada && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(15, 23, 42, 0.65)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 999,
-            padding: '16px'
-          }}
-        >
+      {/* ========================================================================= */}
+      {/* MODAL: PAGAMENTO VIA PIX ONLINE                                          */}
+      {/* ========================================================================= */}
+      {modalPixOpen && faturaSelecionada &&
+        createPortal(
           <div
-            style={{
-              backgroundColor: '#fff',
-              borderRadius: '16px',
-              maxWidth: '480px',
-              width: '100%',
-              padding: '28px',
-              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)',
-              position: 'relative',
-              textAlign: 'center'
+            data-pencil-name="Overlay Pix Assinatura"
+            className="fixed inset-0 bg-[#07191599] backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-fadeIn"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setModalPixOpen(false);
             }}
           >
-            {/* Fechar */}
-            <button
-              onClick={() => setModalPixOpen(false)}
-              style={{
-                position: 'absolute',
-                top: '16px',
-                right: '16px',
-                background: 'none',
-                border: 'none',
-                fontSize: '20px',
-                color: '#64748b',
-                cursor: 'pointer'
-              }}
-            >
-              ✕
-            </button>
+          <div
+            data-pencil-name="Modal Pix Assinatura"
+            className="box-border w-full max-w-[460px] bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[24px] p-7 shadow-2xl flex flex-col gap-4 text-center animate-scale-in"
+          >
+            {/* Header Modal Pix */}
+            <div className="flex items-center justify-between w-full border-b border-[#F0EBE4] pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-[#ECFFF4] text-[#138A4B] flex items-center justify-center font-bold">
+                  <Zap size={16} className="fill-[#138A4B]" />
+                </div>
+                <div className="text-left">
+                  <h3 className="text-base font-bold text-[#071915] leading-tight">
+                    Pagamento via Pix Online
+                  </h3>
+                  <p className="text-[11px] text-[#6F766F]">Liberação automática e instantânea</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalPixOpen(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center bg-[#F7F2EA] hover:bg-[#EBE4D8] text-[#6F766F] transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
 
-            <h3 style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', margin: '0 0 6px 0' }}>
-              Pagamento via Pix Online
-            </h3>
-            <p style={{ fontSize: '14px', color: '#64748b', margin: '0 0 20px 0' }}>
-              Fatura #{faturaSelecionada.id} — Valor: <strong>R$ {faturaSelecionada.valor.toFixed(2)}</strong>
-            </p>
-
+            {/* Conteúdo do Pix */}
             {gerandoPix ? (
-              <div style={{ padding: '40px 0', color: '#2563eb', fontWeight: 600 }}>
-                <p>🔄 Gerando cobrança Pix no Mercado Pago...</p>
+              <div className="py-12 flex flex-col items-center justify-center gap-3 text-[#2563EB]">
+                <div className="w-8 h-8 border-2 border-[#2563EB] border-t-transparent rounded-full animate-spin" />
+                <p className="text-xs font-semibold">Gerando QR Code Pix com o Mercado Pago...</p>
               </div>
             ) : pixPagoComSucesso ? (
-              <div style={{ padding: '32px 0' }}>
-                <span style={{ fontSize: '56px' }}>🎉</span>
-                <h4 style={{ fontSize: '18px', color: '#166534', margin: '12px 0 4px 0' }}>
-                  Pagamento Confirmado!
-                </h4>
-                <p style={{ fontSize: '14px', color: '#475569' }}>
-                  Sua mensalidade foi liquidada e o acesso da arena foi atualizado.
+              <div className="py-8 flex flex-col items-center justify-center gap-3">
+                <div className="w-16 h-16 rounded-full bg-[#EAF8EF] text-[#138A4B] flex items-center justify-center text-3xl font-extrabold animate-bounce">
+                  ✓
+                </div>
+                <h4 className="text-lg font-bold text-[#138A4B]">Pagamento Confirmado!</h4>
+                <p className="text-xs text-[#6F766F] max-w-xs">
+                  Sua mensalidade foi liquidada e o acesso total da sua arena foi atualizado.
                 </p>
                 <button
+                  type="button"
                   onClick={() => setModalPixOpen(false)}
-                  style={{
-                    marginTop: '16px',
-                    backgroundColor: '#166534',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '8px',
-                    padding: '10px 24px',
-                    fontSize: '14px',
-                    fontWeight: 600,
-                    cursor: 'pointer'
-                  }}
+                  className="mt-3 px-6 py-2.5 rounded-xl bg-[#071915] text-[#FFFFFF] font-bold text-xs hover:bg-[#122822] transition-colors"
                 >
                   Concluir
                 </button>
               </div>
             ) : pixExpirado ? (
-              <div style={{ padding: '24px 8px', textAlign: 'center' }}>
-                <span style={{ fontSize: '48px', display: 'block', marginBottom: '12px' }}>⏰</span>
-                <h4 style={{ fontSize: '18px', fontWeight: 700, color: '#991b1b', margin: '0 0 8px 0' }}>
-                  Cobrança Pix Expirada
-                </h4>
-                <p style={{ fontSize: '14px', color: '#64748b', lineHeight: 1.5, margin: '0 0 24px 0' }}>
-                  O prazo limite deste código Pix encerrou. Clique no botão abaixo para gerar uma nova cobrança atualizada.
+              <div className="py-8 flex flex-col items-center justify-center gap-3 text-center">
+                <div className="w-14 h-14 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-2xl">
+                  ⏰
+                </div>
+                <h4 className="text-base font-bold text-red-700">Cobrança Pix Expirada</h4>
+                <p className="text-xs text-[#6F766F] max-w-xs">
+                  O prazo limite deste código encerrou. Clique abaixo para gerar uma nova cobrança.
                 </p>
                 <button
                   type="button"
                   disabled={gerandoPix}
                   onClick={() => faturaSelecionada && handlePagarPix(faturaSelecionada)}
-                  style={{
-                    backgroundColor: '#2563eb',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '8px',
-                    padding: '12px 24px',
-                    fontSize: '14px',
-                    fontWeight: 600,
-                    cursor: gerandoPix ? 'wait' : 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    boxShadow: '0 2px 6px rgba(37,99,235,0.25)'
-                  }}
+                  className="mt-2 px-5 py-2.5 rounded-xl bg-[#071915] text-[#FFFFFF] font-bold text-xs hover:bg-[#122822] transition-colors"
                 >
-                  <span>🔄</span> {gerandoPix ? 'Gerando Novo Pix...' : 'Gerar Novo Pix'}
+                  {gerandoPix ? 'Gerando...' : 'Gerar Novo Pix'}
                 </button>
               </div>
             ) : pixData ? (
-              <div>
-                {/* Exibição do QR Code (Base64 ou gerado via copia_cola) */}
-                {(pixData.qr_code || pixData.copia_cola) && (
-                  <div
-                    style={{
-                      backgroundColor: '#f8fafc',
-                      padding: '16px',
-                      borderRadius: '12px',
-                      display: 'inline-block',
-                      marginBottom: '16px',
-                      border: '1px solid #e2e8f0'
-                    }}
-                  >
-                    {pixData.qr_code ? (
-                      <img
-                        src={pixData.qr_code}
-                        alt="QR Code Pix"
-                        style={{ width: '180px', height: '180px', display: 'block' }}
+              <div className="flex flex-col items-center gap-3">
+                {/* QR Code Container */}
+                <div className="p-3 bg-[#FBFAF7] outline outline-1 outline-[#E6DED2] rounded-2xl flex items-center justify-center shadow-inner">
+                  {pixData.qr_code ? (
+                    <img src={pixData.qr_code} alt="QR Code Pix" className="w-44 h-44 rounded-lg block" />
+                  ) : (
+                    <div className="w-44 h-44 bg-white flex items-center justify-center rounded-lg p-2">
+                      <QRCode
+                        value={pixData.copia_cola}
+                        size={160}
+                        style={{ height: 'auto', maxWidth: '100%', width: '100%' }}
+                        viewBox="0 0 160 160"
                       />
-                    ) : (
-                      <div style={{ width: '180px', height: '180px', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px' }}>
-                        <QRCode
-                          value={pixData.copia_cola}
-                          size={160}
-                          style={{ height: "auto", maxWidth: "100%", width: "100%" }}
-                          viewBox={`0 0 160 160`}
-                        />
-                      </div>
-                    )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="text-center">
+                  <div className="text-[22px] font-bold text-[#071915]">
+                    {formatCurrency(faturaSelecionada.valor)}
                   </div>
-                )}
+                  <p className="text-xs text-[#6F766F] mt-0.5">
+                    Fatura #{faturaSelecionada.id} · {faturaSelecionada.plano_nome}
+                  </p>
+                </div>
 
-                <p style={{ fontSize: '13px', color: '#475569', marginBottom: '16px' }}>
-                  Abra o aplicativo do seu banco, escolha a opção <strong>Pix Copia e Cola</strong> ou escaneie a imagem acima.
-                </p>
-
-                {/* Copia e Cola */}
-                <div style={{ textAlign: 'left', marginBottom: '20px' }}>
-                  <label
-                    style={{
-                      fontSize: '11px',
-                      textTransform: 'uppercase',
-                      fontWeight: 700,
-                      color: '#64748b',
-                      display: 'block',
-                      marginBottom: '6px'
-                    }}
-                  >
-                    Código Pix Copia e Cola:
+                {/* Chave Copia e Cola */}
+                <div className="w-full flex flex-col gap-1.5 text-left">
+                  <label className="text-[11px] font-bold text-[#6F766F] uppercase tracking-wide">
+                    Pix Copia e Cola:
                   </label>
-                  <div style={{ display: 'flex', gap: '8px' }}>
+                  <div className="flex items-center gap-2 bg-[#FBFAF7] border border-[#E6DED2] rounded-xl p-1.5 pl-3">
                     <input
                       type="text"
                       readOnly
                       value={pixData.copia_cola}
-                      style={{
-                        flex: 1,
-                        fontSize: '12px',
-                        padding: '10px',
-                        borderRadius: '6px',
-                        border: '1px solid #cbd5e1',
-                        backgroundColor: '#f1f5f9',
-                        fontFamily: 'monospace',
-                        color: '#334155'
-                      }}
+                      className="w-full bg-transparent text-xs font-mono text-[#071915] outline-none truncate"
                     />
                     <button
+                      type="button"
                       onClick={handleCopiarPix}
-                      style={{
-                        backgroundColor: pixCopiado ? '#16a34a' : '#2563eb',
-                        color: '#fff',
-                        border: 'none',
-                        borderRadius: '6px',
-                        padding: '0 16px',
-                        fontSize: '13px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap'
-                      }}
+                      className="px-3 py-1.5 rounded-lg bg-[#071915] text-[#FFFFFF] text-xs font-bold hover:bg-[#122822] transition-colors flex items-center gap-1 shrink-0"
                     >
-                      {pixCopiado ? '✓ Copiado!' : 'Copiar'}
+                      {pixCopiado ? <CheckCheck size={14} className="text-[#C9FF3B]" /> : <Copy size={14} />}
+                      {pixCopiado ? 'Copiado!' : 'Copiar'}
                     </button>
                   </div>
                 </div>
 
-                {/* Status Polling Live Indicator */}
-                <div
-                  style={{
-                    backgroundColor: '#eff6ff',
-                    border: '1px solid #bfdbfe',
-                    borderRadius: '8px',
-                    padding: '10px 14px',
-                    fontSize: '12px',
-                    color: '#1d4ed8',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '10px'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ animation: 'pulse 1.5s infinite' }}>🔄</span>
-                    Aguardando confirmação do pagamento em tempo real...
-                  </div>
+                {/* Status em tempo real */}
+                <div className="w-full p-2.5 rounded-xl bg-[#ECFFF4] border border-[#B8F0D0] text-[11px] text-[#007A50] font-medium flex items-center justify-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-[#188A45] animate-ping" />
+                  Aguardando confirmação do pagamento em tempo real...
+                </div>
 
-                  <div style={{ display: 'flex', gap: '8px', width: '100%', marginTop: '4px' }}>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          const refToUse = pixData.gateway_ref || faturaSelecionada?.id;
-                          const res = await fetch(`/api/tenant/assinatura/status-pagamento/${refToUse}`, {
-                            headers: {  }
-                          });
-                          const json = await res.json();
-                          if (json.pago) {
-                            setPixPagoComSucesso(true);
-                            showToast('🎉 Pagamento confirmado com sucesso!', 'success');
-                            carregarDados();
-                          } else {
-                            showToast('Pagamento ainda não foi detectado. Caso já tenha pago, aguarde alguns segundos.', 'info');
-                          }
-                        } catch {
-                          showToast('Erro ao consultar status.', 'error');
+                {/* Botões de Ação para Desenvolvedor / Simulação */}
+                <div className="flex gap-2 w-full pt-1">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const refToUse = pixData.gateway_ref || faturaSelecionada?.id;
+                        const res = await fetch(`/api/tenant/assinatura/status-pagamento/${refToUse}`);
+                        const json = await res.json();
+                        if (json.pago) {
+                          setPixPagoComSucesso(true);
+                          showToast('🎉 Pagamento confirmado com sucesso!', 'success');
+                          carregarDados();
+                        } else {
+                          showToast('Pagamento ainda não detectado.', 'info');
                         }
-                      }}
-                      style={{
-                        flex: 1,
-                        backgroundColor: '#1e40af',
-                        color: '#fff',
-                        border: 'none',
-                        borderRadius: '6px',
-                        padding: '8px 12px',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      🔍 Verificar Agora
-                    </button>
+                      } catch {
+                        showToast('Erro ao consultar status.', 'error');
+                      }
+                    }}
+                    className="flex-1 py-2 rounded-xl bg-[#FFFFFF] border border-[#DED6CA] text-xs font-semibold text-[#071915] hover:bg-[#F7F2EA] transition-colors"
+                  >
+                    Verificar Agora
+                  </button>
 
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (!faturaSelecionada) return;
-                        try {
-                          const res = await fetch(`/api/tenant/assinatura/faturas/${faturaSelecionada.id}/simular-pagamento`, {
-                            method: 'POST',
-                            headers: {  }
-                          });
-                          const json = await res.json();
-                          if (res.ok) {
-                            setPixPagoComSucesso(true);
-                            showToast('🎉 Pagamento de teste simulado e aprovado com sucesso! Arena desbloqueada.', 'success');
-                            carregarDados();
-                          } else {
-                            showToast(json.error || 'Erro ao simular.', 'error');
-                          }
-                        } catch {
-                          showToast('Erro de conexão.', 'error');
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!faturaSelecionada) return;
+                      try {
+                        const res = await fetch(
+                          `/api/tenant/assinatura/faturas/${faturaSelecionada.id}/simular-pagamento`,
+                          { method: 'POST' }
+                        );
+                        if (res.ok) {
+                          setPixPagoComSucesso(true);
+                          showToast('🎉 Pagamento de teste simulado com sucesso!', 'success');
+                          carregarDados();
+                        } else {
+                          showToast('Erro ao simular.', 'error');
                         }
-                      }}
-                      style={{
-                        flex: 1,
-                        backgroundColor: '#16a34a',
-                        color: '#fff',
-                        border: 'none',
-                        borderRadius: '6px',
-                        padding: '8px 12px',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      🧪 Simular Aprovação
-                    </button>
-                  </div>
+                      } catch {
+                        showToast('Erro de conexão.', 'error');
+                      }
+                    }}
+                    className="flex-1 py-2 rounded-xl bg-[#071915] text-[#C9FF3B] text-xs font-bold hover:bg-[#122822] transition-colors"
+                  >
+                    🧪 Simular Aprovação
+                  </button>
                 </div>
               </div>
             ) : null}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* MODAL: COMPARATIVO E UPGRADE DE PLANOS */}
-      {modalPlanosOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(15, 23, 42, 0.65)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 999,
-            padding: '16px'
-          }}
-          role="presentation"
-          onClick={() => setModalPlanosOpen(false)}
-          onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter') setModalPlanosOpen(false); }}
-        >
+      {/* ========================================================================= */}
+      {/* MODAL: TROCAR PLANO / UPGRADE (PENPOT REF DESIGN)                         */}
+      {/* ========================================================================= */}
+      {modalPlanosOpen &&
+        createPortal(
           <div
-            style={{
-              backgroundColor: '#fff',
-              borderRadius: '16px',
-              maxWidth: '920px',
-              width: '100%',
-              padding: '32px 28px',
-              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.15)',
-              position: 'relative',
-              maxHeight: '90vh',
-              overflowY: 'auto'
+            data-pencil-name="Overlay Trocar Plano"
+            className="fixed inset-0 bg-[#07191599] backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-fadeIn overflow-y-auto"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setModalPlanosOpen(false);
             }}
-            role="dialog"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
           >
-            {/* Fechar */}
-            <button
-              onClick={() => setModalPlanosOpen(false)}
-              style={{
-                position: 'absolute',
-                top: '20px',
-                right: '20px',
-                background: 'none',
-                border: 'none',
-                fontSize: '20px',
-                color: '#64748b',
-                cursor: 'pointer'
-              }}
+            <div
+              data-pencil-name="Modal Trocar Plano"
+              className="box-border w-full max-w-[960px] my-auto bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[28px] overflow-hidden shadow-2xl flex flex-col gap-[14px] justify-start items-start animate-scale-in max-h-[94vh]"
             >
-              ✕
-            </button>
+              {/* Hero Modal Planos */}
+              <div
+                data-pencil-name="Hero Modal Planos"
+                className="box-border w-full min-h-[142px] shrink-0 flex flex-row gap-4 p-[24px_30px] justify-between items-center bg-[#071915]"
+              >
+                <div
+                  data-pencil-name="Texto Hero Modal Planos"
+                  className="box-border flex-1 h-fit flex flex-col gap-[10px] justify-start items-start"
+                >
+                  <div
+                    data-pencil-name="Badge Upgrade Modal"
+                    className="box-border w-fit h-fit shrink-0 flex flex-row gap-[7px] px-[10px] py-[5px] justify-start items-center bg-[#C9FF3B] rounded-[14px]"
+                  >
+                    <Sparkles size={14} className="text-[#071915]" />
+                    <div
+                      data-pencil-name="Texto Badge Upgrade Modal"
+                      className="text-[11px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left whitespace-nowrap"
+                    >
+                      UPGRADE COM ATIVAÇÃO IMEDIATA
+                    </div>
+                  </div>
+                  <div
+                    data-pencil-name="Título Hero Modal Planos"
+                    className="text-[24px] sm:text-[28px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                  >
+                    Escolha o plano ideal para sua arena
+                  </div>
+                  <div
+                    data-pencil-name="Sub Hero Modal Planos"
+                    className="text-[13px]/[normal] box-border w-full text-[#D5DDD2] font-[Inter,system-ui,sans-serif] font-normal text-left"
+                  >
+                    Mais quadras, mais usuários e relatórios avançados. O upgrade é aplicado na hora e o valor proporcional aparece no checkout.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  data-pencil-name="Fechar Modal Planos Refinado"
+                  onClick={() => setModalPlanosOpen(false)}
+                  className="box-border w-[38px] shrink-0 h-[38px] flex flex-row gap-0 justify-center items-center bg-[#FFFFFF1A] hover:bg-[#FFFFFF33] text-[#FFFFFF] rounded-[19px] transition-colors cursor-pointer border-0"
+                >
+                  <X size={19} className="text-white" />
+                </button>
+              </div>
 
-            <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-              <h2 style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
-                Escolha o Plano Ideal para sua Arena
-              </h2>
-              <p style={{ fontSize: '14px', color: '#64748b', margin: '0 0 16px 0' }}>
-                Evolua sua capacidade de quadras, funcionários e relatórios com ativação imediata via Pix.
-              </p>
-
-              {/* Seletor de Ciclo Mensal / Anual */}
-              <div style={{ display: 'flex', justifyContent: 'center', marginTop: '12px' }}>
-                <div style={{ display: 'inline-flex', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+              {/* Controles Modal Planos */}
+              <div
+                data-pencil-name="Controles Modal Planos"
+                className="box-border w-full min-h-[48px] shrink-0 flex flex-row gap-2 px-[30px] justify-between items-center"
+              >
+                <div
+                  data-pencil-name="Texto Escolha Periodicidade"
+                  className="text-[13px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+                >
+                  Compare os planos disponíveis para sua operação
+                </div>
+                <div
+                  data-pencil-name="Toggle Planos Refinado"
+                  className="box-border w-fit shrink-0 h-fit flex flex-row gap-[4px] p-[4px] justify-start items-center bg-[#F1EDE6] rounded-[14px]"
+                >
                   <button
                     type="button"
+                    data-pencil-name="Toggle Mensal"
                     onClick={() => setCicloSelecionado('mensal')}
-                    style={{
-                      padding: '7px 16px',
-                      borderRadius: '8px',
-                      border: 'none',
-                      backgroundColor: cicloSelecionado === 'mensal' ? '#fff' : 'transparent',
-                      color: cicloSelecionado === 'mensal' ? '#0f172a' : '#64748b',
-                      fontWeight: 600,
-                      fontSize: '13px',
-                      cursor: 'pointer',
-                      boxShadow: cicloSelecionado === 'mensal' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
-                    }}
+                    className={`box-border w-fit shrink-0 h-[34px] flex flex-row gap-[7px] px-[14px] justify-start items-center rounded-[10px] cursor-pointer transition-all border-0 ${
+                      cicloSelecionado === 'mensal'
+                        ? 'bg-[#071915]'
+                        : 'bg-transparent'
+                    }`}
                   >
-                    Mensal
+                    <div
+                      data-pencil-name="Texto Toggle Mensal"
+                      className={`text-[13px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap ${
+                        cicloSelecionado === 'mensal' ? 'text-[#FFFFFF]' : 'text-[#6F766F]'
+                      }`}
+                    >
+                      Mensal
+                    </div>
                   </button>
                   <button
                     type="button"
+                    data-pencil-name="Toggle Anual"
                     onClick={() => setCicloSelecionado('anual')}
-                    style={{
-                      padding: '7px 16px',
-                      borderRadius: '8px',
-                      border: 'none',
-                      backgroundColor: cicloSelecionado === 'anual' ? '#2563eb' : 'transparent',
-                      color: cicloSelecionado === 'anual' ? '#fff' : '#64748b',
-                      fontWeight: 600,
-                      fontSize: '13px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      boxShadow: cicloSelecionado === 'anual' ? '0 1px 3px rgba(37,99,235,0.2)' : 'none'
-                    }}
+                    className={`box-border w-fit shrink-0 h-[34px] flex flex-row gap-[7px] px-[14px] justify-start items-center rounded-[10px] cursor-pointer transition-all border-0 ${
+                      cicloSelecionado === 'anual'
+                        ? 'bg-[#071915]'
+                        : 'bg-transparent'
+                    }`}
                   >
-                    <span>Anual</span>
-                    <span style={{ fontSize: '10px', backgroundColor: cicloSelecionado === 'anual' ? '#1d4ed8' : '#dcfce7', color: cicloSelecionado === 'anual' ? '#fff' : '#166534', padding: '2px 6px', borderRadius: '6px', fontWeight: 700 }}>
-                      -20%
-                    </span>
+                    <div
+                      data-pencil-name="Texto Toggle Anual"
+                      className={`text-[13px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap ${
+                        cicloSelecionado === 'anual' ? 'text-[#FFFFFF]' : 'text-[#6F766F]'
+                      }`}
+                    >
+                      Anual
+                    </div>
+                    <div
+                      data-pencil-name="Desconto Toggle Anual"
+                      className="box-border w-fit shrink-0 h-fit flex flex-row gap-0 px-[7px] py-[3px] justify-start items-center bg-[#C9FF3B] rounded-[8px]"
+                    >
+                      <div
+                        data-pencil-name="Texto Desconto Toggle Anual"
+                        className="text-[10px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                      >
+                        -20%
+                      </div>
+                    </div>
                   </button>
                 </div>
               </div>
+
+              {/* Planos Refinados */}
+              <div
+                data-pencil-name="Planos Refinados"
+                className="box-border w-full flex-1 min-h-[480px] shrink-0 flex flex-col md:flex-row gap-[18px] px-[30px] pb-3 justify-start items-stretch overflow-y-auto"
+              >
+                {loadingPlanos ? (
+                  <div className="w-full py-20 text-center text-xs text-[#6F766F] font-medium">
+                    Carregando planos disponíveis...
+                  </div>
+                ) : (
+                  [...planosDisponiveis]
+                    .sort((a, b) => {
+                      const priceA = a.valor_mensal === 0 ? 999999 : a.valor_mensal;
+                      const priceB = b.valor_mensal === 0 ? 999999 : b.valor_mensal;
+                      return priceA - priceB;
+                    })
+                    .map((p) => {
+                  const isCurrent = dados?.plano?.id === p.id;
+                  const isEnterprise = p.valor_mensal === 0 || p.nome.toLowerCase().includes('enterprise');
+                  const isPro = p.nome.toLowerCase().includes('pro');
+                  const valor = cicloSelecionado === 'anual' ? p.valor_anual : p.valor_mensal;
+
+                  // Tagline based on Penpot design
+                  const tagline = isEnterprise
+                    ? 'Para redes e operações grandes'
+                    : isPro
+                    ? 'Para arenas em crescimento'
+                    : 'Para começar';
+
+                  // Badge based on Penpot design
+                  const badge = isCurrent ? (
+                    <div className="box-border w-fit shrink-0 h-fit flex flex-row gap-0 px-[9px] py-[5px] justify-start items-center bg-[#F1EDE6] rounded-[12px]">
+                      <div className="text-[10px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap">
+                        Atual
+                      </div>
+                    </div>
+                  ) : isPro ? (
+                    <div className="box-border w-fit shrink-0 h-fit flex flex-row gap-0 px-[9px] py-[5px] justify-start items-center bg-[#2563EB] rounded-[12px]">
+                      <div className="text-[10px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap">
+                        Recomendado
+                      </div>
+                    </div>
+                  ) : isEnterprise ? (
+                    <div className="box-border w-fit shrink-0 h-fit flex flex-row gap-0 px-[9px] py-[5px] justify-start items-center bg-[#ECFFF4] rounded-[12px]">
+                      <div className="text-[10px]/[normal] box-border text-[#138A4B] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap">
+                        Sob consulta
+                      </div>
+                    </div>
+                  ) : null;
+
+                  // Features list per Penpot design
+                  const features = isEnterprise
+                    ? [
+                        'Quadras ilimitadas',
+                        'Usuários ilimitados',
+                        'SLA e suporte VIP',
+                        'Relatórios personalizados',
+                        'Onboarding dedicado',
+                      ]
+                    : isPro
+                    ? [
+                        `Até ${p.max_quadras} quadras`,
+                        `Até ${p.max_usuarios} usuários`,
+                        'BI e exportação',
+                        'Auditoria completa',
+                        'Suporte prioritário',
+                      ]
+                    : [
+                        `Até ${p.max_quadras} quadras`,
+                        `Até ${p.max_usuarios} usuários`,
+                        'Portal do atleta',
+                        'Gestão de pagamentos',
+                      ];
+
+                  return (
+                    <div
+                      key={p.id}
+                      data-pencil-name={`Plano Refinado ${p.nome}`}
+                      className={`box-border flex-1 h-full flex flex-col gap-[12px] p-[18px] justify-between items-start rounded-[22px] transition-all ${
+                        isPro && !isCurrent
+                          ? 'bg-[#F3F8FF] outline outline-2 outline-[#2563EB] -outline-offset-1 shadow-md'
+                          : 'bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1'
+                      }`}
+                    >
+                      <div className="w-full flex flex-col gap-[12px]">
+                        {/* Topo Plano */}
+                        <div className="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-between items-center">
+                          <div className="box-border w-fit shrink-0 h-fit flex flex-col gap-[4px] justify-start items-start">
+                            <div className="text-[21px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap">
+                              {p.nome}
+                            </div>
+                            <div className="text-[11px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap">
+                              {tagline}
+                            </div>
+                          </div>
+                          {badge}
+                        </div>
+
+                        {/* Preço */}
+                        <div className="box-border w-full h-fit shrink-0 flex flex-col gap-[5px] justify-start items-start">
+                          {isEnterprise ? (
+                            <>
+                              <div className="text-[25px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap">
+                                Sob consulta
+                              </div>
+                              <div className="text-[12px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap">
+                                Contrato personalizado
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="box-border w-fit h-fit shrink-0 flex flex-row gap-[6px] justify-start items-end">
+                                <div className="text-[30px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap">
+                                  {formatCurrency(valor)}
+                                </div>
+                                <div className="text-[13px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap pb-1">
+                                  /mês
+                                </div>
+                              </div>
+                              <div
+                                className={`text-[12px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap ${
+                                  cicloSelecionado === 'anual' ? 'text-[#138A4B]' : 'text-[#6F766F]'
+                                }`}
+                              >
+                                {cicloSelecionado === 'anual'
+                                  ? `Faturado anualmente · R$ ${(valor * 12).toFixed(2).replace('.', ',')}/ano`
+                                  : 'Faturamento mensal'}
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Divisor */}
+                        <div className="box-border w-full h-[1px] shrink-0 bg-[#E6DED2]"></div>
+
+                        {/* Lista Recursos */}
+                        <div className="box-border w-full flex-1 flex flex-col gap-[11px] justify-start items-start pt-1">
+                          {features.map((feature, fIdx) => (
+                            <div
+                              key={fIdx}
+                              className="box-border w-full h-fit shrink-0 flex flex-row gap-[8px] justify-start items-center"
+                            >
+                              <Check size={14} className="text-[#16A34A] shrink-0" />
+                              <div className="text-[12px]/[normal] box-border text-[#394236] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap">
+                                {feature}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Botão Ação */}
+                      <div className="w-full pt-4">
+                        {isCurrent ? (
+                          <div
+                            data-pencil-name="Botão Refinado Atual"
+                            className="box-border w-full h-[40px] shrink-0 flex flex-row gap-0 justify-center items-center bg-[#F1EDE6] rounded-[12px]"
+                          >
+                            <div className="text-[13px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap">
+                              Plano atual
+                            </div>
+                          </div>
+                        ) : isEnterprise ? (
+                          <a
+                            data-pencil-name="Botão Refinado Enterprise"
+                            href={enterpriseContactUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="box-border w-full h-[40px] shrink-0 flex flex-row gap-0 justify-center items-center bg-[#071915] hover:bg-[#122822] rounded-[12px] no-underline transition-colors"
+                          >
+                            <div className="text-[13px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap">
+                              Falar com consultor
+                            </div>
+                          </a>
+                        ) : (
+                          <button
+                            type="button"
+                            data-pencil-name={`Botão Refinado ${p.nome}`}
+                            disabled={solicitandoUpgradeId !== null}
+                            onClick={() => handleSolicitarUpgrade(p.id, cicloSelecionado)}
+                            className={`box-border w-full h-[40px] shrink-0 flex flex-row gap-0 justify-center items-center rounded-[12px] cursor-pointer transition-colors shadow-sm disabled:opacity-50 border-0 ${
+                              isPro
+                                ? 'bg-[#2563EB] hover:bg-[#1d4ed8] text-[#FFFFFF]'
+                                : 'bg-[#C9FF3B] hover:bg-[#b8f028] text-[#071915]'
+                            }`}
+                          >
+                            <div className="text-[13px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap">
+                              {solicitandoUpgradeId === p.id ? 'Processando...' : 'Fazer upgrade'}
+                            </div>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
 
-            {loadingPlanos ? (
-              <div style={{ padding: '60px 0', textAlign: 'center', color: '#2563eb' }}>
-                <p>Carregando opções de planos...</p>
-              </div>
-            ) : (
+            {/* Footer Modal Planos Refinado */}
+            <div
+              data-pencil-name="Footer Modal Planos Refinado"
+              className="box-border w-full h-[49.5px] shrink-0 flex flex-row gap-[10px] px-[30px] justify-start items-center bg-[#FBFAF7] border-t border-[#F0EBE4]"
+            >
+              <ShieldCheck size={16} className="text-[#138A4B] shrink-0" />
               <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-                  gap: '20px'
-                }}
+                data-pencil-name="Texto Footer Modal Planos"
+                className="text-[12px]/[normal] box-border text-[#536174] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
               >
-                {(planosDisponiveis.length > 0 ? planosDisponiveis : DEFAULT_PLANOS).map((p) => (
-                  <PlanoCardModal
-                    key={p.id}
-                    plano={p}
-                    dados={dados}
-                    cicloSelecionado={cicloSelecionado}
-                    solicitandoUpgradeId={solicitandoUpgradeId}
-                    onSolicitarUpgrade={handleSolicitarUpgrade}
-                  />
-                ))}
+                Sem fidelidade. O upgrade é liberado após confirmação do Pix ou pagamento aprovado.
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: TODAS AS FATURAS                                                  */}
+      {/* ========================================================================= */}
+      {modalTodasFaturasOpen &&
+        createPortal(
+          <div
+            data-pencil-name="Overlay Todas as Faturas"
+            className="fixed inset-0 bg-[#07191599] backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-fadeIn overflow-y-auto"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setModalTodasFaturasOpen(false);
+            }}
+          >
+          <div
+            data-pencil-name="Modal Todas as Faturas"
+            className="box-border w-full max-w-[720px] bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[26px] p-6 shadow-2xl flex flex-col gap-4 animate-scale-in max-h-[85vh] overflow-hidden"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-[#F0EBE4]">
+              <div>
+                <h3 className="text-lg font-bold text-[#071915]">Todas as Faturas</h3>
+                <p className="text-xs text-[#6F766F]">Histórico de faturas geradas para a sua arena.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalTodasFaturasOpen(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center bg-[#F7F2EA] hover:bg-[#EBE4D8] text-[#6F766F] transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-[#FBFAF7] border-b border-[#F0EBE4] text-[10px] font-bold text-[#6F766F] uppercase">
+                    <th className="py-2.5 px-3">Fatura</th>
+                    <th className="py-2.5 px-3">Competência</th>
+                    <th className="py-2.5 px-3">Vencimento</th>
+                    <th className="py-2.5 px-3">Valor</th>
+                    <th className="py-2.5 px-3">Status</th>
+                    <th className="py-2.5 px-3 text-right">Ação</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#F4EFE8]">
+                  {faturas.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-[#6F766F]">
+                        Nenhuma fatura registrada.
+                      </td>
+                    </tr>
+                  ) : (
+                    faturas.map((f) => {
+                      const isPaga = f.status === 'Paga';
+                      return (
+                        <tr key={f.id} className="hover:bg-[#FAF8F5]">
+                          <td className="py-2.5 px-3 font-semibold text-[#071915]">#{f.id}</td>
+                          <td className="py-2.5 px-3 text-[#6F766F]">{f.competencia || f.plano_nome}</td>
+                          <td className="py-2.5 px-3 text-[#071915]">{formatarDataBR(f.data_vencimento)}</td>
+                          <td className="py-2.5 px-3 font-bold text-[#071915]">{formatCurrency(f.valor)}</td>
+                          <td className="py-2.5 px-3">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                isPaga
+                                  ? 'bg-[#EAF8EF] text-[#138A4B]'
+                                  : f.status === 'Atrasada'
+                                  ? 'bg-red-50 text-red-600'
+                                  : 'bg-[#FFF3D9] text-[#A85B00]'
+                              }`}
+                            >
+                              {f.status}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-right">
+                            {isPaga ? (
+                              <button
+                                type="button"
+                                onClick={() => handleVisualizarRecibo(f.id)}
+                                className="px-2.5 py-1 rounded-lg bg-[#FBFAF7] border border-[#DED6CA] text-[11px] font-bold text-[#071915] hover:bg-[#F1EDE6] transition-colors"
+                              >
+                                Recibo
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handlePagarPix(f)}
+                                className="px-2.5 py-1 rounded-lg bg-[#071915] text-[#FFFFFF] text-[11px] font-bold hover:bg-[#122822] transition-colors"
+                              >
+                                Pagar Pix
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: RECIBO OFICIAL DE PAGAMENTO                                        */}
+      {/* ========================================================================= */}
+      {modalReciboOpen &&
+        createPortal(
+          <div
+            data-pencil-name="Overlay Recibo"
+            className="fixed inset-0 bg-[#07191599] backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-fadeIn overflow-y-auto"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setModalReciboOpen(false);
+            }}
+          >
+          <div
+            data-pencil-name="Modal Recibo"
+            className="box-border w-full max-w-[560px] bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[26px] p-6 shadow-2xl flex flex-col gap-4 animate-scale-in"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-[#F0EBE4]">
+              <div className="flex items-center gap-2">
+                <FileText size={18} className="text-[#138A4B]" />
+                <h3 className="text-base font-bold text-[#071915]">Recibo de Pagamento</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalReciboOpen(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center bg-[#F7F2EA] hover:bg-[#EBE4D8] text-[#6F766F] transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {carregandoRecibo || !reciboSelecionado ? (
+              <div className="py-12 text-center text-xs text-[#6F766F]">Carregando recibo...</div>
+            ) : (
+              <div className="flex flex-col gap-4 text-xs text-[#071915]">
+                {/* Cabeçalho do Recibo */}
+                <div className="p-4 bg-[#FBFAF7] rounded-xl border border-[#F0EBE4] flex justify-between items-center">
+                  <div>
+                    <div className="text-[10px] text-[#6F766F] uppercase font-bold">Número do Recibo</div>
+                    <div className="text-sm font-bold">{reciboSelecionado.recibo_numero}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] text-[#6F766F] uppercase font-bold">Data de Emissão</div>
+                    <div className="text-xs font-semibold">{formatarDataBR(reciboSelecionado.data_emissao)}</div>
+                  </div>
+                </div>
+
+                {/* Dados da Fatura */}
+                <div className="grid grid-cols-2 gap-3 p-3 bg-[#FAF8F5] rounded-xl border border-[#F0EBE4]">
+                  <div>
+                    <span className="text-[#6F766F] text-[11px] block">Plano Contratado</span>
+                    <strong className="text-xs">{reciboSelecionado.plano.nome}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[#6F766F] text-[11px] block">Valor Liquidado</span>
+                    <strong className="text-xs text-[#138A4B]">
+                      {formatCurrency(reciboSelecionado.fatura.valor)}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-[#6F766F] text-[11px] block">Data do Pagamento</span>
+                    <strong className="text-xs">
+                      {formatarDataBR(reciboSelecionado.fatura.data_pagamento)}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-[#6F766F] text-[11px] block">Método</span>
+                    <strong className="text-xs">{reciboSelecionado.fatura.metodo_pagamento || 'Pix'}</strong>
+                  </div>
+                </div>
+
+                {/* Arena e Emissor */}
+                <div className="p-3 bg-[#FAF8F5] rounded-xl border border-[#F0EBE4] flex flex-col gap-1 text-[11px]">
+                  <div>
+                    <span className="text-[#6F766F]">Sacado: </span>
+                    <strong>{reciboSelecionado.arena.nome}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[#6F766F]">Emissor: </span>
+                    <span>{reciboSelecionado.emissor.empresa} ({reciboSelecionado.emissor.sistema})</span>
+                  </div>
+                  <div>
+                    <span className="text-[#6F766F]">CNPJ: </span>
+                    <span>{reciboSelecionado.emissor.cnpj}</span>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 justify-end pt-2 border-t border-[#F0EBE4]">
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="px-4 py-2 rounded-xl bg-[#071915] text-[#FFFFFF] font-bold text-xs hover:bg-[#122822] transition-colors"
+                  >
+                    Imprimir Recibo
+                  </button>
+                </div>
               </div>
             )}
           </div>
-        </div>
-      )}
-
-      {/* MODAL: VISUALIZAÇÃO E IMPRESSÃO DE RECIBO */}
-      {modalReciboOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(15, 23, 42, 0.65)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-            padding: '16px'
-          }}
-          role="presentation"
-          onClick={() => setModalReciboOpen(false)}
-          onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter') setModalReciboOpen(false); }}
-        >
-          <div
-            style={{
-              backgroundColor: '#fff',
-              borderRadius: '16px',
-              maxWidth: '560px',
-              width: '100%',
-              padding: '32px',
-              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
-              position: 'relative',
-              maxHeight: '90vh',
-              overflowY: 'auto'
-            }}
-            role="dialog"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-          >
-            <button
-              className="no-print"
-              onClick={() => setModalReciboOpen(false)}
-              style={{
-                position: 'absolute',
-                top: '16px',
-                right: '16px',
-                background: 'none',
-                border: 'none',
-                fontSize: '20px',
-                color: '#64748b',
-                cursor: 'pointer'
-              }}
-            >
-              ✕
-            </button>
-
-            {carregandoRecibo ? (
-              <div style={{ padding: '60px 0', textAlign: 'center', color: '#2563eb' }}>
-                <p>Gerando recibo...</p>
-              </div>
-            ) : reciboSelecionado ? (
-              <div>
-                <div id="recibo-print-area">
-                  {/* Cabeçalho do Recibo */}
-                  <div style={{ borderBottom: '2px dashed #cbd5e1', paddingBottom: '20px', marginBottom: '20px', textAlign: 'center' }}>
-                    <span style={{ fontSize: '36px' }}>🧾</span>
-                    <h2 style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a', margin: '8px 0 2px 0', textTransform: 'uppercase' }}>
-                      Comprovante de Pagamento
-                    </h2>
-                    <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>
-                      {reciboSelecionado.emissor.empresa}
-                    </p>
-                    <span style={{ display: 'inline-block', marginTop: '8px', padding: '3px 12px', borderRadius: '12px', backgroundColor: '#dcfce7', color: '#166534', fontWeight: 700, fontSize: '12px' }}>
-                      {reciboSelecionado.recibo_numero} — LIQUIDADO
-                    </span>
-                  </div>
-
-                  {/* Detalhes da Cobrança */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '13px', marginBottom: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
-                      <span style={{ color: '#64748b' }}>Arena / Cliente:</span>
-                      <strong style={{ color: '#0f172a' }}>{reciboSelecionado.arena.nome}</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
-                      <span style={{ color: '#64748b' }}>Descrição:</span>
-                      <strong style={{ color: '#0f172a' }}>{reciboSelecionado.fatura.descricao}</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
-                      <span style={{ color: '#64748b' }}>Ciclo / Período:</span>
-                      <strong style={{ color: '#0f172a', textTransform: 'capitalize' }}>{reciboSelecionado.fatura.ciclo}</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
-                      <span style={{ color: '#64748b' }}>Vencimento Original:</span>
-                      <strong style={{ color: '#0f172a' }}>
-                        {formatarDataBR(reciboSelecionado.fatura.data_vencimento)}
-                      </strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
-                      <span style={{ color: '#64748b' }}>Data do Pagamento:</span>
-                      <strong style={{ color: '#16a34a' }}>
-                        {formatarDataBR(reciboSelecionado.fatura.data_pagamento)}
-                      </strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
-                      <span style={{ color: '#64748b' }}>Método:</span>
-                      <strong style={{ color: '#0f172a' }}>{reciboSelecionado.fatura.metodo_pagamento}</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
-                      <span style={{ color: '#64748b' }}>Autenticação / Gateway Ref:</span>
-                      <span style={{ color: '#475569', fontFamily: 'monospace', fontSize: '11px' }}>
-                        {reciboSelecionado.fatura.gateway_ref}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Total */}
-                  <div style={{ backgroundColor: '#f8fafc', borderRadius: '10px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', border: '1px solid #e2e8f0' }}>
-                    <span style={{ fontSize: '15px', fontWeight: 700, color: '#334155' }}>Valor Total Pago:</span>
-                    <span style={{ fontSize: '22px', fontWeight: 800, color: '#16a34a' }}>
-                      R$ {Number(reciboSelecionado.fatura.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Botões de Ação */}
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <button
-                    type="button"
-                    onClick={handleImprimirRecibo}
-                    style={{
-                      flex: 1,
-                      backgroundColor: '#0f172a',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: '8px',
-                      padding: '12px',
-                      fontSize: '13.5px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px'
-                    }}
-                  >
-                    🖨️ Imprimir / Salvar PDF
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setModalReciboOpen(false)}
-                    style={{
-                      padding: '12px 20px',
-                      backgroundColor: '#f1f5f9',
-                      color: '#475569',
-                      border: '1px solid #cbd5e1',
-                      borderRadius: '8px',
-                      fontSize: '13.5px',
-                      fontWeight: 600,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Fechar
-                  </button>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

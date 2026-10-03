@@ -79,3 +79,31 @@ it('caps every paginated report endpoint consistently', async () => {
     expect(response.body.error).toMatch(/maior que 100/);
   }
 });
+
+it('keeps cancellation rates scoped to the court and tenant across pages', async () => {
+  await db.runAsync("UPDATE Reservas SET status='Cancelada' WHERE id IN (1,3)");
+  const response = await getReport('cancelamentos?data_inicio=2099-12-01&data_fim=2099-12-01&quadra_id=1&pagina=2&limite=1');
+  expect(response.status).toBe(200);
+  expect(response.body.cancelamentos).toHaveLength(0);
+  expect(response.body.totalReservas).toBe(2);
+  expect(response.body.totais).toMatchObject({ total: 1, valorPerdido: 100 });
+  const empty = await getReport('cancelamentos?data_inicio=2099-12-02&data_fim=2099-12-02');
+  expect(empty.body.totalReservas).toBe(0);
+  expect(empty.body.totais.total).toBe(0);
+});
+
+it('ranks revenue while keeping the most frequent customer stable on every page', async () => {
+  await db.runAsync(`INSERT INTO Reservas(id,tenant_id,cliente_id,quadra_id,data_reserva,hora_inicio,hora_fim,valor_total,status,status_pagamento)
+    VALUES(4,1,2,1,'2099-12-01','14:00','15:00',50000,'Confirmada','Pendente')`);
+  const first = await getReport('top-clientes?data_inicio=2099-12-01&data_fim=2099-12-01&limite=1');
+  const second = await getReport('top-clientes?data_inicio=2099-12-01&data_fim=2099-12-01&limite=1&pagina=2');
+  expect(first.status).toBe(200);
+  expect(second.status).toBe(200);
+  expect(first.body.clientes[0]).toMatchObject({ nome: 'Third', posicao: 1, valor_total_gerado: 500 });
+  expect(second.body.clientes[0]).toMatchObject({ nome: 'Owner', posicao: 2 });
+  for (const response of [first, second]) {
+    expect(response.body.clienteMaisFrequente).toEqual({ nome: 'Owner', total_reservas: 2 });
+    expect(response.body.totalFaturado).toBe(700);
+    expect(response.body.paginacao.total).toBe(2);
+  }
+});

@@ -27,9 +27,13 @@ export interface ReportData {
   taxaGeral?: number;
   periodo?: { dias: number };
   totalDevido?: number;
+  totalDevedores?: number;
+  primeiraReservaPendente?: string | null;
+  maiorSaldoQuadra?: { quadra_nome: string; total_devido: number } | null;
   totalGeral?: number;
   totalReservas?: number;
   totalFaturado?: number;
+  clienteMaisFrequente?: { nome: string; total_reservas: number } | null;
   maxPico?: number;
   porMetodo?: { metodo: string; percentual: number; total_transacoes: number; total_valor: number }[];
   transacoes?: { cliente_nome: string; data_pagamento: string; hora_pagamento: string; metodo: string; operador_nome?: string; quadra_nome: string; valor: number }[];

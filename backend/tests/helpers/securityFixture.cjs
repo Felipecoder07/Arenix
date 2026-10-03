@@ -76,7 +76,7 @@ function totp() {
   return ((digest.readUInt32BE(digest.at(-1) & 15) & 0x7fffffff) % 1000000).toString().padStart(6, '0');
 }
 async function login(app, id = actors.admin) {
-  const response = await request(app).post('/api/auth/login').send({ email: 'u'+id+'@example.test', senha: PASSWORD, ...(id === actors.master ? { codigo_2fa: totp() } : {}) });
+  const response = await request(app).post('/api/auth/login').send({ email: 'u'+id+'@example.test', senha: PASSWORD });
   assert.equal(response.status, 200, JSON.stringify(response.body));
   const pairs = response.headers['set-cookie'].map(value => value.split(';')[0]);
   return { cookie: pairs.join('; '), csrf: pairs.find(v => v.startsWith('cm_csrf=')).split('=')[1], response };

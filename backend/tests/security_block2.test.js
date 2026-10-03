@@ -18,13 +18,11 @@ it.each([actors.admin, actors.manager, actors.receptionist, actors.owner])('chan
   for (const old of [session, other]) expect((await auth(request(app).get('/api/auth/me'),old)).status).toBe(401);
   expect((await request(app).post('/api/auth/login').send({ email:`u${id}@example.test`,senha:'UpdatedPassword123!' })).status).toBe(200);
 });
-it('master requires current password and an individual second factor on every password route', async () => {
+it('master requires current password to change its own password', async () => {
   const session = await login(actors.master);
-  for (const route of ['/api/auth/alterar-senha','/api/saas/alterar-senha']) {
-    expect((await auth(request(app).post(route),session).send({senha_atual:PASSWORD,nova_senha:'UpdatedPassword123!'})).status).toBe(403);
-  }
+  expect((await auth(request(app).post('/api/auth/alterar-senha'),session).send({senha_atual:'wrong',nova_senha:'UpdatedPassword123!'})).status).toBe(403);
   expect((await auth(request(app).put('/api/public/tenant/arena-a/meu-perfil'),session).send({senha_atual:PASSWORD,nova_senha:'UpdatedPassword123!'})).status).toBe(403);
-  expect((await auth(request(app).post('/api/auth/alterar-senha'),session).send({senha_atual:PASSWORD,nova_senha:'UpdatedPassword123!',codigo_2fa:fixture.totp()})).status).toBe(200);
+  expect((await auth(request(app).post('/api/auth/alterar-senha'),session).send({senha_atual:PASSWORD,nova_senha:'UpdatedPassword123!'})).status).toBe(200);
 });
 it('rejects wrong current password and overlong UTF-8 password without changing credentials', async () => {
   const session = await login();
@@ -58,7 +56,7 @@ it('invitations are opaque, single use and cannot authenticate or recover as an 
   expect((await db.getAsync('SELECT activation_pending FROM Usuarios WHERE id=?',[user.id])).activation_pending).toBe(0);
   expect((await request(app).post('/api/auth/login').send({email:user.email,senha:'ActivatedPassword123!'})).status).toBe(200);
 });
-it.each([false,true])('migration removes default MFA (encrypted: %s), revokes sessions once, and requires enrollment', async encrypted => {
+it.each([false,true])('migration removes default MFA (encrypted: %s) and revokes sessions once', async encrypted => {
   vi.stubEnv('SECRETS_ENCRYPTION_KEY','ab'.repeat(32));
   const session = await login(actors.master);
   await db.runAsync('UPDATE Usuarios SET two_factor_secret=? WHERE id=5',[encrypted ? require('../src/utils/security').encrypt('JBSWY3DPEHPK3PXP') : 'JBSWY3DPEHPK3PXP']);
@@ -67,10 +65,35 @@ it.each([false,true])('migration removes default MFA (encrypted: %s), revokes se
   expect((await db.getAsync('SELECT two_factor_secret FROM Usuarios WHERE id=5')).two_factor_secret).toBeNull();
   expect((await auth(request(app).get('/api/auth/me'),session)).status).toBe(401);
   const next = await login(actors.master);
-  expect(next.response.body.requires_mfa_setup).toBe(true);
-  expect((await auth(request(app).get('/api/saas/configuracoes'),next)).status).toBe(403);
+  expect(next.response.body.requires_mfa_setup).toBeUndefined();
+  expect((await auth(request(app).get('/api/saas/configuracoes'),next)).status).toBe(200);
   await require('../src/config/migrations/identityCutover').identityCutover(db);
   expect((await auth(request(app).get('/api/auth/me'),next)).status).toBe(200);
+});
+
+it('master logs in with email and password and cannot use MFA enrollment routes', async () => {
+  const response = await request(app).post('/api/auth/login').send({ email: 'u5@example.test', senha: PASSWORD });
+  expect(response.status).toBe(200);
+  expect(response.body.usuario.perfil).toBe('SuperAdmin');
+  expect(response.body.requires_mfa_setup).toBeUndefined();
+  const session = { cookie: response.headers['set-cookie'].map(item => item.split(';')[0]).join('; '), csrf: response.headers['set-cookie'].find(item => item.startsWith('cm_csrf=')).split(';')[0].split('=')[1] };
+  expect((await auth(request(app).get('/api/saas/configuracoes'), session)).status).toBe(200);
+  expect((await auth(request(app).post('/api/auth/mfa/setup'), session).send({ senha: PASSWORD })).status).toBe(404);
+});
+
+it('master can reset its password with a valid single-use recovery link', async () => {
+  email.mockClear();
+  expect((await request(app).post('/api/auth/forgot-password').send({ email: 'u5@example.test' })).status).toBe(200);
+  await vi.waitFor(() => expect(email.mock.calls.some(call => call[0] === 'u5@example.test')).toBe(true));
+  const message = email.mock.calls.find(call => call[0] === 'u5@example.test')[2];
+  expect(message).toContain('&master=1');
+  const token = /[?&]token=([A-Za-z0-9_-]{43})/.exec(message)[1];
+  const session = await login(actors.master);
+  const reset = await request(app).post('/api/auth/reset-password').send({ token, novaSenha: 'UpdatedPassword123!' });
+  expect(reset.status).toBe(200);
+  expect((await auth(request(app).get('/api/auth/me'), session)).status).toBe(401);
+  expect((await request(app).post('/api/auth/reset-password').send({ token, novaSenha: 'AnotherPassword123!' })).status).toBe(400);
+  expect((await request(app).post('/api/auth/login').send({ email: 'u5@example.test', senha: 'UpdatedPassword123!' })).status).toBe(200);
 });
 it('unknown and known athlete recovery failures have the same response and execute password hashing', async () => {
   const spy = vi.spyOn(bcrypt,'hash');

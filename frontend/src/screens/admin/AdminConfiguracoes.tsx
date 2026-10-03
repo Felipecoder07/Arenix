@@ -51,6 +51,7 @@ interface ArenaData {
   chave_pix?: string;
   titular_pix?: string;
   cidade_pix?: string;
+  pix_checkout_mode?: 'auto' | 'mercado_pago' | 'chave_pix';
   foto_capa?: string;
 }
 
@@ -142,6 +143,7 @@ export function AdminConfiguracoes() {
     chave_pix: '',
     titular_pix: '',
     cidade_pix: '',
+    pix_checkout_mode: 'auto',
     foto_capa: ''
   });
 
@@ -326,6 +328,7 @@ export function AdminConfiguracoes() {
         chave_pix: data.chave_pix || '',
         titular_pix: data.titular_pix || '',
         cidade_pix: data.cidade_pix || '',
+        pix_checkout_mode: data.pix_checkout_mode || 'auto',
         foto_capa: data.foto_capa || ''
       });
     } catch (e) {
@@ -816,85 +819,219 @@ export function AdminConfiguracoes() {
           </div>
 
           {/* USUARIOS */}
-          <div className={`config-section card ${relAtivo === 'usuarios' ? 'active' : ''}`}>
-            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+          <div className={`config-section card ${relAtivo === 'usuarios' ? 'active' : ''}`} style={{ padding: 0, overflow: 'hidden' }}>
+            {/* Header */}
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '0 22px', height: '70px',
+              backgroundColor: '#FBFAF7', borderBottom: '1px solid #F0EBE4',
+              flexWrap: 'wrap', gap: '12px',
+            }}>
               <div>
-                <h2 className="card-title">Usuários do Sistema</h2>
-                {planoInfo && planoInfo.plano.max_usuarios > 0 && (
-                  <span style={{ fontSize: '12px', color: usuarios.length >= planoInfo.plano.max_usuarios ? '#d97706' : 'var(--muted)' }}>
-                    Plano {planoInfo.plano.nome}: {usuarios.length}/{planoInfo.plano.max_usuarios} funcionários
-                    {usuarios.length >= planoInfo.plano.max_usuarios && ' (Limite atingido)'}
-                  </span>
-                )}
+                <div style={{ fontSize: '16px', fontWeight: 800, color: '#071915' }}>Usuários do sistema</div>
+                <div style={{ fontSize: '11px', fontWeight: 600, color: '#6F766F', marginTop: '2px' }}>
+                  {planoInfo ? `Plano ${planoInfo.plano.nome} · ${planoInfo.uso.usuarios_usados} de ${planoInfo.plano.max_usuarios > 0 ? planoInfo.plano.max_usuarios : '∞'} usuários` : 'Carregando...'}
+                </div>
               </div>
-              <button className="btn-primary" onClick={openNovoUsuarioModal}>+ Novo Usuário</button>
-              {currentUser?.perfil === 'Administrador' && <details>
-                <summary>Transferir administração</summary>
-                <p>O integrante escolhido se tornará Administrador. Sua conta passará a Gerente e ambas precisarão entrar novamente.</p>
-                <label>Novo administrador
-                  <select value={newOwner} onChange={e => setNewOwner(e.target.value)}>
-                    <option value="">Selecione um integrante</option>
-                    {usuarios.filter(canManageUser).map(u => <option key={u.id} value={u.id}>{u.nome}</option>)}
-                  </select>
-                </label>
-                <ReauthenticationAction label="Confirmar transferência" onConfirm={async proof => {
-                  if (!newOwner) throw new Error('Selecione o novo administrador.');
-                  await request('/api/usuarios/transferir-administracao', { method: 'POST', body: JSON.stringify({ ...proof, usuario_id: Number(newOwner) }) });
-                  window.location.assign('/login');
-                }} />
-              </details>}
-
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                {currentUser?.perfil === 'Administrador' && (
+                  <details style={{ position: 'relative' }}>
+                    <summary style={{
+                      height: '36px', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '7px',
+                      border: '1px solid #E6DED2', borderRadius: '9px', cursor: 'pointer',
+                      fontSize: '11px', fontWeight: 700, color: '#4F5550', listStyle: 'none',
+                    }}>
+                      ⇄ Transferir administração
+                    </summary>
+                    <div style={{ position: 'absolute', right: 0, top: '44px', zIndex: 10, background: '#fff', border: '1px solid #E6DED2', borderRadius: '12px', padding: '16px', width: '280px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
+                      <p style={{ fontSize: '12px', color: '#6F766F', marginBottom: '12px' }}>O integrante escolhido se tornará Administrador. Sua conta passará a Gerente.</p>
+                      <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', fontWeight: 700, color: '#071915' }}>
+                        Novo administrador
+                        <select value={newOwner} onChange={e => setNewOwner(e.target.value)} style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #DED6CA', fontSize: '12px' }}>
+                          <option value="">Selecione um integrante</option>
+                          {usuarios.filter(canManageUser).map(u => <option key={u.id} value={u.id}>{u.nome}</option>)}
+                        </select>
+                      </label>
+                      <div style={{ marginTop: '12px' }}>
+                        <ReauthenticationAction label="Confirmar transferência" onConfirm={async proof => {
+                          if (!newOwner) throw new Error('Selecione o novo administrador.');
+                          await request('/api/usuarios/transferir-administracao', { method: 'POST', body: JSON.stringify({ ...proof, usuario_id: Number(newOwner) }) });
+                          window.location.assign('/login');
+                        }} />
+                      </div>
+                    </div>
+                  </details>
+                )}
+                <button
+                  onClick={openNovoUsuarioModal}
+                  style={{
+                    height: '38px', padding: '0 14px', display: 'flex', alignItems: 'center', gap: '7px',
+                    backgroundColor: '#071915', borderRadius: '10px', border: 'none', cursor: 'pointer',
+                    fontSize: '12px', fontWeight: 800, color: '#FFFFFF',
+                  }}
+                >
+                  + Novo usuário
+                </button>
+              </div>
             </div>
-            <div className="table-wrap">
-              <table aria-label="Usuários do sistema">
-                <thead>
-                  <tr>
-                    <th>Nome</th>
-                    <th>E-mail</th>
-                    <th>Perfil</th>
-                    <th>Último acesso</th>
-                    <th>Status</th>
-                    <th>Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loadingUsuarios ? (
-                    <tr>
-                      <td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: '40px' }}>
-                        Carregando usuários...
-                      </td>
-                    </tr>
-                  ) : usuarios.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: '40px' }}>
-                        Nenhum usuário cadastrado.
-                      </td>
-                    </tr>
-                  ) : (
-                    usuarios.map(u => {
-                      let badgeClass = 'badge--pending';
-                      if (u.perfil === 'Administrador') badgeClass = 'badge--paid';
-                      if (u.perfil === 'Gerente') badgeClass = 'badge--partial';
 
-                      const dataCriacao = new Date(u.criado_em).toLocaleDateString('pt-BR');
-                      return (
-                        <tr key={u.id}>
-                          <td><strong>{u.nome}</strong></td>
-                          <td>{u.email}</td>
-                          <td><span className={`badge ${badgeClass}`}>{u.perfil}</span></td>
-                          <td>{dataCriacao}</td>
-                          <td>Ativo</td>
-                          <td>
-                            <button className="btn-ghost btn-sm" disabled={!canManageUser(u)} onClick={() => openEditarUsuarioModal(u)}>
-                              Editar
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })
+            {/* Column headers */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '150px 1fr 130px 130px 80px 80px',
+              gap: '12px', padding: '0 22px', height: '40px', alignItems: 'center',
+              borderBottom: '1px solid #F0EBE4',
+            }}>
+              {['NOME', 'E-MAIL', 'PERFIL', 'ÚLTIMO ACESSO', 'STATUS', 'AÇÕES'].map(col => (
+                <span key={col} style={{ fontSize: '10px', fontWeight: 800, color: '#6F766F', letterSpacing: '0.5px' }}>{col}</span>
+              ))}
+            </div>
+
+            {/* Rows */}
+            {loadingUsuarios ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: '#6F766F', fontSize: '13px' }}>Carregando usuários...</div>
+            ) : usuarios.length === 0 ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: '#6F766F', fontSize: '13px' }}>Nenhum usuário cadastrado.</div>
+            ) : (
+              usuarios.map(u => {
+                const dataCriacao = new Date(u.criado_em).toLocaleDateString('pt-BR');
+                const perfilStyle = u.perfil === 'Administrador'
+                  ? { bg: '#EAF8EF', text: '#1F7A45' }
+                  : u.perfil === 'Gerente'
+                  ? { bg: '#E9F1FF', text: '#2457C5' }
+                  : { bg: '#F1EDE6', text: '#7A7066' };
+                return (
+                  <div key={u.id} style={{
+                    display: 'grid', gridTemplateColumns: '150px 1fr 130px 130px 80px 80px',
+                    gap: '12px', padding: '0 22px', height: '66px', alignItems: 'center',
+                    borderBottom: '1px solid #F4EFE8',
+                  }}>
+                    <span style={{ fontSize: '12px', fontWeight: 700, color: '#071915', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.nome}</span>
+                    <span style={{ fontSize: '12px', fontWeight: 500, color: '#4F5550', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</span>
+                    <div>
+                      <span style={{ display: 'inline-block', padding: '5px 9px', borderRadius: '999px', backgroundColor: perfilStyle.bg, fontSize: '10px', fontWeight: 700, color: perfilStyle.text, whiteSpace: 'nowrap' }}>
+                        {u.perfil}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '11px', fontWeight: 500, color: '#4F5550' }}>{dataCriacao}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#2BAE66', flexShrink: 0 }} />
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: '#31704A', whiteSpace: 'nowrap' }}>Ativo</span>
+                    </div>
+                    <button
+                      disabled={!canManageUser(u)}
+                      onClick={() => openEditarUsuarioModal(u)}
+                      style={{
+                        width: '70px', height: '30px', border: '1px solid #D8D0C4', borderRadius: '8px',
+                        backgroundColor: 'transparent', fontSize: '11px', fontWeight: 700,
+                        color: canManageUser(u) ? '#071915' : '#A7B6AE',
+                        cursor: canManageUser(u) ? 'pointer' : 'not-allowed',
+                      }}
+                    >
+                      Editar
+                    </button>
+                  </div>
+                );
+              })
+            )}
+
+            {/* Capacity Banner */}
+            {planoInfo && (
+              <div style={{
+                display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                padding: '0 22px', height: '116px', backgroundColor: '#071915', gap: '20px',
+              }}>
+                <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '14px', flex: 1 }}>
+                  <div style={{ width: '46px', height: '46px', flexShrink: 0, backgroundColor: '#C9FF3B', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <svg viewBox="0 0 14 14" width={21} height={21} xmlns="http://www.w3.org/2000/svg"><path d="M4.84326 1.20313q-0.81006 0.11279-1.42871 0.61865-0.61523 0.50244-0.89551 1.24414-0.18115 0.48877-0.18115 1.02197 0 0.28027 0.04102 0.50586 0.04443 0.22217 0.14013 0.48877 0.15381 0.46143 0.46826 0.84766 0.31787 0.38281 0.7212 0.63574 0.36572 0.22559 0.73486 0.32471 0.37256 0.0957 0.80664 0.0957 0.22559 0 0.3623-0.01367 0.14014-0.01367 0.35206-0.05811 0.60156-0.15381 1.104-0.55713 0.50586-0.40674 0.7998-0.98096 0.19482-0.39307 0.26661-0.88183 0.02734-0.14014 0.02734-0.40674 0-0.2666-0.02734-0.40674-0.09912-0.65625-0.46485-1.20312-0.3623-0.54688-0.93652-0.89551-0.43408-0.2666-0.98096-0.36572-0.15381-0.02734-0.45459-0.03418-0.30078-0.00684-0.45459 0.02051z m4.34082 0.0581q-0.14014 0.04102-0.25293 0.14014-0.11279 0.0957-0.15381 0.2666-0.04102 0.16748 0 0.32129 0.04102 0.15381 0.15381 0.25293 0.11279 0.0957 0.33838 0.18115 0.24951 0.08203 0.40332 0.17432 0.15381 0.08887 0.30762 0.25976 0.33838 0.33496 0.45459 0.76904 0.11963 0.43408 0.01367 0.86817-0.10254 0.43408-0.41699 0.76904-0.31445 0.33496-0.7793 0.48877-0.19482 0.07178-0.28711 0.14356-0.08887 0.06836-0.16064 0.20849-0.05469 0.09912-0.05469 0.23926 0 0.13672 0.05469 0.23584 0.08545 0.19482 0.28027 0.29395 0.12646 0.05811 0.25293 0.05126 0.12646-0.01025 0.33496-0.07861 0.35205-0.11279 0.6084-0.27344 0.25977-0.16064 0.5127-0.42724 0.78271-0.78271 0.85449-1.84912 0.09912-1.18945-0.70069-2.12598-0.48877-0.58789-1.2749-0.85449-0.33496-0.11279-0.48877-0.05469z m-3.73926 1.09033q0.40674 0.02734 0.78272 0.28711 0.37939 0.25977 0.58105 0.65967 0.20508 0.39648 0.18457 0.88184-0.02051 0.48193-0.28711 0.86132-0.15381 0.23584-0.37939 0.41358-0.22217 0.17432-0.46143 0.27002-0.19482 0.05811-0.2871 0.07861-0.08887 0.02051-0.32813 0.02051-0.23926 0-0.33154-0.02051-0.08887-0.02051-0.28369-0.07861-0.39307-0.14014-0.68018-0.46826-0.28711-0.32813-0.3999-0.73487-0.10938-0.46143 0.01367-0.90918 0.12646-0.44775 0.45459-0.76904 0.33154-0.32471 0.79297-0.45117 0.08545-0.02734 0.24609-0.04785 0.16064-0.02051 0.21533-0.00684l0.16748 0.01367z" fill="#071915" /></svg>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                    <span style={{ fontSize: '15px', fontWeight: 800, color: '#FFFFFF', whiteSpace: 'nowrap' }}>Sua equipe ainda pode crescer</span>
+                    <span style={{ fontSize: '11px', fontWeight: 500, color: '#A7B6AE', whiteSpace: 'nowrap' }}>
+                      Você utiliza {planoInfo.uso.usuarios_usados} das {planoInfo.plano.max_usuarios > 0 ? planoInfo.plano.max_usuarios : '∞'} vagas disponíveis no Plano {planoInfo.plano.nome}.
+                    </span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '16px', flexShrink: 0 }}>
+                  {planoInfo.plano.max_usuarios > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', alignItems: 'flex-end' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: '#FFFFFF', whiteSpace: 'nowrap' }}>
+                        {planoInfo.uso.usuarios_usados} de {planoInfo.plano.max_usuarios} vagas
+                      </span>
+                      <div style={{ width: '170px', height: '7px', backgroundColor: '#284138', borderRadius: '4px', position: 'relative' }}>
+                        <div style={{
+                          position: 'absolute', left: 0, top: 0, height: '7px',
+                          width: `${Math.min((planoInfo.uso.usuarios_usados / planoInfo.plano.max_usuarios) * 100, 100)}%`,
+                          backgroundColor: '#C9FF3B', borderRadius: '4px',
+                        }} />
+                      </div>
+                    </div>
                   )}
-                </tbody>
-              </table>
+                  <Link to="/admin/assinatura" style={{
+                    height: '38px', padding: '0 14px', display: 'flex', alignItems: 'center',
+                    backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid #41564A',
+                    borderRadius: '10px', fontSize: '11px', fontWeight: 700, color: '#FFFFFF',
+                    textDecoration: 'none', whiteSpace: 'nowrap',
+                  }}>
+                    Ver planos
+                  </Link>
+                </div>
+              </div>
+            )}
+
+            {/* Bottom cards row: Perfis + Atividade recente */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', padding: '14px 0 0 0' }}>
+              {/* Perfis de acesso */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '18px', backgroundColor: '#FFFFFF', border: '1px solid #E6DED2', borderRadius: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ fontSize: '14px', fontWeight: 800, color: '#071915' }}>Perfis de acesso</div>
+                    <div style={{ fontSize: '10px', fontWeight: 500, color: '#6F766F', marginTop: '3px' }}>Distribuição atual da equipe</div>
+                  </div>
+                  <svg viewBox="0 0 14 14" width={18} height={18} xmlns="http://www.w3.org/2000/svg"><path d="M6.84619 0.60156q-0.34863 0.02734-0.68701 0.30762-0.51611 0.42041-1.00147 0.70068-0.48193 0.28027-1.01513 0.4751-0.30762 0.11279-0.58789 0.1709-0.28027 0.05469-0.66992 0.08203-0.23926 0.01367-0.36573 0.07178-0.19482 0.06836-0.37939 0.22217-0.18115 0.15381-0.26319 0.34863l-0.01367 0.03076q-0.07178 0.12646-0.08545 0.22217-0.01367 0.15381-0.02734 0.60156l0 1.78076q0 2.25244 0.01367 2.46094 0.14014 1.6543 1.10742 2.88477 0.14014 0.16748 0.43409 0.46142 0.29395 0.29394 0.48877 0.44775 0.92285 0.7417 2.2832 1.27491 0.46143 0.18115 0.65625 0.23926 0.23926 0.05469 0.43408 0.01367 0.16748-0.02734 0.5332-0.15381 1.35693-0.51953 2.27979-1.20313 0.37939-0.2666 0.71435-0.60498 1.37402-1.3706 1.54151-3.37353 0.01367-0.23584 0.01367-2.46094 0-2.22852-0.02734-2.35498-0.07178-0.32129-0.31787-0.56396-0.24268-0.24609-0.5503-0.31788-0.09912-0.02734-0.37939-0.04101-0.48877-0.02734-0.96387-0.18115-0.81348-0.2666-1.55518-0.77246-0.2666-0.18115-0.64257-0.48877-0.42041-0.33496-0.96729-0.28028z" fill="#7A9128"/></svg>
+                </div>
+                {[
+                  { nome: 'Administrador', cor: '#1F7A45', bg: '#EAF8EF', textColor: '#1F7A45' },
+                  { nome: 'Gerente', cor: '#2457C5', bg: '#E9F1FF', textColor: '#2457C5' },
+                  { nome: 'Recepcionista', cor: '#7A7066', bg: '#F1EDE6', textColor: '#7A7066' },
+                ].map(p => {
+                  const count = usuarios.filter(u => u.perfil === p.nome).length;
+                  return (
+                    <div key={p.nome} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 10px', height: '36px', backgroundColor: '#FAF8F4', borderRadius: '9px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: p.cor, flexShrink: 0 }} />
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: '#394236', whiteSpace: 'nowrap' }}>{p.nome}</span>
+                      </div>
+                      <span style={{ fontSize: '9px', fontWeight: 700, color: p.textColor, backgroundColor: p.bg, padding: '4px 8px', borderRadius: '999px', whiteSpace: 'nowrap' }}>
+                        {count === 0 ? 'Nenhum' : `${count} usuário${count > 1 ? 's' : ''}`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Atividade recente */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '18px', backgroundColor: '#FFFFFF', border: '1px solid #E6DED2', borderRadius: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ fontSize: '14px', fontWeight: 800, color: '#071915' }}>Atividade recente</div>
+                    <div style={{ fontSize: '10px', fontWeight: 500, color: '#6F766F', marginTop: '3px' }}>Últimas alterações na equipe</div>
+                  </div>
+                  <svg viewBox="0 0 14 14" width={18} height={18} xmlns="http://www.w3.org/2000/svg"><path d="M1.59619 1.18945q-0.25293 0.08545-0.37939 0.30762l-0.04102 0.08545 0 3.26074 0.04102 0.07178q0.09912 0.19482 0.29394 0.28027l0.08545 0.04102 2.81299 0.01367q0.32129-0.01367 0.43408-0.02734 0.07178-0.01367 0.15381-0.07178l0.01367-0.01367q0.1709-0.12646 0.21875-0.31446 0.04785-0.18799-0.03076-0.37597-0.0752-0.19141-0.25635-0.28711-0.08545-0.05811-0.2666-0.07178-0.18115-0.01367-0.76904-0.01367l-0.7417 0 0.23584-0.22559q0.7417-0.72803 1.58252-1.09033 0.96729-0.42041 2.03027-0.42041 0.93994 0 1.76367 0.34863 1.17578 0.49219 1.93799 1.49366 0.76563 1.00146 0.91944 2.2456 0.02734 0.22559 0.02734 0.56738 0 0.3418-0.02734 0.56739-0.15381 1.2749-0.93995 2.29004-0.78271 1.01172-1.97216 1.49023-0.81348 0.32129-1.72266 0.32129-0.28027 0-0.46143-0.01367-0.18115-0.01367-0.46142-0.07178-0.88184-0.18115-1.64746-0.68359-0.76221-0.50586-1.28174-1.2544-0.51611-0.74854-0.71094-1.64404-0.08545-0.44775-0.09228-0.77588-0.00684-0.33154-0.0752-0.47168-0.08545-0.16748-0.2666-0.2666-0.05811-0.02734-0.09912-0.04102-0.04102-0.01367-0.15381-0.01367-0.11279 0-0.15381 0.01367-0.04102 0.01367-0.09912 0.04102-0.18115 0.09912-0.28027 0.2666-0.06836 0.15381-0.03418 0.65283 0.03418 0.49561 0.14697 0.9878 0.29395 1.18945 1.03564 2.15673 0.7417 0.96387 1.80469 1.5586 1.06641 0.59473 2.29688 0.70752 0.18457 0.01367 0.5332 0.01367 0.34863 0 0.5332-0.01367 1.38428-0.12646 2.54639-0.86817 1.14844-0.71436 1.86279-1.86279 0.7417-1.16211 0.86817-2.54639 0.01367-0.18457 0.01367-0.5332 0-0.34863-0.01367-0.5332-0.14014-1.52441-1.01514-2.78223-0.875-1.26123-2.2627-1.93457-0.58789-0.28027-1.14843-0.42041-0.55713-0.14014-1.2168-0.15381-1.09033-0.02734-2.1123 0.30762-0.71436 0.23926-1.30225 0.60498-0.58789 0.3623-1.14844 0.90918l-0.28027 0.26318 0-1.67822-0.04102-0.08545q-0.09912-0.18115-0.28027-0.2666-0.08545-0.04102-0.22559-0.04785-0.14014-0.00684-0.18115 0.00683z" fill="#7A9128"/></svg>
+                </div>
+                {usuarios.slice(0, 3).map((u, i) => (
+                  <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', height: '40px' }}>
+                    <div style={{ width: '30px', height: '30px', flexShrink: 0, backgroundColor: '#F1F6E8', borderRadius: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg viewBox="0 0 14 14" width={14} height={14} xmlns="http://www.w3.org/2000/svg"><path d="M8.59619 1.18945q-0.11279 0.02734-0.21875 0.11963-0.10254 0.09229-0.15381 0.18457-0.04785 0.08887-0.04785 0.25635 0 0.16748 0.04102 0.24609 0.04443 0.0752 0.12646 0.16065 0.08545 0.08203 0.15381 0.12646l0.08545 0.04102 2.63183 0.01367 0.09913 0.04102q0.2085 0.09912 0.30761 0.30761l0.04102 0.09912 0 8.42871-0.04102 0.09913q-0.08545 0.16748-0.22558 0.26318l-0.01367 0q-0.06836 0.05811-0.14698 0.07178-0.0752 0.01367-0.34179 0.01367l-2.31055 0.01367-0.08545 0.05469q-0.18115 0.09912-0.28027 0.2666-0.04102 0.08545-0.04102 0.25293 0 0.16748 0.04102 0.24609 0.04443 0.0752 0.12646 0.16065 0.08545 0.08203 0.15381 0.12646l0.08545 0.04102 2.60449-0.01367q0.23584 0 0.30762-0.02735 0.48877-0.14014 0.81689-0.46826 0.33154-0.33154 0.47168-0.82031 0.02734-0.08545 0.02735-0.71436l0.01367-3.78027-0.01367-3.78027q0-0.62891-0.02735-0.71436-0.12646-0.48877-0.458-0.81689-0.32813-0.33154-0.80323-0.47168l-0.14013-0.04102-1.37061 0q-1.37402 0-1.41504 0.01367z" fill="#637A20"/></svg>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '10px', color: '#394236' }}>{u.nome} entrou no sistema</div>
+                      <div style={{ fontSize: '9px', fontWeight: 500, color: '#8A8F88', marginTop: '2px' }}>{new Date(u.criado_em).toLocaleDateString('pt-BR')}</div>
+                    </div>
+                  </div>
+                ))}
+                {usuarios.length === 0 && <div style={{ fontSize: '12px', color: '#6F766F' }}>Nenhuma atividade recente.</div>}
+              </div>
             </div>
           </div>
 
@@ -1138,6 +1275,22 @@ export function AdminConfiguracoes() {
             <div style={{ height: '1px', background: 'var(--border-passive)', margin: 'var(--s-4) 0' }}></div>
 
             <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: 'var(--s-3)' }}>Chave Pix Direta da Arena (Sem Intermediários)</h3>
+
+            <div className="form-group">
+              <label htmlFor="arena-pix-checkout-mode">Pix nas reservas online</label>
+              <select
+                id="arena-pix-checkout-mode"
+                value={arena.pix_checkout_mode || 'auto'}
+                onChange={(e) => setArena({ ...arena, pix_checkout_mode: e.target.value as ArenaData['pix_checkout_mode'] })}
+              >
+                <option value="auto">Automático: Mercado Pago se conectado; senão chave Pix</option>
+                <option value="mercado_pago">Mercado Pago: confirmação automática</option>
+                <option value="chave_pix">Chave Pix: confirmação manual pela arena</option>
+              </select>
+              <span style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginTop: '4px' }}>
+                Com chave Pix, a reserva fica pendente até a arena conferir o recebimento e registrar o pagamento.
+              </span>
+            </div>
 
             <div className="form-group">
               <label htmlFor="arena-chave-pix">Chave Pix da Arena (E-mail / CNPJ / Telefone / EVP)</label>

@@ -6,6 +6,7 @@ const {
   getQuadrasBySlug,
   getDisponibilidadeBySlug,
   agendarReservaPublica,
+  pagarReservaCartaoPublica,
   getStatusReservaPublica,
   cancelarPendentePublico,
   getMinhasReservasAtleta,
@@ -46,6 +47,12 @@ router.post('/tenant/:slug/excluir-conta', publicAuthLimiter, ...athlete, exclui
 
 // Rota de criação de reserva com limite de agendamento por IP
 router.post('/tenant/:slug/agendar', publicBookingLimiter, agendarReservaPublica);
+router.post('/tenant/:slug/reserva-cartao', publicBookingLimiter, requireReservationAccess, (req, res, next) => {
+  if (process.env.ENABLE_PUBLIC_BOOKING_CARD !== 'true') {
+    return res.status(403).json({ error: 'Pagamento com cartão indisponível para reservas. Escolha Pix.' });
+  }
+  return pagarReservaCartaoPublica(req, res, next);
+});
 
 // Rota de cancelamento de reservas expiradas/pendentes não pagas
 router.post('/tenant/:slug/cancelar-pendente', publicApiLimiter, requireReservationAccess, cancelarPendentePublico);

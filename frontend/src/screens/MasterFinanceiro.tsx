@@ -1,10 +1,11 @@
 import type { SaaSPlan, SaaSInvoice } from '../types/api';
+import { MasterPageHeader as PageHeader } from '../components/MasterPageHeader';
 import { apiFetch as fetch } from '../utils/apiFetch';
 import { useState, useEffect } from 'react';
-import { Pencil, Wallet, Clock, CheckCircle } from 'lucide-react';
-import { Card, Badge, Button, PageHeader, Modal, Field, Input, ConfirmModal } from '../components/ui';
-import { MetricCard } from '../components/MetricCard';
-import { LineChart } from '../components/LineChart';
+import { Pencil, Wallet, Clock, CheckCircle, Download, Plus, TrendingUp } from 'lucide-react';
+import { Card, Badge, Button, Modal, Field, Input, ConfirmModal } from '../components/ui';
+import { exportMasterCsv } from '../utils/masterExport';
+import { MasterRevenueChart } from '../components/MasterRevenueChart';
 import { formatBRL, formatDate } from '../data/mock';
 
 const BLOCK_AFTER_DAYS = 7;
@@ -136,71 +137,51 @@ export function MasterFinanceiro() {
     return Math.floor(diff / (1000 * 3600 * 24));
   };
 
-  const formatMonthLabel = (monthStr: string) => {
-    if (!monthStr) return '';
-    const parts = monthStr.split('-');
-    if (parts.length !== 2) return monthStr;
-    const year = parts[0].substring(2);
-    const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    const monthIndex = Number.parseInt(parts[1], 10) - 1;
-    return `${months[monthIndex]}/${year}`;
-  };
-
   return (
-    <div className="space-y-6">
+    <div className="master-reference-page master-finance-page">
       <PageHeader
         title="Financeiro & assinaturas"
-        description="Gestão de planos, faturamento e inadimplência da plataforma."
+        description="Planos, faturamento e inadimplência de toda a plataforma" context={false}
+        actions={<><Button variant="ghost" onClick={() => exportMasterCsv('faturas.csv', [['Arena', 'Fatura', 'Vencimento', 'Valor', 'Status'], ...faturasFiltradas.map(f => [f.arena_nome, f.id, f.data_vencimento, f.valor, f.status])])}><Download size={13} /> Exportar</Button><Button variant="primary" onClick={() => document.getElementById('master-invoices')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}><Plus size={14} /> Registrar pagamento</Button></>}
       />
 
       {/* MRR + history */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <MetricCard 
-          label="MRR total da plataforma" 
-          value={formatBRL(metrics.mrr)} 
-          accent="success" 
-          sub="Receita recorrente mensal" 
-          trend={metrics.mrrVariacao > 0 ? { 
-            value: `+${metrics.mrrVariacao}%`, 
-            direction: 'up' 
-          } : undefined}
-        />
-        <Card className="lg:col-span-2 p-5">
+      <div className="master-finance-summary">
+        <section className="master-finance-mrr"><header><span>MRR DA PLATAFORMA</span><TrendingUp size={18} /></header><strong>{formatBRL(metrics.mrr)}</strong><p><span>{metrics.mrrVariacao >= 0 ? '↗' : '↘'} {metrics.mrrVariacao.toLocaleString('pt-BR')}%</span> vs. mês anterior</p><footer><span>Receita recorrente mensal</span><span>ARR · {formatBRL(metrics.mrr * 12)}</span></footer></section>
+        <Card className="master-finance-history master-soft">
           <div className="flex items-center justify-between mb-3">
             <div>
               <h3 className="text-sm font-semibold">Histórico de faturamento</h3>
               <p className="text-xs text-muted">Últimos 6 meses</p>
             </div>
+            {metrics.faturamentoHistorico.length >= 2 && (() => {
+              const first = metrics.faturamentoHistorico[0].total;
+              const last = metrics.faturamentoHistorico[metrics.faturamentoHistorico.length - 1].total;
+              const pct = first > 0 ? ((last - first) / first) * 100 : 0;
+              return (
+                <div className="text-xs font-bold" style={{ color: pct >= 0 ? '#16845B' : '#B93A32' }}>
+                  {pct >= 0 ? '↗' : '↘'} {Math.abs(pct).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% no período
+                </div>
+              );
+            })()}
           </div>
-          <LineChart 
-            data={metrics.faturamentoHistorico.map((r) => ({ 
-              label: formatMonthLabel(r.month), 
-              value: r.total 
-            }))} 
-            formatValue={(v) => formatBRL(v)} 
-          />
+          <MasterRevenueChart data={metrics.faturamentoHistorico} />
         </Card>
       </div>
 
       {/* Auto-block notice */}
-      <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-cream-surface border border-border-passive text-sm">
+      <div className="master-notice flex items-center gap-2.5 px-4 py-3 rounded-xl bg-cream-surface border border-border-passive text-sm">
         <Clock size={15} className="text-muted" />
         <span className="text-charcoal/80">Arenas com faturas vencidas há <strong>{BLOCK_AFTER_DAYS} dias ou mais</strong> são bloqueadas automaticamente pela plataforma.</span>
       </div>
 
       {/* Plans */}
-      <div>
-        <h3 className="text-sm font-semibold text-charcoal mb-3">Planos</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="master-plans-section">
+        <header><h3>Planos da plataforma</h3><span>Edite preços e limites por plano</span></header>
+        <div className="master-plans grid grid-cols-1 md:grid-cols-3 gap-4">
           {planos.map((p) => {
-            const description = p.nome === 'Basic' 
-              ? 'Recomendado para pequenas arenas iniciando no digital.' 
-              : p.nome === 'Pro' 
-                ? 'Ideal para arenas em expansão com múltiplos funcionários.' 
-                : 'Solução sob medida para redes e complexos esportivos.';
-            
             return (
-              <Card key={p.id} className="p-5">
+              <Card key={p.id} className={`p-5 ${p.nome === 'Pro' ? 'master-dark' : ''}`}>
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="text-base font-semibold text-charcoal">{p.nome}</div>
@@ -231,17 +212,7 @@ export function MasterFinanceiro() {
                     max_usuarios: p.max_usuarios
                   })}><Pencil size={13} /> Editar</Button>
                 </div>
-                <p className="text-xs text-muted mt-2">{description}</p>
-                <div className="mt-4 space-y-1.5 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted">Limite de quadras</span>
-                    <span className="font-medium tabular">{p.max_quadras}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted">Limite de usuários</span>
-                    <span className="font-medium tabular">{p.max_usuarios}</span>
-                  </div>
-                </div>
+                <div className="master-plan-limits"><span>{p.max_quadras} quadras</span><span>{p.max_usuarios} usuários</span></div>
               </Card>
             );
           })}
@@ -249,14 +220,14 @@ export function MasterFinanceiro() {
       </div>
 
       {/* Payment status table */}
-      <Card className="overflow-hidden">
+      <div id="master-invoices"><Card className="master-invoices overflow-hidden">
         <div className="px-5 py-4 border-b border-border-passive flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Wallet size={15} className="text-muted" />
-            <h3 className="text-sm font-semibold">Histórico de Faturas Globais</h3>
+            <Wallet size={16} className="text-muted" />
+            <h3 className="text-base font-semibold">Faturas globais</h3>
           </div>
           {/* Filtros de Faturas */}
-          <div className="flex items-center gap-1.5 overflow-x-auto text-xs">
+          <div className="flex items-center gap-1.5 overflow-x-auto text-sm">
             <button
               onClick={() => setFiltroStatus('todas')}
               className={`px-3 py-1.5 rounded-lg transition-colors font-medium ${filtroStatus === 'todas' ? 'bg-charcoal text-white' : 'bg-cream/60 text-muted hover:bg-cream'}`}
@@ -279,13 +250,13 @@ export function MasterFinanceiro() {
               onClick={() => setFiltroStatus('Pix Online')}
               className={`px-3 py-1.5 rounded-lg transition-colors font-medium ${filtroStatus === 'Pix Online' ? 'bg-success text-white' : 'bg-success-soft text-success-dark hover:bg-success-soft/80'}`}
             >
-              ⚡ Pix Online ({faturas.filter(f => f.metodo_pagamento === 'Pix Online').length})
+              Pix Online ({faturas.filter(f => f.metodo_pagamento === 'Pix Online').length})
             </button>
             <button
               onClick={() => setFiltroStatus('Manual')}
               className={`px-3 py-1.5 rounded-lg transition-colors font-medium ${filtroStatus === 'Manual' ? 'bg-charcoal-04 text-charcoal' : 'bg-cream/60 text-muted hover:bg-cream'}`}
             >
-              👤 Manual ({faturas.filter(f => f.metodo_pagamento === 'Manual').length})
+              Manual ({faturas.filter(f => f.metodo_pagamento === 'Manual').length})
             </button>
           </div>
         </div>
@@ -321,11 +292,11 @@ export function MasterFinanceiro() {
                       <td className="px-5 py-3 tabular font-semibold">{formatBRL(f.valor)}</td>
                       <td className="px-5 py-3">
                         {f.metodo_pagamento === 'Pix Online' ? (
-                          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-success-soft text-success-dark border border-success/20">
+                          <span className="inline-flex items-center gap-1 text-sm font-semibold px-2.5 py-0.5 rounded-full bg-success-soft text-success-dark border border-success/20">
                             ⚡ Pix Online
                           </span>
                         ) : f.metodo_pagamento === 'Manual' ? (
-                          <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-0.5 rounded-full bg-charcoal-04 text-charcoal border border-border-passive">
+                          <span className="inline-flex items-center gap-1 text-sm font-medium px-2.5 py-0.5 rounded-full bg-charcoal-04 text-charcoal border border-border-passive">
                             👤 Manual
                           </span>
                         ) : (
@@ -337,7 +308,7 @@ export function MasterFinanceiro() {
                         {f.status !== 'Paga' ? (
                           <Button size="sm" variant="ghost" onClick={() => setPayTarget(f)}>Registrar pagamento</Button>
                         ) : (
-                          <span className="text-success text-xs font-medium flex items-center justify-end gap-1"><CheckCircle size={13}/> Pago em {formatDate(f.data_pagamento)}</span>
+                          <span className="text-success text-sm font-medium flex items-center justify-end gap-1"><CheckCircle size={13}/> Pago em {formatDate(f.data_pagamento)}</span>
                         )}
                       </td>
                     </tr>
@@ -351,6 +322,8 @@ export function MasterFinanceiro() {
           )}
         </div>
       </Card>
+
+      </div>
 
       {/* Edit plan modal */}
       <Modal open={!!editPlan} onClose={() => setEditPlan(null)} title={`Editar plano ${editPlan?.nome || ''}`}

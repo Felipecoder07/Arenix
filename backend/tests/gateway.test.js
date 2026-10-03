@@ -228,7 +228,7 @@ it('asks the provider to retry while a legacy account identity cannot be recover
 });
 it('card approval uses the same ledger as repeated notification',async()=>{
   const owner=await login(actors.owner);
-  respond({id:991,status:'approved'});
+  respond(approvedPayment());
   expect((await charge(owner,{metodo:'Cartão',card_data:{token:'fixture-card',payment_method_id:'visa'}})).status).toBe(200);
   respond(approvedPayment());
   expect((await signedWebhook(app,991)).status).toBe(200);
@@ -245,7 +245,7 @@ it('terminal charge uses the configured device and stays pending',async()=>{
 it.each([true,false])('refund is booked only after provider confirmation (%s)',async approved=>{
   await transaction();
   await require('../src/services/paymentLedgerService').settle('991',{valor_pago:10000});
-  respond(approved?{id:1,status:'approved',amount:100}:{message:'Fixture declined'},approved);
+  respond(approved?{id:1,payment_id:991,status:'approved',amount:100}:{message:'Fixture declined'},approved);
   const result=await require('../src/services/gatewayService').estornarPagamentoPix(1,1);
   expect(result.success).toBe(approved);
   expect(provider).toHaveBeenCalledTimes(1);

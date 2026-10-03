@@ -116,7 +116,23 @@ async function athleteCheckout() {
   return result;
 }
 
-it('atleta entra, escolhe horario, gera Pix estatico e cancela reserva sem cobranca em processamento', async () => {
+async function enablePendingPixGateway() {
+  await db.runAsync("UPDATE Arenas SET gateway_access_token='FIXTURE-ARENA-TOKEN', gateway_user_id='123' WHERE id=1");
+  vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+    if (url === 'https://api.mercadopago.com/v1/payments' && options.method === 'POST') {
+      return { ok: true, json: async () => ({ id: 991, point_of_interaction: { transaction_data: {
+        qr_code: 'fixture-pix', qr_code_base64: ''
+      } } }) };
+    }
+    if (url === 'https://api.mercadopago.com/v1/payments/991') {
+      return { ok: true, json: async () => ({ id: 991, status: 'pending', transaction_amount: 100, currency_id: 'BRL', collector_id: '123' }) };
+    }
+    throw new Error('Unexpected external request: ' + url);
+  }));
+}
+
+it('atleta entra, gera Pix pelo provedor e solicita cancelamento com cobranca pendente', async () => {
+  await enablePendingPixGateway();
   const result = await athleteCheckout();
   const denied = await browser.newContext();
   try {
@@ -127,11 +143,12 @@ it('atleta entra, escolhe horario, gera Pix estatico e cancela reserva sem cobra
   await page.getByRole('button', { name: 'Fechar', exact: true }).click();
   expect((await cancellation).ok()).toBe(true);
   const row = await db.getAsync('SELECT status FROM Reservas WHERE id=?', [result.reserva_id]);
-  expect(row.status).toBe('Cancelada');
+  expect(row.status).toBe('Cancelamento pendente');
   expect(await db.getAsync('SELECT reserva_id FROM BookingCancellations WHERE reserva_id=?', [result.reserva_id])).toBeTruthy();
 }, 60000);
 
 it('visitante conclui checkout sem conta e recebe acesso restrito somente ao grupo criado', async () => {
+  await enablePendingPixGateway();
   const origin = sites[1].origin;
   await page.goto(origin + '/arena/arena-a');
   const dates = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Escolha a data' }) });
@@ -184,7 +201,7 @@ it('visitante conclui checkout sem conta e recebe acesso restrito somente ao gru
   const cancellation = page.waitForResponse(cancelResponse => cancelResponse.url().endsWith('/cancelar-pendente'));
   await page.getByRole('button', { name: 'Fechar', exact: true }).click();
   expect((await cancellation).ok()).toBe(true);
-  expect((await db.getAsync('SELECT status FROM Reservas WHERE id=?', [booking.id])).status).toBe('Cancelada');
+  expect((await db.getAsync('SELECT status FROM Reservas WHERE id=?', [booking.id])).status).toBe('Cancelamento pendente');
 }, 60000);
 
 it.each(['aprovacao', 'desistencia'])('checkout com provedor simulado: %s', async scenario => {

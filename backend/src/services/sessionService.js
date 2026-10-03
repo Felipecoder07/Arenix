@@ -13,7 +13,6 @@ async function issueSession(user, req, res) {
   const maxAge = (current.perfil === 'Cliente' ? 7 * 24 : 8) * 3600000;
   await db.runAsync('INSERT INTO AuthSessions(token_hash,csrf_hash,usuario_id,tenant_id,password_hash,perfil,expires,created) VALUES(?,?,?,?,?,?,?,?)',
     [hash(token), hash(csrf), current.id, current.tenant_id, hash(current.senha_hash), current.perfil, Date.now() + maxAge, Date.now()]);
-  if(current.perfil==='SuperAdmin' && require('../utils/totp').verify(current.two_factor_secret,req.body?.codigo_2fa)) await db.runAsync('INSERT INTO SessionMfa(token_hash,verified_at) VALUES(?,?)',[hash(token),Date.now()]);
   res.set('Cache-Control', 'no-store');
   res.cookie('cm_session', token, { httpOnly: true, secure: production(), sameSite: 'lax', path: '/', maxAge });
   res.cookie('cm_csrf', csrf, { secure: production(), sameSite: 'lax', path: '/', maxAge });

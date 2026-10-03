@@ -175,7 +175,7 @@ it('account deletion cannot erase a client linked only by unverified legacy data
   expect((await db.getAsync('SELECT ativo FROM Usuarios WHERE id=2')).ativo).toBe(0);
 });
 
-it('omitted, null and blank credentials preserve previous values; removal requires password and master MFA',async()=>{
+it('omitted, null and blank credentials preserve previous values; removal requires current master password',async()=>{
   const session=await login(actors.master);
   const keys=['mp_master_access_token','mp_client_secret','mp_webhook_secret'];
   const before=await db.allAsync("SELECT chave,valor FROM ConfiguracoesSaaS WHERE chave LIKE 'mp_%' ORDER BY chave");
@@ -183,11 +183,11 @@ it('omitted, null and blank credentials preserve previous values; removal requir
     expect((await auth(request(app).put('/api/saas/configuracoes'),session).send(Object.fromEntries(keys.map(key=>[key,value])))).status).toBe(200);
   }
   expect(await db.allAsync("SELECT chave,valor FROM ConfiguracoesSaaS WHERE chave LIKE 'mp_%' ORDER BY chave")).toEqual(before);
-  for(const proof of [{},{senha_atual:PASSWORD},{senha_atual:'wrong',codigo_2fa:fixture.totp()}]) {
+  for(const proof of [{},{senha_atual:'wrong'}]) {
     expect((await auth(request(app).delete('/api/saas/credenciais/mp_master_access_token'),session).send(proof)).status).toBe(403);
   }
   vi.stubEnv('MERCADO_PAGO_ACCESS_TOKEN','ENV-SECRET-MUST-NOT-RETURN');
-  expect((await auth(request(app).delete('/api/saas/credenciais/mp_master_access_token'),session).send({senha_atual:PASSWORD,codigo_2fa:fixture.totp()})).status).toBe(200);
+  expect((await auth(request(app).delete('/api/saas/credenciais/mp_master_access_token'),session).send({senha_atual:PASSWORD})).status).toBe(200);
   expect(await require('../src/services/saasBillingService').getMasterAccessToken()).toBeNull();
   expect((await auth(request(app).get('/api/saas/configuracoes'),session)).body.has_mp_master_access_token).toBe(false);
 });

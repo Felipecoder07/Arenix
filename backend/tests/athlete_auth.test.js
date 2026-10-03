@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import supertest from 'supertest';
 
 process.env.NODE_ENV = 'test';
@@ -30,6 +30,8 @@ describe('Módulo de Autenticação e Cadastro do Atleta por Tenant', () => {
     );
   });
 
+  afterAll(() => vi.unstubAllGlobals());
+
   it('1. Deve cadastrar um novo atleta com sucesso via POST /api/public/tenant/:slug/cadastro', async () => {
     const res = await supertest(app)
       .post(`/api/public/tenant/${testSlug}/cadastro`)
@@ -48,6 +50,11 @@ describe('Módulo de Autenticação e Cadastro do Atleta por Tenant', () => {
       csrf: pairs.find(v => v.startsWith('cm_csrf=')).split('=')[1]
     };
     expect(res.body.usuario).toHaveProperty('email', testEmail);
+    const membership = await db.getAsync(
+      'SELECT m.verified FROM ClientMemberships m JOIN Usuarios u ON u.id = m.usuario_id WHERE u.email = ? AND m.tenant_id = ?',
+      [testEmail, 999]
+    );
+    expect(membership).toEqual({ verified: 1 });
   });
 
   it('2. Deve rejeitar o cadastro com e-mail duplicado (HTTP 400)', async () => {
@@ -147,6 +154,19 @@ describe('Módulo de Autenticação e Cadastro do Atleta por Tenant', () => {
   });
 
   it('7. Deve agendar múltiplos horários simultaneamente e gerar Pix unificado (POST /api/public/tenant/:slug/agendar com itens)', async () => {
+    await db.runAsync("UPDATE Arenas SET gateway_access_token='FIXTURE-ARENA-TOKEN', gateway_user_id='123' WHERE id=999");
+    let nextPaymentId = 900;
+    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+      if (url === 'https://api.mercadopago.com/v1/payments' && options.method === 'POST') {
+        return { ok: true, json: async () => ({ id: ++nextPaymentId, point_of_interaction: { transaction_data: {
+          qr_code: 'fixture-pix', qr_code_base64: ''
+        } } }) };
+      }
+      if (String(url).startsWith('https://api.mercadopago.com/v1/payments/')) {
+        return { ok: true, json: async () => ({ id: Number(String(url).split('/').at(-1)), status: 'pending', transaction_amount: 80, currency_id: 'BRL', collector_id: '123' }) };
+      }
+      throw new Error('Unexpected external request: ' + url);
+    }));
     const dataRes = `2026-11-${Math.floor(Math.random() * 15 + 10)}`;
     const resMulti = await supertest(app)
       .post(`/api/public/tenant/${testSlug}/agendar`)
@@ -201,8 +221,8 @@ describe('Módulo de Autenticação e Cadastro do Atleta por Tenant', () => {
       .set('Cookie', athleteSession.cookie)
       .set('x-csrf-token', athleteSession.csrf)
       .send({ reserva_id: reservaId });
-    expect(resCancel.status).toBe(200);
-    expect(resCancel.body.message).toContain('cancelada');
+    expect(resCancel.status).toBe(202);
+    expect(resCancel.body.message).toMatch(/cancelamento|cancelada/i);
   });
 
   it('9. Deve marcar horários passados como status: passado e rejeitar agendamentos no passado (HTTP 400)', async () => {
@@ -239,7 +259,7 @@ describe('Módulo de Autenticação e Cadastro do Atleta por Tenant', () => {
     }
   });
 
-  it('10. Deve rejeitar agendamentos se a arena não tiver Chave Pix nem Mercado Pago configurados', async () => {
+  it('10. Deve rejeitar agendamentos se a arena não tiver Pix configurado', async () => {
     const unconfigSlug = 'arena-sem-pix';
     await db.runAsync("DELETE FROM Arenas WHERE slug = ?", [unconfigSlug]);
     await db.runAsync(
@@ -260,6 +280,6 @@ describe('Módulo de Autenticação e Cadastro do Atleta por Tenant', () => {
 
     expect(resFail.status).toBe(400);
     expect(resFail.body).toHaveProperty('payment_not_configured', true);
-    expect(resFail.body.error).toContain('não configurou o recebimento de pagamentos online');
+    expect(resFail.body.error).toContain('não cadastrou uma chave Pix para reservas online');
   });
 });

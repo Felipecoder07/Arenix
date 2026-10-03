@@ -14,22 +14,10 @@ const login = async (req,res) => {
     const user=await db.getAsync('SELECT u.id, u.nome, u.email, u.senha_hash, u.perfil, u.ativo, u.activation_pending, u.tenant_id, u.two_factor_secret, a.nome AS arena_nome, a.slug AS arena_slug, a.status AS arena_status FROM Usuarios u LEFT JOIN Arenas a ON a.id=u.tenant_id WHERE LOWER(u.email)=?',[email.trim().toLowerCase()]);
     if(!user||!await bcrypt.compare(senha,user.senha_hash)) return res.status(401).json({error:'E-mail ou senha invalidos.'});
     if(user.ativo!==1||user.activation_pending||user.arena_status===-1) return res.status(403).json({error:'Conta indisponivel.'});
-    if(user.perfil==='SuperAdmin' && typeof req.body.recovery_code==='string') {
-      await require('../config/securitySchema').ensureSecuritySchema(db);
-      await db.transaction(async()=>{
-        const consumed=await db.runAsync('UPDATE MfaRecovery SET used=1 WHERE usuario_id=? AND code_hash=? AND used=0',[user.id,require('../utils/security').hash(req.body.recovery_code)]);
-        if(consumed.changes!==1) throw require('../utils/security').httpError(403,'Codigo de recuperacao invalido.');
-        await db.runAsync('UPDATE Usuarios SET two_factor_secret=NULL WHERE id=?',[user.id]);
-        await db.runAsync('DELETE FROM MfaRecovery WHERE usuario_id=?',[user.id]);
-        await require('../services/sessionService').revokeUser(user.id);
-      });
-      user.two_factor_secret=null;
-    }
-    if(user.perfil==='SuperAdmin' && user.two_factor_secret && !require('../utils/totp').verify(user.two_factor_secret,req.body.codigo_2fa)) return res.status(403).json({error:'Segundo fator obrigatorio.',requires_2fa:true});
     if(user.perfil==='Cliente'&&user.tenant_id) await require('../services/clientAccessService').membership(user,user.tenant_id,true);
     await issueSession(user,req,res);
     logAuditEvent(user.id,'Login', 'Sessao iniciada',req.ip);
-    res.json({requires_mfa_setup:user.perfil==='SuperAdmin'&&!user.two_factor_secret,usuario:{id:user.id,nome:user.nome,email:user.email,perfil:user.perfil,tenant_id:user.tenant_id,arena_nome:user.arena_nome,arena_slug:user.arena_slug,arena_status:user.arena_status}});
+    res.json({usuario:{id:user.id,nome:user.nome,email:user.email,perfil:user.perfil,tenant_id:user.tenant_id,arena_nome:user.arena_nome,arena_slug:user.arena_slug,arena_status:user.arena_status}});
   } catch(e){ res.status(e.status||500).json({error: require('../utils/security').publicError(e, 'Erro ao iniciar sessao.')}); }
 };
 const logout=async(req,res)=>{ await endSession(req,res); res.json({message:'Sessao encerrada.'}); };
@@ -164,10 +152,10 @@ const forgotPassword=async(req,res)=>{
     await require('../config/securitySchema').ensureSecuritySchema(db);
     const email=typeof req.body.email==='string'?req.body.email.trim().toLowerCase():'';
     if(!email||email.length>254) return res.status(400).json({error:'E-mail invalido.'});
-    const user=await db.getAsync('SELECT id,email,activation_pending FROM Usuarios WHERE LOWER(email)=?',[email]);
+    const user=await db.getAsync('SELECT id,email,perfil,activation_pending FROM Usuarios WHERE LOWER(email)=?',[email]);
     if(user){
       const code=await createChallenge(user.id,user.activation_pending ? 'activation' : 'password');
-      const link=frontendUrl()+'/redefinir-senha?token='+encodeURIComponent(code);
+      const link=frontendUrl()+'/redefinir-senha?token='+encodeURIComponent(code)+(user.perfil==='SuperAdmin'?'&master=1':'');
       void require('../services/emailService').sendEmail(user.email,'Recuperacao de senha','Acesse para redefinir sua senha: '+link).catch(() => logger.error('Falha de entrega de recuperação.'));
     }
     res.json({message:'Se o e-mail estiver cadastrado, enviamos as instrucoes de recuperacao.'});
@@ -179,11 +167,6 @@ const resetPassword=async(req,res)=>{
     const token = req.body.token;
     if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) return res.status(400).json({error:'Token invalido ou expirado.'});
     const challenge = await db.getAsync("SELECT usuario_id,purpose FROM RecoveryChallenges WHERE token_hash=? AND used=0 AND attempts<5 AND expires>? AND purpose IN ('password','activation')", [require('../utils/security').hash(token), Date.now()]);
-    const user = challenge && await db.getAsync('SELECT perfil,two_factor_secret FROM Usuarios WHERE id=?', [challenge.usuario_id]);
-    if(user?.perfil==='SuperAdmin'&&user.two_factor_secret&&!require('../utils/totp').verify(user.two_factor_secret,req.body.codigo_2fa)) {
-      await db.runAsync('UPDATE RecoveryChallenges SET attempts=attempts+1 WHERE token_hash=? AND used=0',[require('../utils/security').hash(token)]);
-      return res.status(403).json({error:'Segundo fator obrigatorio.'});
-    }
     await resetWithChallenge(challenge?.usuario_id ?? -1,challenge?.purpose || 'password',token,req.body.novaSenha);
     res.json({message:'Senha redefinida. Faca login novamente.'});
   }catch(e){res.status(e.status||500).json({error: require('../utils/security').publicError(e, 'Erro ao redefinir senha.')});}

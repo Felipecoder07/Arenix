@@ -9,9 +9,9 @@ conferir a abrangência; as observações abaixo distinguem implementação e li
 
 Fonte: `backend/src/utils/permissions.js`, rotas e `sessionService.js`.
 
-| Perfil | Capacidades e limites principais |
+| Perfil | Capacidades e limites principais |os probe
 |---|---|
-| SuperAdmin/Master | Administração SaaS global protegida por MFA; não herda automaticamente as permissões internas das arenas. |
+| SuperAdmin/Master | Administração SaaS global por sessão, senha e proteção CSRF; não herda automaticamente as permissões internas das arenas. |
 | Administrador da arena | Operação da própria arena, equipe, configurações, descontos, estornos, auditoria e transferência de administração com reautenticação. |
 | Gerente | Operação, relatórios, assinatura e configurações; gerencia recepcionistas. Sem autorização de administrador para estornar ou transferir administração. |
 | Recepcionista | Agenda, clientes, consulta financeira e recebimentos manuais. Sem gestão de bloqueios, descontos, estornos ou configuração de gateway. |
@@ -42,7 +42,7 @@ Fontes: `frontend/src/screens/admin/`, `reservasController.js`,
 | Quadras | Cadastro, edição, status, modalidades, preços e horários de funcionamento. | Limite do plano; exclusão pode preservar histórico por arquivamento. |
 | Equipe | Criar/editar/remover acessos conforme hierarquia e limites. | Convite/recuperação individual; sem senha padrão compartilhada. |
 | Arena | Dados, slug, fuso, horários, foto de capa e aparência. | Upload com processamento de imagem; publicação final ainda precisa ser verificada. |
-| Notificações | Preferências de e-mail para reserva, cancelamento e pagamento; orientação de compartilhamento manual por WhatsApp. | WhatsApp usa mensagem pronta no compartilhamento do portal, com envio confirmado pelo usuário. |
+| Notificações | Preferências de reserva, cancelamento, pagamento e opção WhatsApp. | Opção WhatsApp não equivale a automação: ver pendências abaixo. |
 | Auditoria | Listagem e filtros de eventos, detalhes e exportação na interface. | Acesso de administrador; registro de eventos não equivale a armazenamento inviolável. |
 
 ### Relatórios
@@ -92,7 +92,7 @@ Fontes: oito entradas de navegação em `navigation.ts`, telas `Master*.tsx`,
 
 | Módulo | Funcionalidades encontradas |
 |---|---|
-| Autenticação | Login Master, configuração/confirmação de MFA e troca de senha com verificação adicional. |
+| Autenticação | Login Master por e-mail e senha; troca de senha com confirmação da senha atual. |
 | Dashboard | Métricas globais de arenas, clientes, reservas, faturamento/receita recorrente e indicadores. |
 | Arenas | Listar, pesquisar, filtrar, cadastrar, editar, bloquear/desbloquear, excluir e consultar detalhes. |
 | Detalhe da arena | Dados, administrador, plano e faturas; alteração de plano e situação conforme rotas. |
@@ -112,7 +112,7 @@ Fontes: oito entradas de navegação em `navigation.ts`, telas `Master*.tsx`,
   de cadastros abandonados (`backend/src/jobs/`).
 - Intenções de pagamento e estorno, conciliação de resultados ambíguos, busca de
   pagamento sem referência e outbox de revisão/auditoria.
-- Sessões em cookies, CSRF, hierarquia por perfil, isolamento por arena e MFA Master.
+- Sessões em cookies, CSRF, hierarquia por perfil e isolamento por arena. O código autenticador Master foi removido por solicitação em 02/10/2026.
 - Identidade Google, vínculo de cliente, convite/ativação e recuperação de senha.
 - Cifragem de segredos, rotação transacional, backup SQLite, bloqueio de arquivos
   privados e verificação dos builds.
@@ -121,20 +121,19 @@ Fontes: oito entradas de navegação em `navigation.ts`, telas `Master*.tsx`,
 
 ## Pontos parciais e limites que a comparação comercial deve respeitar
 
-1. **WhatsApp — escopo confirmado pelo responsável:** envio manual, com modelo
-   pronto no botão de compartilhar o portal. A opção que sugeria confirmação
-   automática foi retirada da tela; links manuais foram preservados. O campo legado
-   do banco não foi apagado. Envio automático não é pendência de implementação.
-2. **Mensalistas de quadra — retirado do escopo pelo responsável:** removidas as
-   promessas de mensalistas e recorrência de atletas da landing, checkout e login.
-   Agenda semanal, reservas avulsas/em lote e assinatura recorrente SaaS permanecem.
-3. **Enterprise — corrigido:** site e painel usam o contato comercial informado
-   pelo responsável, centralizado em `frontend/src/utils/commercialContact.ts`.
-   O WhatsApp abre com mensagem pronta; nada é enviado automaticamente.
-4. **Filtro Trial — corrigido:** API retorna `em_trial` usando expiração e fuso da
-   arena, inclusive o último dia, apenas para arenas ativas. Lista identifica
-   "Em teste"; filtro Trial seleciona essas arenas. Ativas continua incluindo as
-   ativas em teste. Cobrança e status persistidos não são alterados pelo filtro.
+1. **WhatsApp:** a preferência `notif_reserva_whatsapp` é armazenada, mas não foi
+   encontrado consumidor que envie confirmação automática. Existem links manuais
+   de contato/compartilhamento. Não anunciar automação de WhatsApp como concluída.
+2. **Mensalistas de quadra:** landing/checkout citam gestão de mensalistas e
+   recorrência automatizada. Foram encontrados agenda semanal e lote de reservas,
+   mas não um módulo próprio de contratos recorrentes dos atletas. A recorrência
+   SaaS não comprova esse recurso; é necessário implementar ou ajustar a oferta.
+3. **Enterprise:** o botão em `AdminAssinatura.tsx` ainda usa telefone
+   `5500000000000`. É configuração comercial pendente; definir o canal real antes
+   de divulgar contratação por esse botão.
+4. **Filtro Trial no Master:** a opção existe em `MasterArenas.tsx`, mas o filtro
+   classifica apenas status ativa/bloqueada/excluída. Precisa considerar a vigência
+   do trial para não mostrar resultado vazio indevido.
 5. **Integrações:** presença de código Google, Pix/cartão/Point e SMTP não demonstra
    funcionamento de ponta a ponta no endereço final. Provedores não foram chamados
    nesta passagem para criar cobranças, estornos ou enviar mensagens.
@@ -144,9 +143,8 @@ Fontes: oito entradas de navegação em `navigation.ts`, telas `Master*.tsx`,
    esportivo, turmas/aulas com matrícula, PDV/comanda/cozinha/estoque, cupons e
    marketplace de descoberta de arenas. Top clientes financeiro não é ranking esportivo.
 
-Os pontos 1–4 foram encaminhados conforme definição explícita do responsável;
-não continuam como pendências. A falha de autorização de bloqueios também foi
-corrigida com testes nesta passagem.
+Os pontos 1–4 são lacunas funcionais/comerciais concretas; não devem ser confundidos
+com a falha de autorização de bloqueios, corrigida com testes nesta passagem.
 O inventário permite uma comparação comercial mais completa, mas preços e vantagem
 competitiva ainda precisam de pesquisa específica e validação com donos de arenas.
 
@@ -182,9 +180,11 @@ Listagem extraida do codigo, nao evidencia de autorizacao individual.
 
 ### clientesRoutes.js
 
-- `GET /vinculos-pendentes`
-- `POST /vinculos-pendentes/:usuario_id/:cliente_id/aprovar`
-- `POST /vinculos-pendentes/:usuario_id/:cliente_id/rejeitar`
+O cadastro novo do atleta cria vínculo ativo automaticamente. A fila administrativa
+de aprovação de vínculos foi removida. Em uma migração com dados antigos, vínculos
+sem comprovação (`ClientMemberships.verified = 0`) continuam bloqueados e exigem
+reconciliação específica antes de disponibilizar o histórico ao atleta.
+
 - `GET /`
 - `POST /`
 - `GET /:id`

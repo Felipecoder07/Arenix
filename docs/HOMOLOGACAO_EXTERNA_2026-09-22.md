@@ -1,17 +1,53 @@
 # Roteiro executável de homologação externa
 
-Estado: execução parcial em ambiente isolado (22/09, atualização abaixo). Não publicar nem criar pagamentos reais com base
+**Pix, estado vigente 29/09:** ver
+[PIX_LIBERACAO_2026-09-29.md](PIX_LIBERACAO_2026-09-29.md).
+
+**Decisão de escopo, 29/09:** agendamento pelo atleta terá somente Pix no
+lançamento inicial; cartão online segue inativo e sua homologação foi adiada.
+O Pix fictício consultado em 29/09 segue `pending`, sem crédito. Para liberar
+pagamentos, o próximo cenário externo é a aprovação/baixa do Pix e depois
+repetição, falha temporária, cancelamento e estorno. Os ensaios de cartão abaixo
+são histórico de diagnóstico, não condição do lançamento Pix.
+
+**Atualização 29/09/2026:** correções e nova tentativa do ciclo financeiro em
+[PAGAMENTOS_LIBERACAO_2026-09-29.md](PAGAMENTOS_LIBERACAO_2026-09-29.md).
+Credencial TEST aceita e cartões fictícios tokenizados; criação APRO e OTHE
+retornou HTTP 400, causa 10113. Nenhum pagamento ou estorno criado nesta etapa.
+O bloqueador financeiro permanece aberto; resultados históricos abaixo preservados.
+
+Estado: execução parcial em ambiente isolado (atualizado em 23/09/2026). Não publicar nem criar pagamentos reais com base
 neste roteiro. Domínio/hospedagem foram adiados pelo responsável. Os testes locais
 usam respostas simuladas e o banco em memória; não suprem estas evidências.
 
 ## Início da homologação — 22/09/2026
 
-**Atualização 19:38 BRT:** assinatura recebida e instalada cifrada no banco
-isolado. Um recebimento público HTTP 200 registrado às 19:34:44, sem consulta ao
-pagamento observada; conferir ID/action da simulação. Segunda notificação e
-liquidação não comprovadas. Guia operacional completo em
+**Atualização 23/09:** login Google no portal do atleta concluído. O usuário
+confirmou entrada com a conta, conferência do perfil e logout; o banco isolado
+tem 1 vínculo Google. A primeira tentativa de validar o token falhou enquanto
+a rede do processo bloqueava a consulta aos certificados públicos do Google;
+após liberar essa consulta na API isolada, o usuário confirmou sucesso. O botão
+foi ajustado para usar o botão oficial renderizado pelo Google Identity Services.
+O resultado cobre o portal do atleta, não os outros cenários de identidade.
+
+**Atualização 23/09:** três notificações públicas assinadas do Pix de teste
+chegaram com HTTP 200, ID `1328247564` e action `payment.updated`; cada uma gerou
+consulta GET HTTP 200 ao pagamento. O estado segue pending e zero créditos. A
+recepção e repetição idempotente foram confirmadas; liquidação ainda não.
+Guia operacional completo em
 [RETOMADA_HOMOLOGACAO_2026-09-22.md](RETOMADA_HOMOLOGACAO_2026-09-22.md), incluindo
-comandos de início e estado do ensaio de cartão ainda não executado com sucesso.
+comandos de início e resultado dos ensaios de cartão que seguem pendentes.
+
+**Cartões — tentativas de API em 23/09:** APRO com Mastercard e Visa de teste foi barrado
+pelo provedor (`excludes_by_rule`, causa `10113`); OTHE retornou `Card Token not
+found` (causa `2006`). A API respondeu HTTP 500 genérico. Não houve pagamentos
+nem transações de cartão; fixtures 20005/20007/20008 ficaram com intent
+`unknown`. Em 23/09 foi implementado no portal público um CardForm seguro com
+MercadoPago.js, chave pública, tokenização hospedada e envio do token ao backend;
+o build de produção do frontend passou. Isso não altera as tentativas anteriores
+nem comprova pagamento. Permanecem pendentes teste no navegador com cartão de
+teste aceito pelo provedor, confirmação por webhook, idempotência, recusa,
+recuperação e estorno.
 
 ### Evidências da execução isolada — 22/09, 19:31 BRT
 
@@ -135,14 +171,14 @@ de produção agora. Referências:
 
 | Caso | Execução | Evidência exigida |
 |---|---|---|
-| G01 | Entrar com Google em ambas as superfícies públicas. | Conta correta, sessão em cookie, acesso ao próprio perfil e reservas. |
+| G01 | Entrar com Google no portal do atleta. | **Aprovado em 23/09:** conta e perfil conferidos, logout confirmado, 1 vínculo Google na instância isolada. Painel e outros cenários de identidade permanecem pendentes. |
 | G02 | Conta existente e novo usuário Google. | Vínculos por arena corretos, sem associar automaticamente cadastro alheio. |
 | G03 | Logout, nova aba e recuperação por e-mail de teste. | Sessão encerrada; link de recuperação acessível e de uso único. |
 | O01 | Administrador conecta sua arena ao MP. | Callback/state válidos; credencial armazenada cifrada; recebedor correto. |
 | O02 | Reutilizar callback e trocar arena/usuário da sessão. | Rejeição sem trocar conexão da arena. |
 | P01 | Reserva de R$ 100 no meio de teste permitido. | Provedor recebe 100 reais; banco/intenção registram 10000 centavos; moeda BRL. |
-| P02 | Confirmar pelo webhook real do provedor. | Reserva, pagamento e intenção atualizados uma única vez; sem intervenção manual. |
-| P03 | Repetir notificação e consultar estado. | Nenhum crédito duplicado e nenhuma cobrança adicional. |
+| P02 | Confirmar pelo webhook real do provedor. | **Recepção aprovada em 23/09:** 3 notificações assinadas consultaram o ID correto; pagamento pending, sem liquidação/crédito. |
+| P03 | Repetir notificação e consultar estado. | **Aprovado para o estado pending em 23/09:** 3 entregas, 1 transação/1 intenção, zero crédito duplicado. Idempotência da liquidação ainda pendente. |
 | P04 | Falha temporária de consulta no ambiente isolado. | Evento/intenção recuperável; retry conclui após restabelecimento. Não induzir falha em produção. |
 | P05 | Recusa/cancelamento e tentativa subsequente. | Sem crédito falso; saldo e disponibilidade coerentes. |
 | P06 | Pagamento parcial e concorrência pelo mesmo horário. | Saldo correto; somente uma reserva ocupa o intervalo. |

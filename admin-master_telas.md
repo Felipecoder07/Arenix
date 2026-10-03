@@ -1,0 +1,44 @@
+**Não está tudo correto. Encontrei problemas que podem afetar cobrança e acesso das arenas.** Apenas avaliei; não alterei o código nem executei cobranças.
+
+1. **Uma arena que usou o período gratuito pode ser excluída automaticamente após o primeiro atraso.** A limpeza considera “cadastro abandonado” qualquer arena bloqueada, antiga e sem pagamento anterior. Como ela roda logo após o bloqueio, pode desativar os usuários e impedir a regularização pela assinatura. backend/src/jobs/limpezaFantasmas.js:29
+```
+⚠ Heads up, you have less than 10% of your 5h limit left. Run /status for a
+  breakdown.
+```
+**Não está tudo correto. Encontrei problemas que podem afetar cobrança e acesso das arenas.** Apenas avaliei; não alterei o código nem executei cobranças.
+
+1. **Uma arena que usou o período gratuito pode ser excluída automaticamente após o primeiro atraso.** A limpeza considera “cadastro abandonado” qualquer arena bloqueada, antiga e sem pagamento anterior. Como ela roda logo após o bloqueio, pode desativar os usuários e impedir a regularização pela assinatura. backend/src/jobs/limpezaFantasmas.js:29
+2. **Registrar um pagamento manual libera a arena mesmo com outras faturas vencidas.** Também pode desfazer um bloqueio aplicado manualmente pelo Master, porque não diferencia o motivo da suspensão. backend/src/controllers/saasController.js:455
+3. **O cadastro pelo Master pode gerar um primeiro mês menor, cobrado integralmente.** A tela envia vencimento no dia **10** e **14 dias de teste**, independentemente do término do teste. Exemplo: teste termina em **17/10**, primeira cobrança nessa data e próxima em **10/11** — confirmei que o cálculo resulta em apenas **24 dias**, sem proporcionalidade. backend/src/jobs/cronSaaS.js:71
+4. **O prazo de bloqueio não corresponde ao informado na tela.** O financeiro informa **7 dias**, mas o servidor usa uma configuração cujo padrão é **5**, com comparação que bloqueia depois de completar esse prazo. backend/src/jobs/bloqueioInadimplencia.js:13
+5. **Se o processamento diário não rodar no vencimento, a cobrança recorrente pode ficar sem ser gerada naquele mês.** A busca considera o dia exato; não existe recuperação geral dos vencimentos perdidos. backend/src/jobs/cronSaaS.js:10
+6. **Alterar o vencimento não possui validação suficiente no servidor.** Aceita valores fora do intervalo e altera o cálculo de cobertura das faturas já pagas, sem uma regra de transição ou proporcionalidade. backend/src/controllers/saasController.js:325
+7. **Datas podem aparecer um dia antes no Master.** O formatador interpreta `AAAA-MM-DD` como UTC e converte para o horário local. Assim, `10/10` pode aparecer como `09/10` no Brasil. O faturamento também mistura UTC e horário do servidor. frontend/src/data/mock.ts:244
+8. **O cadastro pode ficar incompleto.** A arena é criada antes do usuário, sem uma transação envolvendo tudo. Uma falha posterior pode deixar uma arena sem administrador. No cadastro pelo Master, o e-mail também não é gravado na própria arena, embora seja usado na cobrança e nos avisos. backend/src/controllers/saasController.js:204
+
+O ajuste de vencimento para meses curtos está correto nos exemplos conferidos: dia 31 passa para 28 em fevereiro, inclusive no ciclo anual com ano bissexto. **Mas eu não consideraria o fluxo completo de assinatura e liberação pronto antes de corrigir os problemas acima.**
+
+
+Encontrei **cinco problemas concretos** no Admin Master:
+
+- **Agendar comunicado não agenda:** ao clicar em “Agendar para depois”, a tela envia a mensagem imediatamente. O servidor salva o comunicado na hora e, se for por e-mail, dispara os e-mails na hora também. frontend/src/screens/MasterComunicacao.tsx:92 · backend/src/controllers/saasController.js:793
+- **Consultar acessos de usuário falha:** a consulta filtra por `usuario_id = ?`, mas não passa o ID como parâmetro. Assim, o histórico tende a retornar erro em vez dos acessos. backend/src/controllers/saasController.js:758
+- **Registrar pagamento pode reativar uma arena indevidamente:** basta pagar uma fatura para reativar a arena suspensa; o código não confere se há outras faturas vencidas nem o motivo da suspensão. backend/src/controllers/saasController.js:437
+- **O aviso de redefinição de senha está errado:** a tela promete definir a senha como `arena123`, mas a ação real envia um link de recuperação por e-mail. frontend/src/screens/MasterUsuarios.tsx:233
+- **Salvar arena pode aplicar só parte das alterações:** os dados cadastrais são salvos antes da troca de plano. Se a troca falhar, os dados já terão sido alterados, embora a operação apareça como falha. frontend/src/screens/MasterArenaDetalhe.tsx:292
+
+Também há um botão “Registrar pagamento” no topo do Financeiro que apenas rola até a tabela; o registro de fato é iniciado pelo botão de cada fatura. frontend/src/screens/MasterFinanceiro.tsx:145
+
+Fiz uma revisão estática mais profunda dos fluxos de cobrança e acesso. **Os problemas que eu corrigiria primeiro são estes:**
+
+1. **\[Alta\] Trocar de plano pode invalidar um Pix que ainda está pagável.** Ao reutilizar uma fatura pendente para o upgrade, o sistema apaga a referência e o QR antigos e grava os dados do novo plano. O QR antigo, porém, pode continuar sendo pago no Mercado Pago; depois, o webhook não encontra mais a fatura por aquela referência e o pagamento pode ficar sem conciliação. backend/src/routes/tenantAssinaturaRoutes.js:428
+2. **\[Alta\] Pagar uma fatura antiga pode trocar a arena de volta para um plano anterior.** A liquidação automática aplica o plano e o ciclo que estão na fatura paga, sem verificar se essa ainda é a contratação atual. Uma fatura antiga paga com atraso pode sobrescrever o plano atual. backend/src/services/saasBillingService.js:254
+3. **\[Alta\] Estorno ou chargeback não suspende o acesso de forma imediata.** O webhook muda a fatura para “Atrasada”, mas não revoga o acesso nem registra claramente o estorno no estado da arena. A arena pode continuar funcionando até uma execução posterior da rotina de inadimplência — e, conforme a data de vencimento, durante o prazo de tolerância. backend/src/controllers/saasController.js:534
+4. **\[Alta\] Pagamento manual não aplica o plano da fatura e pode reativar a arena cedo demais.** Diferente da liquidação automática, o fluxo manual só marca a fatura como paga e reativa qualquer arena bloqueada. Não atualiza o plano/ciclo e não verifica outras pendências vencidas. Isso pode deixar a arena no plano errado ou liberar acesso ainda inadimplente. backend/src/controllers/saasController.js:437
+5. **\[Alta\] A cobrança recorrente pode deixar meses sem fatura se a rotina perder o dia do vencimento.** A busca seleciona arenas cujo dia de vencimento é exatamente hoje — com ajuste para o último dia do mês. Se o servidor estiver parado nesse dia, a rotina não recupera a cobrança depois; não encontrei geração retroativa das competências perdidas. backend/src/jobs/cronSaaS.js:10
+6. **\[Alta\] O prazo de bloqueio mostrado no Financeiro não bate com o usado pelo servidor.** A tela informa 7 dias, mas a rotina usa `dias_tolerancia_bloqueio`, cujo padrão no banco é 5. Com a comparação atual, a arena pode ser bloqueada antes do prazo que a interface promete. frontend/src/screens/MasterFinanceiro.tsx:11 · backend/src/jobs/bloqueioInadimplencia.js:13
+7. **\[Média\] O cadastro pelo Master ignora as configurações globais de trial.** O formulário envia 14 dias por padrão e a rota usa esse valor diretamente. Assim, arenas criadas pelo Master podem receber trial mesmo que o trial global esteja desativado ou configurado com outro prazo; o cadastro público usa essa configuração global. frontend/src/screens/MasterArenas.tsx:30 · backend/src/controllers/saasController.js:174
+8. **\[Média\] O dia de vencimento não é validado no servidor.** A edição aceita o valor enviado sem conferir faixa ou formato. Valores inválidos podem fazer o cron cobrar em dias inesperados — por exemplo, um dia acima de 31 tende a cair no último dia de cada mês. backend/src/controllers/saasController.js:325
+9. **\[Média\] Cadastro pelo Master pode deixar dados incompletos se uma etapa falhar.** A rota cria a arena, depois o usuário e, em seguida, o desafio de ativação e o e-mail, sem transação. Se uma dessas etapas falhar, pode sobrar uma arena sem acesso administrativo ativo, ou um cadastro que exige intervenção manual. backend/src/controllers/saasController.js:204
+
+Eu começaria pelos itens **1 a 6**, porque afetam dinheiro recebido, conciliação, plano contratado, acesso ou bloqueio. A análise foi do código; não alterei arquivos nem simulei cobranças no gateway.

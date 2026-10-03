@@ -130,7 +130,7 @@ const criarCobrancaCartaoRaw = async (reserva_id, valor, card_data, tenant_id, i
     );
   }
 
-  if (!card_data || !card_data.token) {
+  if (!card_data || !card_data.token || !card_data.payment_method_id) {
     throw new Error('Dados do cartão inválidos ou não fornecidos.');
   }
 
@@ -143,7 +143,7 @@ const criarCobrancaCartaoRaw = async (reserva_id, valor, card_data, tenant_id, i
       WHERE r.id = ?
     `, [reserva_id]);
 
-    const clientEmail = details ? details.email : 'cliente@arenix.com';
+    const clientEmail = card_data.email || (details ? details.email : 'cliente@arenix.com');
 
     const response = await fetch('https://api.mercadopago.com/v1/payments', {
       method: 'POST',
@@ -157,9 +157,10 @@ const criarCobrancaCartaoRaw = async (reserva_id, valor, card_data, tenant_id, i
         token: card_data.token,
         description: `Reserva #${reserva_id} no Arenix`,
         external_reference: intentKey,
-        installments: 1,
+        installments: Number(card_data.installments) || 1,
         payment_method_id: card_data.payment_method_id,
-        payer: { email: clientEmail }
+        ...(Number.isSafeInteger(Number(card_data.issuer_id)) && Number(card_data.issuer_id) > 0 ? { issuer_id: Number(card_data.issuer_id) } : {}),
+        payer: { email: clientEmail, ...(card_data.identification ? { identification: card_data.identification } : {}) }
       })
     });
 
@@ -167,13 +168,20 @@ const criarCobrancaCartaoRaw = async (reserva_id, valor, card_data, tenant_id, i
       const mpData = await response.json();
       const txRef = String(mpData.id);
 
+      const transactionStatus = mpData.status === 'rejected' ? 'Rejeitado'
+        : mpData.status === 'cancelled' ? 'Cancelado' : 'Pendente';
+      const arena = await db.getAsync('SELECT gateway_user_id FROM Arenas WHERE id=?', [tenant_id]);
+      const receiver = arena.gateway_user_id || await consultarContaGateway(token);
+      if (!/^\d+$/.test(txRef) || !matchesPayment(mpData, txRef, { valor, gateway_user_id: receiver })) {
+        throw new Error('Resposta de pagamento divergente da cobrança.');
+      }
       await db.runAsync(`
         INSERT OR IGNORE INTO TransacoesGateway (reserva_id, gateway_ref, valor, status, metodo)
-        VALUES (?, ?, ?, 'Pendente', 'Cartao')
-      `, [reserva_id, txRef, valor]);
+        VALUES (?, ?, ?, ?, 'Cartao')
+      `, [reserva_id, txRef, valor, transactionStatus]);
 
       if (mpData.status === 'approved') {
-        await processarLiquidacao(txRef);
+        await processarLiquidacao(txRef, { valor_pago: require('../utils/security').cents(mpData.transaction_amount) });
         return { status: 'approved', gateway_ref: txRef };
       }
       return { status: mpData.status, gateway_ref: txRef };
@@ -275,7 +283,7 @@ const estornarPagamentoPix=async(reserva_id,tenant_id)=>{
   try{
    const response=await fetch('https://api.mercadopago.com/v1/payments/'+encodeURIComponent(tx.gateway_ref)+'/refunds',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json','X-Idempotency-Key':selected.id},body:JSON.stringify({amount:selected.amount/100})});
    const refund=await response.json();
-   if(!response.ok||refund.status!=='approved'||require('../utils/security').cents(refund.amount)!==selected.amount) throw new Error('Refund unconfirmed');
+   if(!response.ok||refund.status!=='approved'||String(refund.payment_id)!==String(tx.gateway_ref)||require('../utils/security').cents(refund.amount)!==selected.amount) throw new Error('Refund unconfirmed');
    await require('./paymentLedgerService').reverse(tx.gateway_ref,selected.total);
    await db.runAsync("UPDATE RefundIntents SET state='completed',response_json=? WHERE id=?",[JSON.stringify({id:refund.id,status:refund.status}),selected.id]);
   }catch(e){
@@ -407,6 +415,13 @@ async function reconciliarPagamentoSemReferencia(intentId) {
   return liquidarWebhookMercadoPago(paymentId, context);
 }
 
+function matchesPayment(payment, paymentId, context) {
+  return String(payment.id) === paymentId && payment.currency_id === 'BRL' &&
+    Number.isFinite(Number(payment.transaction_amount)) &&
+    require('../utils/security').cents(payment.transaction_amount) === Number(context.valor) &&
+    String(payment.collector_id) === String(context.gateway_user_id);
+}
+
 async function liquidarWebhookMercadoPago(paymentId, context) {
   if (!context || !paymentId) return { state: 'blocked' };
   const safePaymentId = String(paymentId).trim();
@@ -422,10 +437,7 @@ async function liquidarWebhookMercadoPago(paymentId, context) {
   }
 
   const mpData = await mpRes.json();
-  if (String(mpData.id) !== safePaymentId || mpData.currency_id !== 'BRL' ||
-      !Number.isFinite(Number(mpData.transaction_amount)) ||
-      require('../utils/security').cents(mpData.transaction_amount) !== Number(context.valor) ||
-      String(mpData.collector_id) !== String(context.gateway_user_id)) {
+  if (!matchesPayment(mpData, safePaymentId, context)) {
     logger.warn('[Gateway Webhook] Pagamento consultado diverge da transação/intenção; crédito bloqueado.');
     return { state: 'blocked' };
   }
@@ -438,7 +450,13 @@ async function liquidarWebhookMercadoPago(paymentId, context) {
       logger.warn('[Gateway Webhook] Valor de estorno divergente; reversão bloqueada.');
       return { state: 'blocked' };
     }
-    await require('./paymentLedgerService').reverse(safePaymentId, refundedAmount);
+    // A refund can be the first notification we receive. Record the verified
+    // original credit and its reversal atomically, preserving both audit entries.
+    // Legacy paid transactions without a ledger credit still require review.
+    await db.transaction(async () => {
+      await processarLiquidacao(safePaymentId, { valor_pago: Number(context.valor) });
+      await require('./paymentLedgerService').reverse(safePaymentId, refundedAmount);
+    });
     if (refundedAmount === Number(context.valor)) {
       await db.runAsync(
         "UPDATE RefundIntents SET state='completed',response_json=? WHERE gateway_ref=? AND state IN ('pending','unknown')",

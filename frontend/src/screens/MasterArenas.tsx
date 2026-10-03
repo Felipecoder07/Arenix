@@ -1,14 +1,16 @@
 import { useCallback } from 'react';
 import type { SaaSArena, SaaSPlan } from '../types/api';
+import { MasterPageHeader as PageHeader } from '../components/MasterPageHeader';
 import { apiFetch as fetch } from '../utils/apiFetch';
 import { useMemo, useState, useEffect } from 'react';
-import { Plus, Eye, Pencil, Ban, CheckCircle, Trash2, Filter, ChevronDown, Globe } from 'lucide-react';
-import { Card, Badge, Button, PageHeader, Modal, ConfirmModal, Field, Input, Select, EmptyState, Pagination } from '../components/ui';
+import { Plus, Eye, Search, Bell, RotateCcw, Ban, CheckCircle, Trash2, Filter, ChevronDown, Globe } from 'lucide-react';
+import { Card, Badge, Button, Modal, ConfirmModal, Field, Input, Select, EmptyState } from '../components/ui';
+import { MasterPagination } from '../components/MasterPagination';
 import { formatDate, formatBRL } from '../data/mock';
 
 interface Props { onNavigate: (id: string) => void; }
 
-const PAGE_SIZE = 8;
+const PAGE_SIZE = 7;
 
 export function MasterArenas({ onNavigate }: Readonly<Props>) {
   const [arenas, setArenas] = useState<SaaSArena[]>([]);
@@ -16,6 +18,7 @@ export function MasterArenas({ onNavigate }: Readonly<Props>) {
   const [, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | string>('all');
+  const [trialFilter, setTrialFilter] = useState('all');
   const [planFilter, setPlanFilter] = useState<'all' | string>('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -105,61 +108,42 @@ export function MasterArenas({ onNavigate }: Readonly<Props>) {
       if (search && !`${a.nome} ${a.email}`.toLowerCase().includes(search.toLowerCase())) return false;
       const st = a.status === 1 ? 'ativa' : a.status === 0 ? 'bloqueada' : 'excluida';
       if (statusFilter === 'trial' ? !a.em_trial : statusFilter !== 'all' && st !== statusFilter) return false;
+      if (trialFilter !== 'all' && Boolean(a.em_trial) !== (trialFilter === 'trial')) return false;
       if (planFilter !== 'all' && String(a.plano_id) !== planFilter) return false;
       if (dateFrom && new Date(a.criado_em) < new Date(dateFrom)) return false;
       if (dateTo && new Date(a.criado_em) > new Date(dateTo)) return false;
       return true;
     });
-  }, [arenas, search, statusFilter, planFilter, dateFrom, dateTo]);
+  }, [arenas, search, statusFilter, trialFilter, planFilter, dateFrom, dateTo]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
-    <div>
+    <div className="master-reference-page master-arenas-page">
       <PageHeader
         title="Arenas"
-        description="Todas as arenas (tenants) cadastradas na plataforma."
+        description="Gerencie cada operação da rede em um só lugar" context={false}
         actions={
-          <Button variant="primary" onClick={() => setCreateOpen(true)}><Plus size={15} /> Cadastrar nova arena</Button>
+          <><button className="master-header-icon" aria-label="Abrir comunicação" onClick={() => onNavigate('comunicacao')}><Bell size={16} /></button><span className="master-context"><i /> Gestão de arenas</span><Button variant="primary" onClick={() => setCreateOpen(true)}><Plus size={15} /> Cadastrar arena</Button></>
         }
       />
 
-      {/* Filter bar */}
-      <Card className="p-3 mb-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[200px]">
-            <Input placeholder="Buscar por nome, cidade ou e-mail..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
-          </div>
-          <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} className="w-auto min-w-[130px]">
-            <option value="all">Todos os status</option>
-            <option value="ativa">Ativa</option>
-            <option value="bloqueada">Bloqueada</option>
-            <option value="trial">Trial</option>
-          </Select>
-          <Select value={planFilter} onChange={(e) => { setPlanFilter(e.target.value); setPage(1); }} className="w-auto min-w-[120px]">
-            <option value="all">Todos os planos</option>
-            {planosSaaS.map((p) => <option key={p.id} value={String(p.id)}>{p.nome}</option>)}
-          </Select>
-          <Button variant="ghost" onClick={() => setShowFilters((s) => !s)}>
-            <Filter size={14} /> Filtros <ChevronDown size={13} className={`transition-transform ${showFilters ? 'rotate-180' : ''}`} />
-          </Button>
+      <section className="master-arena-search">
+        <div className="master-search-row"><label className="master-search-box"><Search size={18} /><span><input aria-label="Buscar arena por nome ou e-mail" placeholder="Buscar por nome ou e-mail" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} /></span></label><Button variant="primary" onClick={() => setShowFilters(s => !s)} aria-expanded={showFilters}><Filter size={14} /> Filtros</Button></div>
+        <div className="master-arena-filter-row">
+          <Select aria-label="Status da arena" value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}><option value="all">Todos os status</option><option value="ativa">Ativa</option><option value="bloqueada">Bloqueada</option></Select>
+          <Select aria-label="Período de teste" value={trialFilter} onChange={e => { setTrialFilter(e.target.value); setPage(1); }}><option value="all">Período de teste</option><option value="trial">Em teste</option><option value="regular">Fora do teste</option></Select>
+          <Select aria-label="Plano da arena" value={planFilter} onChange={e => { setPlanFilter(e.target.value); setPage(1); }}><option value="all">Todos os planos</option>{planosSaaS.map(p => <option key={p.id} value={String(p.id)}>{p.nome}</option>)}</Select>
+          <button className="master-date-filter" onClick={() => setShowFilters(s => !s)} aria-expanded={showFilters}>Data de cadastro <ChevronDown size={12} /></button>
+          <button className="master-clear-filter" onClick={() => { setSearch(''); setStatusFilter('all'); setTrialFilter('all'); setPlanFilter('all'); setDateFrom(''); setDateTo(''); setPage(1); }}><RotateCcw size={13} /> Limpar</button>
         </div>
-        {showFilters && (
-          <div className="flex flex-wrap items-end gap-3 mt-3 pt-3 border-t border-border-passive animate-fade-in">
-            <Field label="Criada de">
-              <Input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }} className="w-auto" />
-            </Field>
-            <Field label="Criada até">
-              <Input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} className="w-auto" />
-            </Field>
-            <Button variant="ghost" size="sm" onClick={() => { setDateFrom(''); setDateTo(''); setStatusFilter('all'); setPlanFilter('all'); setSearch(''); }}>Limpar filtros</Button>
-          </div>
-        )}
-      </Card>
+        {showFilters && <div className="master-date-range"><Field label="Criada de"><Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} /></Field><Field label="Criada até"><Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} /></Field></div>}
+      </section>
 
       {/* Table */}
-      <Card className="overflow-hidden">
+      <Card className="master-data-panel master-arena-table overflow-hidden">
+        <div className="master-table-heading"><strong>Todas as arenas <em>{filtered.length}</em></strong><span>Mostrando {filtered.length ? (page - 1) * PAGE_SIZE + 1 : 0}–{Math.min(page * PAGE_SIZE, filtered.length)} de {filtered.length}</span></div>
         {pageItems.length === 0 ? (
           <EmptyState message="Nenhuma arena encontrada para os filtros aplicados." />
         ) : (
@@ -168,12 +152,11 @@ export function MasterArenas({ onNavigate }: Readonly<Props>) {
               <thead>
                 <tr className="bg-cream/60 text-left text-xs text-muted uppercase tracking-wide">
                   <th className="px-4 py-3 font-medium">Arena</th>
-                  <th className="px-4 py-3 font-medium">Cidade</th>
+                  <th className="px-4 py-3 font-medium">Responsável</th>
                   <th className="px-4 py-3 font-medium">Plano</th>
                   <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Criada em</th>
-                  <th className="px-4 py-3 font-medium">Financeiro</th>
-                  <th className="px-4 py-3 font-medium">Gateway MP</th>
+                  <th className="px-4 py-3 font-medium">Datas</th>
+                  <th className="px-4 py-3 font-medium">Saúde</th>
                   <th className="px-4 py-3 font-medium text-right">Ações</th>
                 </tr>
               </thead>
@@ -188,34 +171,22 @@ export function MasterArenas({ onNavigate }: Readonly<Props>) {
                     <td className="px-4 py-3">
                       <button onClick={() => onNavigate('arena-detalhe?id=' + a.id)} className="text-left">
                         <div className="font-medium text-charcoal hover:underline">{a.nome}</div>
-                        <div className="text-xs text-muted">{a.email}</div>
+                        <div className="text-xs text-muted">{a.endereco || 'Endereço não informado'}</div>
                       </button>
                     </td>
-                    <td className="px-4 py-3 text-muted" style={{maxWidth: '120px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>{a.endereco || 'Não informado'}</td>
+                    <td className="px-4 py-3 text-muted"><span>{a.email}</span></td>
                     <td className="px-4 py-3"><span className="text-charcoal font-medium">{a.plano_nome || 'Basic'}</span></td>
                     <td className="px-4 py-3"><Badge status={st === 'excluida' ? 'desativado' : st}>{statusLabel[st]}</Badge></td>
-                    <td className="px-4 py-3 text-muted tabular">{formatDate(a.criado_em || new Date().toISOString())}</td>
-                    <td className="px-4 py-3"><Badge status={fin}>{financeLabel[fin]}</Badge></td>
+                    <td className="px-4 py-3 text-muted tabular"><div>Cadastro · {formatDate(a.criado_em)}</div><small>Vencimento · dia {a.dia_vencimento || '—'}</small></td>
+                    <td className="px-4 py-3"><span className={`master-health ${fin === 'atrasado' ? 'is-overdue' : ''}`} title={a.gateway_conectado ? 'Mercado Pago conectado' : 'Mercado Pago pendente'}><i />{financeLabel[fin]}</span></td>
                     <td className="px-4 py-3">
-                      {a.gateway_conectado ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 600 }}>
-                          ✅ MP Conectado
-                        </span>
-                      ) : (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: '#fef3c7', color: '#b45309', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 600 }}>
-                          ⚠️ Pendente
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-0.5">
+                      <div className="master-row-actions">
                         {a.slug && (
                           <a href={`/arena/${a.slug}`} target="_blank" rel="noreferrer" title="Abrir Vitrine Pública (Link do Atleta)" className="p-1.5 rounded-md text-emerald-600 hover:bg-emerald-50 transition-colors">
                             <Globe size={15} />
                           </a>
                         )}
                         <button onClick={() => onNavigate('arena-detalhe?id=' + a.id)} title="Ver detalhes" className="p-1.5 rounded-md text-muted hover:text-charcoal hover:bg-cream-surface transition-colors"><Eye size={15} /></button>
-                        <button title="Editar" className="p-1.5 rounded-md text-muted hover:text-charcoal hover:bg-cream-surface transition-colors"><Pencil size={15} /></button>
                         {a.status === 0 ? (
                           <button onClick={() => setBlockTarget(a)} title="Desbloquear" className="p-1.5 rounded-md text-success hover:bg-success-soft transition-colors"><CheckCircle size={15} /></button>
                         ) : (
@@ -230,9 +201,7 @@ export function MasterArenas({ onNavigate }: Readonly<Props>) {
             </table>
           </div>
         )}
-        <div className="p-3 border-t border-border-passive">
-          <Pagination page={page} totalPages={totalPages} onPage={setPage} />
-        </div>
+        <MasterPagination page={page} totalPages={totalPages} onPage={setPage} label="7 arenas por página" />
       </Card>
 
       {/* Create modal */}

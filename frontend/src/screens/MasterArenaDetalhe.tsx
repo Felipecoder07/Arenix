@@ -1,10 +1,11 @@
 import { useCallback } from 'react';
 import type { ArenaDetails, ArenaStaff, ArenaLog, SaaSPlan, SaaSInvoice } from '../types/api';
+import { MasterPageHeader as PageHeader } from '../components/MasterPageHeader';
 import { apiFetch as fetch } from '../utils/apiFetch';
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Ban, CheckCircle, Pencil, Trash2, ShieldAlert, FileText, Wallet, Users, History, ArrowLeft } from 'lucide-react';
-import { Card, Badge, Button, PageHeader, ConfirmModal, Field, Input, Select, EmptyState } from '../components/ui';
+import { Card, Badge, Button, ConfirmModal, Field, Input, Select, EmptyState } from '../components/ui';
 import { formatDate, formatBRL, formatDateTime, relativeTime } from '../data/mock';
 
 interface Props { onNavigate: (id: string) => void; }

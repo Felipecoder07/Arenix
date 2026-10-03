@@ -90,6 +90,4 @@ router.get('/comunicados/ativos', verifyToken, require('../utils/permissions').r
   }
 });
 
-router.post('/mfa/setup', verifyToken, recoveryLimiter, require('../middlewares/mfa').setup);
-router.post('/mfa/confirm', verifyToken, recoveryLimiter, require('../middlewares/mfa').confirm);
 module.exports = router;

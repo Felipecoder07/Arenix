@@ -28,6 +28,7 @@ import { AdminRelatorios } from './screens/admin/AdminRelatorios';
 import { AdminAssinatura } from './screens/admin/AdminAssinatura';
 import { AdminConfiguracoes } from './screens/admin/AdminConfiguracoes';
 import { AdminAuditoria } from './screens/admin/AdminAuditoria';
+import { AdminConfiguracoesQuadras } from './screens/admin/AdminConfiguracoesQuadras';
 import { safeStorage } from './utils/safeStorage';
 import { SessionGuard, RoleRoute } from './components/SessionGuard';
 
@@ -236,8 +237,9 @@ function App() {
         <Route path="relatorios" element={<RoleRoute allowedRoles={['Administrador', 'Gerente']}><AdminRelatorios /></RoleRoute>} />
         <Route path="assinatura" element={<RoleRoute allowedRoles={['Administrador', 'Gerente']}><AdminAssinatura /></RoleRoute>} />
         <Route path="plano" element={<Navigate to="/admin/assinatura" replace />} />
-        <Route path="configuracoes" element={<RoleRoute allowedRoles={['Administrador', 'Gerente']}><AdminConfiguracoes /></RoleRoute>} />
+        <Route path="configuracoes" element={<RoleRoute allowedRoles={['Administrador', 'Gerente']}><AdminConfiguracoesQuadras /></RoleRoute>} />
         <Route path="auditoria" element={<RoleRoute allowedRoles={['Administrador']}><AdminAuditoria /></RoleRoute>} />
+
         <Route path="*" element={<Navigate to="dashboard" replace />} />
       </Route>
 

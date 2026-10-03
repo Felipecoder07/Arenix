@@ -1,5 +1,5 @@
 import { apiFetch as fetch } from '../utils/apiFetch';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, ArrowRight, X, Phone, User, KeyRound, CheckCircle2 } from 'lucide-react';
 import type { ArenaInfo } from '../types';
 import { maskPhone } from '../lib/format';
@@ -19,11 +19,13 @@ interface Props {
 declare global {
  interface Window { google?: { accounts?: { id?: {
  initialize: (config:{client_id:string;callback:(response:{credential:string})=>void})=>void;
- prompt: ()=>void;
+ renderButton: (element: HTMLElement, options: {theme:string;size:string;text:string;shape:string;width:number})=>void;
  } } } }
 }
 
 export default function LoginScreen({ arena, slug, onAuthed, onClose, onGuestCheckout }: Readonly<Props>) {
+  const googleButtonRef = useRef<HTMLDivElement>(null);
+  const googleCallbackData = useRef({ onAuthed, password: '' });
   useEffect(() => {
     document.documentElement.style.overflow = 'hidden';
     document.body.style.overflow = 'hidden';
@@ -37,6 +39,7 @@ export default function LoginScreen({ arena, slug, onAuthed, onClose, onGuestChe
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  googleCallbackData.current = { onAuthed, password };
   const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [showPwd, setShowPwd] = useState(false);
@@ -44,21 +47,48 @@ export default function LoginScreen({ arena, slug, onAuthed, onClose, onGuestChe
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  const handleGoogleClick = () => {
-    const identity=window.google?.accounts?.id;
-    if(!identity || !GOOGLE_CLIENT_ID) { setError('Login Google indisponivel. Use e-mail e senha.'); return; }
-    setError(null);
-    identity.initialize({client_id:GOOGLE_CLIENT_ID,callback: async ({credential})=>{
-      setLoading('google');
+  useEffect(() => {
+    if (!GOOGLE_CLIENT_ID || !googleButtonRef.current || !['signin', 'signup'].includes(mode)) return;
+    let active = true;
+    const render = () => {
+      const identity = window.google?.accounts?.id;
+      const container = googleButtonRef.current;
+      if (!active || !identity || !container) return false;
       try {
-        const res=await fetch(BACKEND_URL+'/api/public/tenant/'+slug+'/google',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({credential,senha:password||undefined})});
-        const data=await res.json();
-        if(!res.ok) {setError(data.error || 'Falha na identidade Google.');return;}
-        onAuthed({name:data.usuario.nome,email:data.usuario.email,phone:data.usuario.telefone||''});
-      } catch {setError('Falha de conexao.');} finally {setLoading(null);}
-    }});
-    identity.prompt();
-  };
+      container.replaceChildren();
+      identity.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: async ({ credential }) => {
+          setLoading('google');
+          setError(null);
+          try {
+            const res = await fetch(BACKEND_URL + '/api/public/tenant/' + slug + '/google', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ credential, senha: googleCallbackData.current.password || undefined })
+            });
+            const data = await res.json();
+            if (!res.ok) { setError(data.error || 'Falha na identidade Google.'); return; }
+            googleCallbackData.current.onAuthed({ name: data.usuario.nome, email: data.usuario.email, phone: data.usuario.telefone || '' });
+          } catch { setError('Falha de conexão com o servidor.'); }
+          finally { setLoading(null); }
+        }
+      });
+      identity.renderButton(container, { theme: 'outline', size: 'large', text: 'continue_with', shape: 'rectangular', width: Math.max(220, Math.floor(container.clientWidth)) });
+      setError(null);
+      return true;
+      } catch {
+        setError('Não foi possível iniciar o login do Google. Confira o Client ID e a origem autorizada.');
+        return false;
+      }
+    };
+    if (render()) return () => { active = false; };
+    const timer = window.setInterval(() => { if (render()) window.clearInterval(timer); }, 250);
+    const timeout = window.setTimeout(() => {
+      window.clearInterval(timer);
+      if (active && !window.google?.accounts?.id) setError('Não foi possível carregar o login do Google. Verifique a conexão e tente novamente.');
+    }, 10000);
+    return () => { active = false; window.clearInterval(timer); window.clearTimeout(timeout); };
+  }, [slug, mode]);
 
   const handleForgotSubmit = async () => {
     try {
@@ -197,18 +227,9 @@ export default function LoginScreen({ arena, slug, onAuthed, onClose, onGuestChe
 
           {(mode === 'signin' || mode === 'signup') && (
             <>
-              <button
-                onClick={handleGoogleClick}
-                disabled={loading !== null}
-                className="tap w-full flex items-center justify-center gap-3 rounded-2xl border border-edge bg-card text-charcoal font-semibold active:scale-[0.98] transition disabled:opacity-60 text-sm h-12"
-              >
-                {loading === 'google' ? (
-                  <Loader2 size={18} className="animate-spin" />
-                ) : (
-                  <GoogleIcon />
-                )}
-                Continuar com Google
-              </button>
+              <div ref={googleButtonRef} className="w-full min-h-12 flex justify-center items-center" aria-label="Continuar com Google">
+                {!GOOGLE_CLIENT_ID && <p className="text-xs text-red-600">Login Google indisponível. Use e-mail e senha.</p>}
+              </div>
 
               <div className="flex items-center gap-3 my-3">
                 <div className="flex-1 h-px bg-edge" />
@@ -435,16 +456,5 @@ export default function LoginScreen({ arena, slug, onAuthed, onClose, onGuestChe
         </div>
       </div>
     </div>
-  );
-}
-
-function GoogleIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
-      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.4 29.3 35 24 35c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34.5 5.1 29.6 3 24 3 12.9 3 4 11.9 4 23s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z" />
-      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 16 19 13 24 13c3 0 5.8 1.1 7.9 3l5.7-5.7C34.5 5.1 29.6 3 24 3 16.3 3 9.7 7.3 6.3 14.7z" />
-      <path fill="#4CAF50" d="M24 43c5.2 0 10-2 13.6-5.2l-6.3-5.3C29.2 34 26.7 35 24 35c-5.3 0-9.7-2.6-11.3-7l-6.5 5C9.6 38.7 16.2 43 24 43z" />
-      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4 5.5l6.3 5.3C41.9 36.5 44 30.2 44 23c0-1.3-.1-2.3-.4-3.5z" />
-    </svg>
   );
 }

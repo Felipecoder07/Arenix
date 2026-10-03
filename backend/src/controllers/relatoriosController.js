@@ -217,7 +217,7 @@ const relatorioInadimplencia = async (req, res) => {
     const context = queryContext(req);
     const base = `
       WITH base AS (
-        SELECT r.id, r.data_reserva, r.hora_inicio, r.hora_fim, r.valor_total,
+        SELECT r.id, r.cliente_id, r.quadra_id, r.data_reserva, r.hora_inicio, r.hora_fim, r.valor_total,
                r.status_pagamento, c.nome AS cliente_nome, c.telefone AS cliente_contato,
                q.nome AS quadra_nome,
                COALESCE((SELECT SUM(valor) FROM Pagamentos WHERE reserva_id = r.id), 0) AS total_pago
@@ -228,8 +228,15 @@ const relatorioInadimplencia = async (req, res) => {
           AND r.status != 'Cancelada' AND r.status_pagamento != 'Pago' ${context.courtSql}
       )`;
     const summary = await db.getAsync(`${base}
-      SELECT COUNT(*) AS total, COALESCE(SUM(valor_total - total_pago), 0) AS total_devido
+      SELECT COUNT(*) AS total, COUNT(DISTINCT cliente_id) AS devedores,
+             MIN(data_reserva) AS primeira_reserva_pendente,
+             COALESCE(SUM(valor_total - total_pago), 0) AS total_devido
       FROM base WHERE valor_total > total_pago
+    `, context.params);
+    const maiorSaldoQuadra = await db.getAsync(`${base}
+      SELECT quadra_nome, SUM(valor_total - total_pago) AS total_devido
+      FROM base WHERE valor_total > total_pago
+      GROUP BY quadra_id, quadra_nome ORDER BY total_devido DESC, quadra_nome LIMIT 1
     `, context.params);
     const rows = await db.allAsync(`${base}
       SELECT * FROM base WHERE valor_total > total_pago
@@ -243,6 +250,11 @@ const relatorioInadimplencia = async (req, res) => {
         total_pago: row.total_pago / 100
       })),
       totalDevido: summary.total_devido / 100,
+      totalDevedores: Number(summary.devedores),
+      primeiraReservaPendente: summary.primeira_reserva_pendente || null,
+      maiorSaldoQuadra: maiorSaldoQuadra
+        ? { quadra_nome: maiorSaldoQuadra.quadra_nome, total_devido: maiorSaldoQuadra.total_devido / 100 }
+        : null,
       periodo: { inicio: context.inicio, fim: context.fim },
       paginacao: paginationResult(summary.total, context.pagination)
     });
@@ -254,6 +266,10 @@ const relatorioInadimplencia = async (req, res) => {
 const relatorioCancelamentos = async (req, res) => {
   try {
     const context = queryContext(req);
+    const allReservations = await db.getAsync(`
+      SELECT COUNT(*) AS total FROM Reservas r
+      WHERE r.data_reserva BETWEEN ? AND ? AND r.tenant_id = ? ${context.courtSql}
+    `, context.params);
     const summary = await db.getAsync(`
       SELECT COUNT(*) AS total,
              COALESCE(SUM(r.valor_total), 0) AS valor_perdido,
@@ -289,6 +305,7 @@ const relatorioCancelamentos = async (req, res) => {
         valorPerdido: summary.valor_perdido / 100,
         estornados: Number(summary.estornados || 0)
       },
+      totalReservas: Number(allReservations.total),
       periodo: { inicio: context.inicio, fim: context.fim },
       paginacao: paginationResult(summary.total, context.pagination)
     });
@@ -400,9 +417,13 @@ const relatorioTopClientes = async (req, res) => {
     const summary = await db.getAsync(`${base}
       SELECT COUNT(*) AS total, COALESCE(SUM(valor_total_gerado), 0) AS faturado FROM ranking
     `, context.params);
+    const clienteMaisFrequente = await db.getAsync(`${base}
+      SELECT nome, total_reservas FROM ranking
+      ORDER BY total_reservas DESC, valor_total_gerado DESC, id ASC LIMIT 1
+    `, context.params);
     const clientes = await db.allAsync(`${base}
       SELECT * FROM ranking
-      ORDER BY total_reservas DESC, valor_total_gerado DESC, id ASC
+      ORDER BY valor_total_gerado DESC, total_reservas DESC, id ASC
       LIMIT ? OFFSET ?
     `, [...context.params, context.pagination.limite, context.pagination.offset]);
     res.json({
@@ -415,6 +436,7 @@ const relatorioTopClientes = async (req, res) => {
         ticket_medio: client.total_reservas ? (client.valor_total_gerado / 100) / client.total_reservas : 0
       })),
       totalFaturado: summary.faturado / 100,
+      clienteMaisFrequente: clienteMaisFrequente || null,
       periodo: { inicio: context.inicio, fim: context.fim },
       paginacao: paginationResult(summary.total, context.pagination)
     });

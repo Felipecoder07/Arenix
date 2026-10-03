@@ -28,6 +28,7 @@ const initDb = () => {
     db.run("ALTER TABLE Arenas ADD COLUMN chave_pix TEXT", () => {});
     db.run("ALTER TABLE Arenas ADD COLUMN titular_pix TEXT", () => {});
     db.run("ALTER TABLE Arenas ADD COLUMN cidade_pix TEXT DEFAULT 'SAO PAULO'", () => {});
+    db.run("ALTER TABLE Arenas ADD COLUMN pix_checkout_mode TEXT DEFAULT 'auto'", () => {});
     db.run("ALTER TABLE Arenas ADD COLUMN foto_capa TEXT", () => {});
 
     // Tabela Usuarios (Admin, Gerente, Recepcionista)
@@ -133,6 +134,8 @@ const initDb = () => {
     db.run("ALTER TABLE Reservas ADD COLUMN codigo_validacao_cancelamento TEXT", () => {});
     db.run("ALTER TABLE Reservas ADD COLUMN grupo_id TEXT", () => {});
     db.run("ALTER TABLE Reservas ADD COLUMN esporte TEXT DEFAULT 'Geral'", () => {});
+    db.run("ALTER TABLE Reservas ADD COLUMN pix_checkout_mode TEXT", () => {});
+    db.run("ALTER TABLE Reservas ADD COLUMN pix_copia_cola TEXT", () => {});
 
     // Tabela Pagamentos
     db.run(`

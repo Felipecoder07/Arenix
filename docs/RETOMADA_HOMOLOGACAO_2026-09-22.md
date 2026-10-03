@@ -1,5 +1,11 @@
 # Como continuar o item 5 — homologação
 
+**Estado mais recente (29/09):** consultar primeiro
+[PAGAMENTOS_LIBERACAO_2026-09-29.md](PAGAMENTOS_LIBERACAO_2026-09-29.md).
+Os registros de 22/09 abaixo são históricos. Google e repetição do webhook Pix
+foram confirmados em 23/09; aprovação/recusa/estorno ainda estão bloqueados no
+ensaio externo por HTTP 400, causa 10113, em 29/09.
+
 ## Resultado confirmado até 22/09/2026, 19:38 BRT
 
 O item 5 **não está concluído**. Não confundir teste de integração com aprovação
@@ -190,7 +196,7 @@ reinício e monitoramento no destino) continua separada e pendente.
 > docs/PENDENCIAS_SEGURANCA_2026-09-21.md. Preserve todas as alterações do Git e
 > não revele valores do .env. A instância isolada já existe em
 > .local-security/homologacao/instance; não recriar nem apagar. Pix fictício
-> 1328247564, R$ 100, live_mode=false, pending; repetição da criação não duplicou.
+> 1328247564, R$ 100, live_mode=false, pending1; repetição da criação não duplicou.
 > A assinatura de webhook já está instalada cifrada. Uma notificação chegou com
 > HTTP 200, mas ID/action e consulta ao pagamento ainda precisam ser comprovados;
 > confirmar segunda notificação. Google ainda não aprovado. Há roteiro de cartão

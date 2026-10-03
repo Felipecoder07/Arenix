@@ -21,7 +21,7 @@ beforeEach(async () => {
     certs: { fixture: key.publicKey.export({ type: 'spki', format: 'pem' }) }, format: 'PEM',
   });
 });
-afterEach(() => { certificates.mockRestore(); vi.unstubAllEnvs(); });
+afterEach(() => { certificates.mockRestore(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 afterAll(fixture.close);
 
 function googleToken(changes = {}, signingKey = key.privateKey) {
@@ -82,6 +82,10 @@ it('audit 5: anonymous or invalid-session phone lookup never reveals identity or
   expect(response.body[0].cliente_cpf).toBe('11111111111');
 });
 it('audit 6: anonymous checkout preserves every field of the foreign customer', async () => {
+  await db.runAsync("UPDATE Arenas SET gateway_access_token='FIXTURE-ARENA-TOKEN' WHERE id=1");
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({
+    id: 991, point_of_interaction: { transaction_data: { qr_code: 'fixture-pix', qr_code_base64: '' } }
+  }) })));
   const before = await db.getAsync('SELECT * FROM Clientes WHERE id=3');
   const response = await request(app).post('/api/public/tenant/arena-a/agendar').send({nome:'Visitor',email:before.email,telefone:'11999999999',cpf:before.cpf,quadra_id:1,data_reserva:'2099-12-22',hora_inicio:'10:00',hora_fim:'11:00',valor_total:0});
   expect(response.status).toBe(201);
@@ -110,6 +114,7 @@ it('audit 7: anonymous cancellation and Pix recovery cannot change a reservation
   const owner = await login(actors.owner);
   const allowedPix = await auth(request(app).get('/api/public/tenant/arena-a/reserva-pix/1'),owner);
   expect(allowedPix.status).toBe(200);
+  expect(allowedPix.body.manual_confirmation).toBe(true);
   expect(allowedPix.body.copia_cola).toBeTypeOf('string');
   const allowedCancel = await auth(request(app).post('/api/public/tenant/arena-a/cancelar-pendente'),owner).send({reserva_id:1});
   expect(allowedCancel.status).toBe(200);
@@ -146,4 +151,3 @@ it('audit 12: login and me responses do not leak cliente_id or password hash; st
   const crossSlugRes = await auth(request(app).get('/api/public/tenant/arena-b/status-reserva/1'), clientSession);
   expect(crossSlugRes.status).toBe(404);
 });
-

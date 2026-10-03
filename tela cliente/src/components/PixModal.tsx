@@ -1,5 +1,5 @@
 import { apiFetch as fetch } from '../utils/apiFetch';
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { X, Copy, Check, Clock, ShieldCheck, Loader2 } from 'lucide-react';
 import type { ReservationInput } from '../types';
 import { brl, formatLongDate, mmss } from '../lib/format';
@@ -15,60 +15,13 @@ interface Props {
     reserva_id?: number;
     expira_em_minutos?: number;
     expira_em_segundos?: number;
+    manual_confirmation?: boolean;
   } | null;
   readonly onClose: () => void;
   readonly onCancelPending?: () => void;
 }
 
 const PIX_DURATION = 15 * 60;
-
-function pad(n: number) {
-  return String(n).padStart(2, '0');
-}
-
-function buildPixCodeFallback(data: ReservationInput): string {
-  const id = `${data.courtId}${data.dateISO.replace(/-/g, '')}${data.start.replace(':', '')}`;
-  return `00020126360012BR.GOV.BCB.PIX0111arena@beachclub.com.br5204000053039865802BR5913ARENA BEACH6009FORTALEZA62${pad(
-    id.length
-  )}${id}6304ABCD`;
-}
-
-function qrMatrix(seed: string, size = 25): boolean[][] {
-  let h = 2166136261;
-  for (let i = 0; i < seed.length; i++) {
-    h ^= seed.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  const rng = () => {
-    h ^= h << 13; h ^= h >>> 17; h ^= h << 5;
-    return ((h >>> 0) % 1000) / 1000;
-  };
-  const m: boolean[][] = [];
-  for (let y = 0; y < size; y++) {
-    const row: boolean[] = [];
-    for (let x = 0; x < size; x++) row.push(rng() > 0.5);
-    m.push(row);
-  }
-  const placeFinder = (ox: number, oy: number) => {
-    for (let y = 0; y < 7; y++) {
-      for (let x = 0; x < 7; x++) {
-        const edge = x === 0 || y === 0 || x === 6 || y === 6;
-        const inner = x >= 2 && x <= 4 && y >= 2 && y <= 4;
-        m[oy + y][ox + x] = edge || inner;
-      }
-    }
-    for (let y = 0; y < 8; y++) {
-      for (let x = 0; x < 8; x++) {
-        const ix = ox + x, iy = oy + y;
-        if (ix < size && iy < size && (x === 7 || y === 7)) m[iy][ix] = false;
-      }
-    }
-  };
-  placeFinder(0, 0);
-  placeFinder(size - 7, 0);
-  placeFinder(0, size - 7);
-  return m;
-}
 
 function calculateInitialSeconds(pixPayload?: Props['pixPayload']): number {
   if (pixPayload?.expira_em_segundos !== undefined) {
@@ -133,12 +86,8 @@ export default function PixModal({
 
   useLockBodyScroll(open);
 
-  const pixCode = useMemo(() => {
-    if (pixPayload?.copia_cola) return pixPayload.copia_cola;
-    return data ? buildPixCodeFallback(data) : '';
-  }, [data, pixPayload]);
-
-  const matrix = useMemo(() => (data ? qrMatrix(pixCode) : []), [pixCode, data]);
+  const pixCode = pixPayload?.copia_cola || '';
+  const manual = Boolean(pixPayload?.manual_confirmation);
 
   // Contagem regressiva
   useEffect(() => {
@@ -147,6 +96,7 @@ export default function PixModal({
     setStatus('pending');
     setCopied(false);
 
+    if (manual) return;
     const t = setInterval(() => {
       setRemaining((r) => {
         if (r <= 1) {
@@ -158,7 +108,7 @@ export default function PixModal({
     }, 1000);
 
     return () => clearInterval(t);
-  }, [open, pixPayload, onCancelPending]);
+  }, [open, pixPayload, onCancelPending, manual]);
 
   // Polling de confirmação
   useEffect(() => {
@@ -190,11 +140,11 @@ export default function PixModal({
   }, [open, status, pixPayload?.reserva_id, slug]);
 
   const handleCloseModal = useCallback(() => {
-    if (status === 'pending') {
+    if (status === 'pending' && !manual) {
       onCancelPending?.();
     }
     onClose();
-  }, [status, onCancelPending, onClose]);
+  }, [status, manual, onCancelPending, onClose]);
 
   const handleCopy = useCallback(async () => {
     await copyToClipboard(pixCode);
@@ -239,7 +189,7 @@ export default function PixModal({
             className={`rounded-2xl px-4 py-3 mb-4 flex items-center gap-2.5 ${
               status === 'confirmed'
                 ? 'bg-available-bg text-available-text'
-                : expired
+                : !manual && expired
                 ? 'bg-error-bg text-error-text'
                 : 'bg-pending-bg text-pending-text'
             }`}
@@ -248,6 +198,8 @@ export default function PixModal({
             <p className="text-sm font-semibold">
               {status === 'confirmed'
                 ? '🎉 Pagamento Confirmado com Sucesso!'
+                : manual
+                ? 'Aguardando confirmação manual da arena'
                 : expired
                 ? 'Tempo esgotado — A reserva foi cancelada e a vaga liberada'
                 : `Pague em ${mmss(remaining)} para garantir sua vaga`}
@@ -275,7 +227,7 @@ export default function PixModal({
                 </div>
                 <h3 className="font-bold text-lg text-charcoal">Reserva Garantida!</h3>
                 <p className="text-xs text-muted mt-1 max-w-[200px]">
-                  Identificamos seu pagamento automaticamente pelo banco.
+                  {manual ? 'A arena confirmou o recebimento do Pix.' : 'Identificamos seu pagamento automaticamente pelo banco.'}
                 </p>
               </div>
             ) : pixPayload?.qr_code ? (
@@ -285,24 +237,20 @@ export default function PixModal({
                   alt="QR Code Pix"
                   className="w-48 h-48 rounded-xl object-contain border border-edge bg-white p-2"
                 />
-                {expired && (
+                {!manual && expired && (
                   <div className="absolute inset-0 bg-charcoal/70 backdrop-blur-[2px] rounded-xl flex items-center justify-center text-white text-xs font-bold p-3 text-center">
                     QR Code Expirado
                   </div>
                 )}
               </div>
             ) : (
-              <div className="w-48 h-48 bg-white p-2 rounded-xl border border-edge grid grid-cols-25 gap-[1px]">
-                {matrix.flat().map((filled, i) => (
-                  <div key={i} className={filled ? 'bg-charcoal' : 'bg-white'} />
-                ))}
-              </div>
+              <p className="text-xs text-muted text-center">QR Pix indisponível. Consulte a arena antes de pagar.</p>
             )}
 
-            {status === 'pending' && !expired && (
+            {status === 'pending' && (manual || !expired) && (
               <div className="mt-3 flex items-center gap-1.5 text-xs text-muted">
                 <Loader2 size={13} className="animate-spin text-accent" />
-                <span>Aguardando confirmação bancária...</span>
+                <span>{manual ? 'Após pagar, aguarde a arena conferir e confirmar a reserva.' : 'Aguardando confirmação bancária...'}</span>
               </div>
             )}
           </div>
@@ -311,11 +259,11 @@ export default function PixModal({
           {status !== 'confirmed' && (
             <button
               onClick={handleCopy}
-              disabled={expired}
+              disabled={!pixCode || (!manual && expired)}
               className={`w-full py-3.5 px-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-sm transition-all ${
                 copied
                   ? 'bg-emerald-600 text-white'
-                  : expired
+                  : !manual && expired
                   ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                   : 'bg-accent text-white hover:bg-accent-hover active:scale-[0.99]'
               }`}
@@ -345,7 +293,7 @@ export default function PixModal({
 
           <div className="mt-3 flex items-center justify-center gap-1 text-[11px] text-muted">
             <ShieldCheck size={14} className="text-emerald-600" />
-            <span>Pagamento 100% seguro via Banco Central do Brasil</span>
+            <span>{manual ? 'Confirmação do pagamento feita pela arena' : 'Pagamento Pix processado pelo Mercado Pago'}</span>
           </div>
         </div>
       </div>

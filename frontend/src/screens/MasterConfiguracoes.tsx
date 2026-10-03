@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { ReauthenticationAction } from '../components/ReauthenticationAction';
 import { apiFetch as fetch } from '../utils/apiFetch';
+import { MasterPageHeader } from '../components/MasterPageHeader';
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, Wrench, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { Badge, ConfirmModal } from '../components/ui';
@@ -603,7 +604,7 @@ export function MasterConfiguracoes() {
     <div className="admin-configuracoes-page">
       {tab === 'gateway' && <details className="card">
         <summary>Remover credencial de integração</summary>
-        <p>A remoção interrompe a integração correspondente. Informe sua senha e o código do segundo fator.</p>
+        <p>A remoção interrompe a integração correspondente. Informe sua senha para confirmar.</p>
         <label>Credencial
           <select value={credentialToRemove} onChange={e => setCredentialToRemove(e.target.value)}>
             <option value="mp_master_access_token">Token master</option>
@@ -630,15 +631,7 @@ export function MasterConfiguracoes() {
       )}
 
       {/* Título da página */}
-      <div className="card-header" style={{ marginBottom: 'var(--s-5)' }}>
-        <div>
-          <h1 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--charcoal)', margin: 0 }}>
-            Configurações da plataforma
-          </h1>
-          <p style={{ fontSize: '13px', color: 'var(--muted)', marginTop: '4px' }}>
-            Parâmetros globais aplicados a toda a plataforma e suas arenas.
-          </p>
-        </div>
+      <MasterPageHeader title="Configurações da plataforma" description="Parâmetros globais aplicados a toda a plataforma e suas arenas." actions={
         <button
           className="btn-primary"
           onClick={() => handleSave()}
@@ -646,7 +639,7 @@ export function MasterConfiguracoes() {
         >
           {saving ? 'Salvando...' : 'Salvar Alterações'}
         </button>
-      </div>
+      } />
 
       <div className="config-layout">
         {/* Sidebar de navegação */}

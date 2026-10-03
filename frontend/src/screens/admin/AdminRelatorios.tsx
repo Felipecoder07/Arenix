@@ -1,10 +1,27 @@
 import { useEventCallback } from '../../hooks/useEventCallback';
 import { errorMessage } from '../../utils/errorMessage';
 import { apiFetch as fetch } from '../../utils/apiFetch';
-import { useState, useEffect } from 'react';
-import { Banknote, CreditCard, Ticket } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { useOutletContext } from 'react-router-dom';
+import { Banknote, CreditCard, Ticket, Download, BarChart3, CalendarDays, Grid2X2, AlertTriangle, CalendarX, Clock, Users, SlidersHorizontal } from 'lucide-react';
 import { Pagination } from '../../components/ui';
+import { AdminTopbar } from '../../components/AdminTopbar';
+import { PeakHoursCharts } from '../../components/reports/PeakHoursCharts';
+import { ReportOverview } from '../../components/reports/ReportOverview';
+import { safeStorage } from '../../utils/safeStorage';
+import type { ReportData } from '../../types/reports';
 import '../../assets/css/relatorios.css';
+
+const REPORT_TABS = [
+  { id: 'faturamento', label: 'Faturamento', icon: BarChart3 },
+  { id: 'ocupacao', label: 'Ocupação', icon: Grid2X2 },
+  { id: 'reservas', label: 'Reservas', icon: CalendarDays },
+  { id: 'inadimplencia', label: 'Inadimplência', icon: AlertTriangle },
+  { id: 'cancelamentos', label: 'Cancelamentos', icon: CalendarX },
+  { id: 'formas-pagamento', label: 'Formas de Pag.', icon: CreditCard },
+  { id: 'horarios-pico', label: 'Horários', icon: Clock },
+  { id: 'top-clientes', label: 'Top Clientes', icon: Users },
+];
 
 interface Quadra {
   id: number;
@@ -13,6 +30,9 @@ interface Quadra {
 }
 
 export function AdminRelatorios() {
+  const outlet = useOutletContext<{ onToggleSidebar: () => void } | undefined>();
+  const requestRef = useRef<AbortController | null>(null);
+  useEffect(() => () => requestRef.current?.abort(), []);
 
   // Dates initialization
   const getTodayStr = () => {
@@ -23,18 +43,21 @@ export function AdminRelatorios() {
 
   const getFirstDayStr = () => {
     const today = new Date();
-    return new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
   };
 
   // State Variables
-  const [relAtivo, setRelAtivo] = useState<string>(
-    localStorage.getItem('courtmanager_rel_ativo') || 'faturamento'
-  );
+  const [relAtivo, setRelAtivo] = useState<string>(() => {
+    const tab = new URLSearchParams(window.location.search).get('aba') || safeStorage.getItem('courtmanager_rel_ativo');
+    return REPORT_TABS.some(item => item.id === tab) ? tab! : 'faturamento';
+  });
   const [dataInicio, setDataInicio] = useState<string>(getFirstDayStr());
   const [dataFim, setDataFim] = useState<string>(getTodayStr());
   const [filterQuadraId, setFilterQuadraId] = useState<string | number>('');
   const [quadras, setQuadras] = useState<Quadra[]>([]);
-  const [dadosAtuais, setDadosAtuais] = useState<import('../../types/reports').ReportData | null>(null);
+  const [dadosAtuais, setDadosAtuais] = useState<ReportData | null>(null);
+  const [applied, setApplied] = useState({ inicio: dataInicio, fim: dataFim, quadra: '', tab: relAtivo });
+  const [exporting, setExporting] = useState(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -65,159 +88,217 @@ export function AdminRelatorios() {
   }, []);
 
   // Handle Generate Report
-  const gerarRelatorio = useEventCallback(async (currentTab = relAtivo, targetPage = currentPage) => {
-    if (!dataInicio || !dataFim) {
+  const gerarRelatorio = useEventCallback(async (currentTab: string = relAtivo, targetPage: number = currentPage, filters: { inicio: string; fim: string; quadra: string } = { inicio: dataInicio, fim: dataFim, quadra: String(filterQuadraId) }) => {
+    if (!filters.inicio || !filters.fim) {
       showToast('Selecione o período.', 'error');
       return;
     }
-    if (dataInicio > dataFim) {
+    if (filters.inicio > filters.fim) {
       showToast('A data inicial deve ser anterior à data final.', 'error');
       return;
     }
 
+    requestRef.current?.abort();
+    const request = new AbortController();
+    requestRef.current = request;
     setLoading(true);
     setErrorMsg(null);
     setDadosAtuais(null);
 
-    const params = new URLSearchParams({ data_inicio: dataInicio, data_fim: dataFim });
-    if (filterQuadraId) params.append('quadra_id', String(filterQuadraId));
+    const params = new URLSearchParams({ data_inicio: filters.inicio, data_fim: filters.fim });
+    if (filters.quadra) params.append('quadra_id', filters.quadra);
     params.append('pagina', String(targetPage));
     params.append('limite', '50');
 
     try {
       const res = await fetch(`/api/relatorios/${currentTab}?${params}`, {
-        headers: {}
+        headers: {}, signal: request.signal,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao gerar relatório');
 
+      if (request.signal.aborted) return;
       setDadosAtuais(data);
+      setApplied({ ...filters, tab: currentTab });
     } catch (e) {
-      setErrorMsg(errorMessage(e) || 'Erro de conexão.');
+      if (!request.signal.aborted) setErrorMsg(errorMessage(e) || 'Erro de conexão.');
     } finally {
-      setLoading(false);
+      if (!request.signal.aborted) setLoading(false);
     }
   } );
 
   // Trigger report automatically when tab changes if dates are set
   useEffect(() => {
-    localStorage.setItem('courtmanager_rel_ativo', relAtivo);
+    safeStorage.setItem('courtmanager_rel_ativo', relAtivo);
     setCurrentPage(1);
     gerarRelatorio(relAtivo, 1);
+    document.getElementById(`report-tab-${relAtivo}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [gerarRelatorio, relAtivo]);
 
   const changePage = (page: number) => {
     setCurrentPage(page);
-    gerarRelatorio(relAtivo, page);
+    gerarRelatorio(relAtivo, page, applied);
   };
 
   // Export CSV
-  const exportarCSV = () => {
+  const exportarCSV = async () => {
     if (!dadosAtuais) {
       showToast('Gere um relatório primeiro.', 'error');
       return;
     }
 
-    const rows: string[][] = [];
-    const sep = ';';
+    setExporting(true);
+    try {
+      let exportData = dadosAtuais;
+      if (dadosAtuais.paginacao && dadosAtuais.paginacao.totalPaginas > 1) {
+        const all: ReportData[] = [];
+        let page = 1;
+        let pages = 1;
+        do {
+          const params = new URLSearchParams({ data_inicio: applied.inicio, data_fim: applied.fim, pagina: String(page), limite: '100' });
+          if (applied.quadra) params.set('quadra_id', applied.quadra);
+          const response = await fetch('/api/relatorios/' + applied.tab + '?' + params);
+          const result: ReportData & { error?: string } = await response.json();
+          if (!response.ok) throw new Error(result.error || 'Não foi possível exportar o relatório.');
+          all.push(result);
+          pages = result.paginacao?.totalPaginas || 1;
+          page++;
+        } while (page <= pages);
+        exportData = {
+          ...dadosAtuais,
+          reservas: all.flatMap(result => result.reservas || []),
+          inadimplentes: all.flatMap(result => result.inadimplentes || []),
+          cancelamentos: all.flatMap(result => result.cancelamentos || []),
+          transacoes: all.flatMap(result => result.transacoes || []),
+          clientes: all.flatMap(result => result.clientes || []),
+        };
+      }
+      const rows: string[][] = [];
+      const sep = ';';
 
-    if (relAtivo === 'faturamento') {
-      rows.push(['Data', 'ID', 'Cliente', 'Quadra', 'Horário', 'Valor Total', 'Pago', 'Saldo', 'Métodos', 'Pagamento', 'Operador']);
-      dadosAtuais.reservas?.forEach((r) => {
-        const saldo = Math.max(0, r.valor_total - r.total_pago);
-        rows.push([
-          fmtData(r.data_reserva),
-          `#${r.id}`,
-          r.cliente_nome,
-          r.quadra_nome,
-          `${r.hora_inicio}-${r.hora_fim}`,
-          r.valor_total.toFixed(2),
-          r.total_pago.toFixed(2),
-          saldo.toFixed(2),
-          r.metodos || '',
-          r.status_pagamento,
-          r.operador_nome || ''
-        ]);
-      });
-    } else if (relAtivo === 'ocupacao') {
-      rows.push(['Quadra', 'Reservas', 'Min. Reservados', 'Min. Bloqueados', 'Min. Disponíveis', 'Taxa %']);
-      dadosAtuais.quadras?.forEach((q) => {
-        rows.push([
-          q.quadra_nome,
-          q.totalReservas.toString(),
-          q.minutosReservados.toString(),
-          q.minutosBloqueados.toString(),
-          q.totalMinutosDisp.toString(),
-          q.taxa.toString()
-        ]);
-      });
-    } else if (relAtivo === 'reservas') {
-      rows.push(['Data', 'ID', 'Cliente', 'Quadra', 'Horário', 'Valor', 'Status', 'Pagamento', 'Operador']);
-      dadosAtuais.reservas?.forEach((r) => {
-        rows.push([
-          fmtData(r.data_reserva),
-          `#${r.id}`,
-          r.cliente_nome,
-          r.quadra_nome,
-          `${r.hora_inicio}-${r.hora_fim}`,
-          r.valor_total.toFixed(2),
-          r.status,
-          r.status_pagamento,
-          r.operador_nome || ''
-        ]);
-      });
-    } else if (relAtivo === 'inadimplencia') {
-      rows.push(['Data', 'ID', 'Cliente', 'Contato', 'Quadra', 'Horário', 'Valor Total', 'Pago', 'Saldo Devedor']);
-      dadosAtuais.inadimplentes?.forEach((r) => {
-        rows.push([
-          fmtData(r.data_reserva),
-          `#${r.id}`,
-          r.cliente_nome,
-          r.cliente_contato || '',
-          r.quadra_nome,
-          `${r.hora_inicio}-${r.hora_fim}`,
-          r.valor_total.toFixed(2),
-          r.total_pago.toFixed(2),
-          r.saldo_devedor.toFixed(2)
-        ]);
-      });
-    } else if (relAtivo === 'cancelamentos') {
-      rows.push(['Data', 'ID', 'Cliente', 'Quadra', 'Horário', 'Motivo', 'Observações', 'Valor', 'Pago Antes', 'Status Pag.', 'Operador']);
-      dadosAtuais.cancelamentos?.forEach((r) => {
-        rows.push([
-          fmtData(r.data_reserva),
-          `#${r.id}`,
-          r.cliente_nome,
-          r.quadra_nome,
-          `${r.hora_inicio}-${r.hora_fim}`,
-          r.motivo_cancelamento || 'Não informado',
-          r.observacoes_cancelamento || '',
-          r.valor_total.toFixed(2),
-          r.total_pago.toFixed(2),
-          r.status_pagamento,
-          r.operador_nome || ''
-        ]);
-      });
-    } else {
-      showToast('Este tipo de relatório não suporta exportação direta para CSV.', 'error');
-      return;
+      if (relAtivo === 'faturamento') {
+        rows.push(['Data', 'ID', 'Cliente', 'Quadra', 'Horário', 'Valor Total', 'Pago', 'Saldo', 'Métodos', 'Pagamento', 'Operador']);
+        exportData.reservas?.forEach((r) => {
+          const saldo = Math.max(0, r.valor_total - r.total_pago);
+          rows.push([
+            fmtData(r.data_reserva),
+            `#${r.id}`,
+            r.cliente_nome,
+            r.quadra_nome,
+            `${r.hora_inicio}-${r.hora_fim}`,
+            r.valor_total.toFixed(2),
+            r.total_pago.toFixed(2),
+            saldo.toFixed(2),
+            r.metodos || '',
+            r.status_pagamento,
+            r.operador_nome || ''
+          ]);
+        });
+      } else if (relAtivo === 'ocupacao') {
+        rows.push(['Quadra', 'Reservas', 'Min. Reservados', 'Min. Bloqueados', 'Min. Disponíveis', 'Taxa %']);
+        exportData.quadras?.forEach((q) => {
+          rows.push([
+            q.quadra_nome,
+            q.totalReservas.toString(),
+            q.minutosReservados.toString(),
+            q.minutosBloqueados.toString(),
+            q.totalMinutosDisp.toString(),
+            q.taxa.toString()
+          ]);
+        });
+      } else if (relAtivo === 'reservas') {
+        rows.push(['Data', 'ID', 'Cliente', 'Quadra', 'Horário', 'Valor', 'Status', 'Pagamento', 'Operador']);
+        exportData.reservas?.forEach((r) => {
+          rows.push([
+            fmtData(r.data_reserva),
+            `#${r.id}`,
+            r.cliente_nome,
+            r.quadra_nome,
+            `${r.hora_inicio}-${r.hora_fim}`,
+            r.valor_total.toFixed(2),
+            r.status,
+            r.status_pagamento,
+            r.operador_nome || ''
+          ]);
+        });
+      } else if (relAtivo === 'inadimplencia') {
+        rows.push(['Data', 'ID', 'Cliente', 'Contato', 'Quadra', 'Horário', 'Valor Total', 'Pago', 'Saldo Devedor']);
+        exportData.inadimplentes?.forEach((r) => {
+          rows.push([
+            fmtData(r.data_reserva),
+            `#${r.id}`,
+            r.cliente_nome,
+            r.cliente_contato || '',
+            r.quadra_nome,
+            `${r.hora_inicio}-${r.hora_fim}`,
+            r.valor_total.toFixed(2),
+            r.total_pago.toFixed(2),
+            r.saldo_devedor.toFixed(2)
+          ]);
+        });
+      } else if (relAtivo === 'cancelamentos') {
+        rows.push(['Data', 'ID', 'Cliente', 'Quadra', 'Horário', 'Motivo', 'Observações', 'Valor', 'Pago Antes', 'Status Pag.', 'Operador']);
+        exportData.cancelamentos?.forEach((r) => {
+          rows.push([
+            fmtData(r.data_reserva),
+            `#${r.id}`,
+            r.cliente_nome,
+            r.quadra_nome,
+            `${r.hora_inicio}-${r.hora_fim}`,
+            r.motivo_cancelamento || 'Não informado',
+            r.observacoes_cancelamento || '',
+            r.valor_total.toFixed(2),
+            r.total_pago.toFixed(2),
+            r.status_pagamento,
+            r.operador_nome || ''
+          ]);
+        });
+      } else if (relAtivo === 'formas-pagamento') {
+        rows.push(['Data', 'Hora', 'Método', 'Valor', 'Cliente', 'Quadra', 'Operador']);
+        exportData.transacoes?.forEach(t => rows.push([
+          fmtData(t.data_pagamento), t.hora_pagamento || '', t.metodo, t.valor.toFixed(2),
+          t.cliente_nome, t.quadra_nome, t.operador_nome || '',
+        ]));
+      } else if (relAtivo === 'top-clientes') {
+        rows.push(['Posição', 'Cliente', 'Contato', 'Reservas', 'Última reserva', 'Faturamento', 'Ticket médio', 'Saldo devedor']);
+        exportData.clientes?.forEach(c => rows.push([
+          String(c.posicao), c.nome, c.telefone || '', String(c.total_reservas), fmtData(c.ultima_reserva),
+          c.valor_total_gerado.toFixed(2), c.ticket_medio.toFixed(2), c.saldo_devedor.toFixed(2),
+        ]));
+      } else if (relAtivo === 'horarios-pico') {
+        rows.push(['Distribuição', 'Faixa', 'Reservas']);
+        exportData.porHora?.forEach(h => rows.push(['Horário', `${String(h.hora).padStart(2, '0')}:00`, String(h.total)]));
+        exportData.porDiaSemana?.forEach(d => rows.push(['Dia da semana', d.dia, String(d.total)]));
+      } else {
+        showToast('Este tipo de relatório não suporta exportação direta para CSV.', 'error');
+        return;
+      }
+
+      const csvContent = '\uFEFF' + rows.map(row => row.map(val => {
+        const value = String(val ?? '');
+        const safe = /^[\s]*[=+@-]/.test(value) ? "'" + value : value;
+        return `"${safe.replace(/"/g, '""')}"`;
+      }).join(sep)).join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `relatorio_${relAtivo}_${applied.inicio}_${applied.fim}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showToast('Relatório exportado.', 'success');
+    } catch (error) {
+      showToast(errorMessage(error) || 'Não foi possível exportar o relatório.', 'error');
+    } finally {
+      setExporting(false);
     }
-
-    const csvContent = '\uFEFF' + rows.map(e => e.map(val => `"${val.replace(/"/g, '""')}"`).join(sep)).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `relatorio_${relAtivo}_${dataInicio}_${dataFim}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
   };
 
   // Helper Formats
   const moeda = (val: number | undefined) => {
-    return 'R$ ' + Number(val || 0).toFixed(2).replace('.', ',');
+    return Number(val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   };
 
   const fmtData = (dateStr?: string) => {
@@ -233,6 +314,7 @@ export function AdminRelatorios() {
     const map: Record<string, string> = {
       'Confirmada': 'badge-green',
       'Cancelada': 'badge-red',
+      'Cancelado': 'badge-red',
       'Pendente': 'badge-amber',
       'Pago': 'badge-green',
       'Parcial': 'badge-amber',
@@ -248,30 +330,10 @@ export function AdminRelatorios() {
 
     return (
       <>
-        {/* KPIs */}
-        <div className="rel-kpi-row">
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Faturamento Bruto</div>
-            <div className="rel-kpi-value">{moeda(totais.bruto)}</div>
-          </div>
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Recebido</div>
-            <div className="rel-kpi-value green">{moeda(totais.pago)}</div>
-          </div>
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">A Receber</div>
-            <div className="rel-kpi-value red">{moeda(totais.pendente)}</div>
-          </div>
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Reservas</div>
-            <div className="rel-kpi-value">{paginacao?.total ?? reservas.length}</div>
-          </div>
-        </div>
-
-        {/* Table */}
+        <ReportOverview tab={relAtivo} data={dadosAtuais} />
         <div className="table-card">
           <div style={{ padding: 'var(--s-4) var(--s-5)', borderBottom: '1px solid var(--border-passive)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span id="table-title">Relatório de Faturamento — {fmtData(dataInicio)} a {fmtData(dataFim)}</span>
+            <span id="table-title">Relatório de Faturamento — {fmtData(applied.inicio)} a {fmtData(applied.fim)}</span>
             <span id="table-count">{reservas.length} de {paginacao?.total ?? reservas.length} registros</span>
           </div>
           <div className="table-wrap">
@@ -342,28 +404,10 @@ export function AdminRelatorios() {
 
     return (
       <>
-        <div className="rel-kpi-row">
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Taxa Média</div>
-            <div className="rel-kpi-value green">{taxaGeral}%</div>
-          </div>
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Quadras Monitoradas</div>
-            <div className="rel-kpi-value">{qList.length}</div>
-          </div>
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Total de Reservas</div>
-            <div className="rel-kpi-value">{totalReservas}</div>
-          </div>
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Período (dias)</div>
-            <div className="rel-kpi-value">{periodo.dias}</div>
-          </div>
-        </div>
-
+        <ReportOverview tab={relAtivo} data={dadosAtuais} />
         <div className="table-card">
           <div style={{ padding: 'var(--s-4) var(--s-5)', borderBottom: '1px solid var(--border-passive)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span id="table-title">Relatório de Ocupação — {fmtData(dataInicio)} a {fmtData(dataFim)}</span>
+            <span id="table-title">Relatório de Ocupação — {fmtData(applied.inicio)} a {fmtData(applied.fim)}</span>
             <span id="table-count">{qList.length} quadras · {periodo.dias} dias</span>
           </div>
           <div className="table-wrap">
@@ -412,6 +456,7 @@ export function AdminRelatorios() {
           </div>
           <div id="table-footer" style={{ padding: 'var(--s-4) var(--s-5)', borderTop: '1px solid var(--border-passive)' }}>
             <span>Taxa geral de ocupação no período: {taxaGeral}%</span>
+            <span>{totalReservas} reservas monitoradas</span>
           </div>
         </div>
       </>
@@ -424,28 +469,10 @@ export function AdminRelatorios() {
 
     return (
       <>
-        <div className="rel-kpi-row">
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Total</div>
-            <div className="rel-kpi-value">{totais.total}</div>
-          </div>
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Confirmadas</div>
-            <div className="rel-kpi-value green">{totais.confirmadas}</div>
-          </div>
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Canceladas</div>
-            <div className="rel-kpi-value red">{totais.canceladas}</div>
-          </div>
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Pendentes</div>
-            <div className="rel-kpi-value amber">{totais.pendentes}</div>
-          </div>
-        </div>
-
+        <ReportOverview tab={relAtivo} data={dadosAtuais} />
         <div className="table-card">
           <div style={{ padding: 'var(--s-4) var(--s-5)', borderBottom: '1px solid var(--border-passive)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span id="table-title">Relatório de Reservas — {fmtData(dataInicio)} a {fmtData(dataFim)}</span>
+            <span id="table-title">Relatório de Reservas — {fmtData(applied.inicio)} a {fmtData(applied.fim)}</span>
             <span id="table-count">{totais.total} registros</span>
           </div>
           <div className="table-wrap">
@@ -496,6 +523,7 @@ export function AdminRelatorios() {
             <span>Total: {totais.total}</span>
             <span style={{ color: '#22c55e' }}>Confirmadas: {totais.confirmadas}</span>
             <span style={{ color: 'var(--danger)' }}>Canceladas: {totais.canceladas}</span>
+            <span style={{ color: 'var(--pending)' }}>Pendentes: {totais.pendentes}</span>
           </div>
         </div>
       </>
@@ -508,20 +536,10 @@ export function AdminRelatorios() {
 
     return (
       <>
-        <div className="rel-kpi-row">
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Devedores</div>
-            <div className="rel-kpi-value red">{paginacao?.total ?? inadimplentes.length}</div>
-          </div>
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Total a Receber</div>
-            <div className="rel-kpi-value red">{moeda(totalDevido)}</div>
-          </div>
-        </div>
-
+        <ReportOverview tab={relAtivo} data={dadosAtuais} />
         <div className="table-card">
           <div style={{ padding: 'var(--s-4) var(--s-5)', borderBottom: '1px solid var(--border-passive)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span id="table-title">Relatório de Inadimplência — {fmtData(dataInicio)} a {fmtData(dataFim)}</span>
+            <span id="table-title">Relatório de Inadimplência — {fmtData(applied.inicio)} a {fmtData(applied.fim)}</span>
             <span id="table-count">{inadimplentes.length} de {paginacao?.total ?? inadimplentes.length} registros</span>
           </div>
           <div className="table-wrap">
@@ -570,6 +588,7 @@ export function AdminRelatorios() {
           </div>
           <div id="table-footer" style={{ padding: 'var(--s-4) var(--s-5)', borderTop: '1px solid var(--border-passive)' }}>
             <span style={{ color: 'var(--danger)' }}>Total inadimplente: {moeda(totalDevido)}</span>
+            <span>Devedores: {dadosAtuais.totalDevedores ?? '—'}</span>
           </div>
         </div>
       </>
@@ -582,25 +601,12 @@ export function AdminRelatorios() {
 
     return (
       <>
-        <div className="rel-kpi-row">
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Cancelamentos</div>
-            <div className="rel-kpi-value red">{totais.total}</div>
-          </div>
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Valor Perdido</div>
-            <div className="rel-kpi-value red">{moeda(totais.valorPerdido)}</div>
-          </div>
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Estornados</div>
-            <div className="rel-kpi-value amber">{totais.estornados}</div>
-          </div>
-        </div>
+        <ReportOverview tab={relAtivo} data={dadosAtuais} />
 
         <div className="table-card">
           <div style={{ padding: 'var(--s-4) var(--s-5)', borderBottom: '1px solid var(--border-passive)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span id="table-title">Relatório de Cancelamentos — {fmtData(dataInicio)} a {fmtData(dataFim)}</span>
-            <span id="table-count">{totais.total} registros</span>
+            <span id="table-title">Relatório de Cancelamentos — {fmtData(applied.inicio)} a {fmtData(applied.fim)}</span>
+            <span id="table-count">{cancelamentos.length} de {dadosAtuais.paginacao?.total ?? totais.total ?? cancelamentos.length} registros</span>
           </div>
           <div className="table-wrap">
             <table>
@@ -689,9 +695,15 @@ export function AdminRelatorios() {
 
   const renderFormasPagamento = () => {
     if (!dadosAtuais) return null;
-    const { porMetodo = [], transacoes = [], totalGeral = 0, paginacao } = dadosAtuais;
+    const { porMetodo = [], transacoes = [], paginacao } = dadosAtuais;
 
-    const methodColors = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6'];
+    const methodColor = (method: string) => {
+      const name = method.toLowerCase();
+      if (name === 'pix') return '#00a86b';
+      if (name === 'dinheiro' || name === 'voucher') return '#f59e0b';
+      if (name.includes('pix')) return '#d92d20';
+      return '#2e5bff';
+    };
 
     const getFriendlyMethodName = (m: string) => {
       const lower = m.toLowerCase();
@@ -700,31 +712,20 @@ export function AdminRelatorios() {
       if (lower === 'credito') return 'Cartão de Crédito';
       if (lower === 'debito') return 'Cartão de Débito';
       if (lower === 'voucher') return 'Voucher Interno';
+      if (lower === 'pix_online') return 'Pix online';
+      if (lower === 'cartao_maquina') return 'Cartão máquina';
       return m.charAt(0).toUpperCase() + m.slice(1);
     };
 
     return (
       <>
-        <div className="rel-kpi-row">
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Total Recebido</div>
-            <div className="rel-kpi-value green">{moeda(totalGeral)}</div>
-          </div>
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Métodos Usados</div>
-            <div className="rel-kpi-value">{porMetodo.length}</div>
-          </div>
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Transações</div>
-            <div className="rel-kpi-value">{paginacao?.total ?? transacoes.length}</div>
-          </div>
-        </div>
+        <ReportOverview tab={relAtivo} data={dadosAtuais} />
 
         {porMetodo.length === 0 ? (
           <p style={{ color: 'var(--muted)', fontSize: '13px', margin: '20px 0' }}>Nenhum pagamento no período.</p>
         ) : (
           <div className="pag-method-grid">
-            {porMetodo.map((m, i: number) => (
+            {porMetodo.map((m) => (
               <div className="pag-method-card" key={m.metodo}>
                 <div className="pag-method-name" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   {renderMethodIcon(m.metodo)}
@@ -737,8 +738,8 @@ export function AdminRelatorios() {
                 <div 
                   className="pag-percent-bar" 
                   style={{ 
-                    width: `${m.percentual}%`, 
-                    background: methodColors[i % methodColors.length] 
+                    width: `${Math.min(100, Math.max(0, m.percentual))}%`,
+                    background: methodColor(m.metodo)
                   }} 
                 />
               </div>
@@ -778,7 +779,7 @@ export function AdminRelatorios() {
                       <td style={{ color: 'var(--muted)', fontSize: '12px' }}>{t.hora_pagamento || ''}</td>
                       <td>
                         <span className="badge badge-gray" style={{ textTransform: 'capitalize' }}>
-                          {t.metodo}
+                          {getFriendlyMethodName(t.metodo)}
                         </span>
                       </td>
                       <td style={{ color: '#22c55e', fontWeight: 600 }}>{moeda(t.valor)}</td>
@@ -798,79 +799,15 @@ export function AdminRelatorios() {
 
   const renderHorariosPico = () => {
     if (!dadosAtuais) return null;
-    const { porHora = [], maxPico = 1, porDiaSemana = [], totalReservas = 0 } = dadosAtuais;
-
-    const peakHourObj = porHora.length > 0 ? porHora.reduce((a, b) => (a.total > b.total ? a : b)) : null;
-    const bestDayObj = porDiaSemana.length > 0 ? porDiaSemana.reduce((a, b) => (a.total > b.total ? a : b)) : null;
-
-    return (
-      <>
-        <div className="rel-kpi-row">
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Total de Reservas</div>
-            <div className="rel-kpi-value">{totalReservas}</div>
-          </div>
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Horário de Pico</div>
-            <div className="rel-kpi-value">
-              {peakHourObj ? `${String(peakHourObj.hora).padStart(2, '0')}:00` : '—'}
-            </div>
-          </div>
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Dia Mais Movimentado</div>
-            <div className="rel-kpi-value">{bestDayObj ? bestDayObj.dia : '—'}</div>
-          </div>
-        </div>
-
-        <div className="heatmap-wrap">
-          <div className="heatmap-section" style={{ maxHeight: '420px', overflowY: 'auto' }}>
-            <h3>Reservas por Horário</h3>
-            {porHora.length === 0 ? (
-              <p style={{ color: 'var(--muted)', fontSize: '13px' }}>Sem dados no período.</p>
-            ) : (
-              porHora.map((h) => {
-                const pct = Math.round((h.total / maxPico) * 100);
-                const cor = pct >= 80 ? '#ef4444' : pct >= 50 ? '#f59e0b' : '#34d399';
-                return (
-                  <div className="hora-row" key={h.hora}>
-                    <span className="hora-label">{String(h.hora).padStart(2, '0')}:00</span>
-                    <div className="hora-bar-wrap">
-                      <div className="hora-bar" style={{ width: `${pct}%`, background: cor }} />
-                    </div>
-                    <span className="hora-count">{h.total}</span>
-                  </div>
-                );
-              })
-            )}
-          </div>
-          <div className="heatmap-section">
-            <h3>Reservas por Dia da Semana</h3>
-            {porDiaSemana.length === 0 ? (
-              <p style={{ color: 'var(--muted)', fontSize: '13px' }}>Sem dados no período.</p>
-            ) : (
-              porDiaSemana.map((d) => {
-                const maxDia = Math.max(...porDiaSemana.map((x) => x.total), 1);
-                const pct = Math.round((d.total / maxDia) * 100);
-                return (
-                  <div className="dia-row" key={d.dia}>
-                    <span className="dia-label">{d.dia}</span>
-                    <div className="dia-bar-wrap">
-                      <div className="dia-bar" style={{ width: `${pct}%` }} />
-                    </div>
-                    <span className="dia-count">{d.total}</span>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      </>
-    );
+    return <>
+      <ReportOverview tab={relAtivo} data={dadosAtuais} />
+      <PeakHoursCharts data={dadosAtuais} />
+    </>;
   };
 
   const renderTopClientes = () => {
     if (!dadosAtuais) return null;
-    const { clientes = [], totalFaturado = 0, paginacao } = dadosAtuais;
+    const { clientes = [], paginacao } = dadosAtuais;
 
     const rankIcon = (pos: number) => {
       if (pos === 1) return <span className="client-rank gold">★</span>;
@@ -881,28 +818,14 @@ export function AdminRelatorios() {
 
     return (
       <>
-        <div className="rel-kpi-row">
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Clientes Ativos</div>
-            <div className="rel-kpi-value">{paginacao?.total ?? clientes.length}</div>
-          </div>
-          <div className="rel-kpi">
-            <div className="rel-kpi-label">Faturamento Total</div>
-            <div className="rel-kpi-value green">{moeda(totalFaturado)}</div>
-          </div>
-          <div className="rel-kpi">
-            <div className="rel-kpi-label"># 1 em Reservas</div>
-            <div className="rel-kpi-value">
-              {currentPage === 1 && clientes.length > 0 ? clientes[0].nome.split(' ')[0] : '—'}
-            </div>
-          </div>
-        </div>
+        <ReportOverview tab={relAtivo} data={dadosAtuais} />
 
-        <div className="table-card">
-          <div style={{ padding: 'var(--s-4) var(--s-5)', borderBottom: '1px solid var(--border-passive)' }}>
+        <div className="table-card report-client-ranking">
+          <div className="report-ranking-heading">
             <span id="table-title">Ranking de Clientes</span>
+            <span id="table-count">Ordenado por faturamento no período · {paginacao?.total ?? clientes.length} clientes</span>
           </div>
-          <div style={{ padding: 'var(--s-2) var(--s-5)' }}>
+          <div className="report-ranking-list">
             {clientes.length === 0 ? (
               <p style={{ color: 'var(--muted)', padding: '20px', fontSize: '13px' }}>
                 Nenhum cliente com reservas no período.
@@ -947,9 +870,10 @@ export function AdminRelatorios() {
 
     if (errorMsg) {
       return (
-        <div className="empty-state">
+        <div className="empty-state" role="alert">
           <div className="icon">⚠️</div>
           <p>{errorMsg}</p>
+          <button className="report-generate" style={{ marginTop: 16 }} onClick={() => gerarRelatorio(relAtivo, 1)}>Tentar novamente</button>
         </div>
       );
     }
@@ -985,133 +909,64 @@ export function AdminRelatorios() {
     }
   };
 
-  const showExportBtn = ['faturamento', 'ocupacao', 'reservas', 'inadimplencia', 'cancelamentos'].includes(relAtivo);
+  const showExportBtn = REPORT_TABS.some(tab => tab.id === relAtivo);
+
+  const selectTab = (tab: string) => {
+    if (tab === relAtivo) return;
+    requestRef.current?.abort();
+    setDadosAtuais(null);
+    setErrorMsg(null);
+    setLoading(false);
+    setRelAtivo(tab);
+    const url = new URL(window.location.href);
+    url.searchParams.set('aba', tab);
+    window.history.replaceState({}, '', url);
+  };
 
   return (
     <div className="admin-relatorios-page">
-      {/* Toast Alert */}
-      {toast && (
-        <div 
-          className={`fixed bottom-4 right-4 z-50 px-4 py-3 rounded-lg text-white font-medium shadow-lg transition-transform duration-200 ${
-            toast.type === 'success' ? 'bg-success' : 'bg-danger'
-          }`}
-        >
-          {toast.message}
-        </div>
-      )}
+      <AdminTopbar
+        onToggleSidebar={() => outlet?.onToggleSidebar()}
+        customTitle={<div className="report-heading"><p>Análises / {REPORT_TABS.find(tab => tab.id === relAtivo)?.label}</p><h1>Relatórios</h1></div>}
+        actions={showExportBtn && <button className="report-export" onClick={exportarCSV} disabled={loading || exporting || !dadosAtuais} title="Exportar todos os registros do relatório em CSV"><Download size={15} />{exporting ? 'Exportando...' : 'Exportar relatório'}</button>}
+      />
 
-      {/* Tabs */}
-      <div className="rel-tab-bar" role="tablist">
-        <button 
-          className={`tab-btn ${relAtivo === 'faturamento' ? 'active' : ''}`}
-          onClick={() => setRelAtivo('faturamento')}
-        >
-          Faturamento
-        </button>
-        <button 
-          className={`tab-btn ${relAtivo === 'ocupacao' ? 'active' : ''}`}
-          onClick={() => setRelAtivo('ocupacao')}
-        >
-          Ocupação
-        </button>
-        <button 
-          className={`tab-btn ${relAtivo === 'reservas' ? 'active' : ''}`}
-          onClick={() => setRelAtivo('reservas')}
-        >
-          Reservas
-        </button>
-        <button 
-          className={`tab-btn ${relAtivo === 'inadimplencia' ? 'active' : ''}`}
-          onClick={() => setRelAtivo('inadimplencia')}
-        >
-          Inadimplência
-        </button>
-        <button 
-          className={`tab-btn ${relAtivo === 'cancelamentos' ? 'active' : ''}`}
-          onClick={() => setRelAtivo('cancelamentos')}
-        >
-          Cancelamentos
-        </button>
-        <button 
-          className={`tab-btn ${relAtivo === 'formas-pagamento' ? 'active' : ''}`}
-          onClick={() => setRelAtivo('formas-pagamento')}
-        >
-          Formas de Pag.
-        </button>
-        <button 
-          className={`tab-btn ${relAtivo === 'horarios-pico' ? 'active' : ''}`}
-          onClick={() => setRelAtivo('horarios-pico')}
-        >
-          Horários de Pico
-        </button>
-        <button 
-          className={`tab-btn ${relAtivo === 'top-clientes' ? 'active' : ''}`}
-          onClick={() => setRelAtivo('top-clientes')}
-        >
-          Top Clientes
-        </button>
+      {toast && <div role="status" className={`report-toast ${toast.type}`}>{toast.message}</div>}
+
+      <div className="report-tabs" role="tablist" aria-label="Tipos de relatório">
+        {REPORT_TABS.map(({ id, label, icon: Icon }, index) => <button
+          key={id} type="button" id={`report-tab-${id}`} role="tab"
+          aria-selected={relAtivo === id} aria-controls="report-content"
+          tabIndex={relAtivo === id ? 0 : -1}
+          className={relAtivo === id ? 'active' : ''}
+          onClick={() => selectTab(id)}
+          onKeyDown={event => {
+            const target = event.key === 'ArrowRight' ? (index + 1) % REPORT_TABS.length
+              : event.key === 'ArrowLeft' ? (index + REPORT_TABS.length - 1) % REPORT_TABS.length
+              : event.key === 'Home' ? 0 : event.key === 'End' ? REPORT_TABS.length - 1 : -1;
+            if (target < 0) return;
+            event.preventDefault();
+            selectTab(REPORT_TABS[target].id);
+            document.getElementById('report-tab-' + REPORT_TABS[target].id)?.focus();
+          }}
+        ><Icon size={15} aria-hidden="true" />{label}</button>)}
       </div>
 
-      {/* Toolbar / Filtros */}
-      <div className="page-toolbar">
-        <div className="filter-bar">
-          <div>
-            <label htmlFor="rel-inicio" style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '2px' }}>De</label>
-            <input 
-              type="date" 
-              id="rel-inicio" 
-              style={{ width: 'auto' }}
-              value={dataInicio}
-              onChange={(e) => setDataInicio(e.target.value)}
-            />
-          </div>
-          <div>
-            <label htmlFor="rel-fim" style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '2px' }}>Até</label>
-            <input 
-              type="date" 
-              id="rel-fim" 
-              style={{ width: 'auto' }}
-              value={dataFim}
-              onChange={(e) => setDataFim(e.target.value)}
-            />
-          </div>
-          <select 
-            id="rel-quadra" 
-            style={{ width: 'auto', minWidth: '160px', alignSelf: 'flex-end' }}
-            value={filterQuadraId}
-            onChange={(e) => setFilterQuadraId(e.target.value ? Number(e.target.value) : '')}
-          >
-            <option value="">Todas as quadras</option>
-            {quadras.map(q => (
-              <option key={q.id} value={q.id}>{q.nome} — {q.tipo}</option>
-            ))}
-          </select>
-          <button 
-            className="btn-primary" 
-            style={{ alignSelf: 'flex-end' }} 
-            onClick={() => { setCurrentPage(1); gerarRelatorio(relAtivo, 1); }}
-          >
-            Gerar Relatório
-          </button>
-        </div>
+      <form className="report-filters" onSubmit={event => { event.preventDefault(); setCurrentPage(1); gerarRelatorio(relAtivo, 1); }}>
+        <label htmlFor="rel-inicio">De<input required type="date" id="rel-inicio" value={dataInicio} onChange={e => setDataInicio(e.target.value)} /></label>
+        <label htmlFor="rel-fim">Até<input required type="date" id="rel-fim" value={dataFim} min={dataInicio} onChange={e => setDataFim(e.target.value)} /></label>
+        <label htmlFor="rel-quadra">Quadra<select id="rel-quadra" value={filterQuadraId} onChange={e => setFilterQuadraId(e.target.value)}>
+          <option value="">Todas as quadras</option>
+          {quadras.map(q => <option key={q.id} value={q.id}>{q.nome}</option>)}
+        </select></label>
+        <button type="submit" className="report-generate" disabled={loading}><SlidersHorizontal size={15} />{loading ? 'Gerando...' : 'Gerar Relatório'}</button>
+      </form>
 
-        {showExportBtn && (
-          <div style={{ display: 'flex', gap: 'var(--s-3)' }}>
-            <button className="btn-ghost" onClick={exportarCSV}>↓ CSV da página</button>
-          </div>
-        )}
-      </div>
-
-      {/* Main Content Area */}
-      <div style={{ marginTop: 'var(--s-4)' }}>
+      <section id="report-content" role="tabpanel" aria-labelledby={`report-tab-${relAtivo}`} aria-busy={loading}>
         {renderContent()}
-      </div>
+      </section>
       {!loading && dadosAtuais?.paginacao && (
-        <Pagination
-          page={dadosAtuais.paginacao.pagina}
-          totalPages={dadosAtuais.paginacao.totalPaginas}
-          onPage={changePage}
-        />
+        <Pagination page={dadosAtuais.paginacao.pagina} totalPages={dadosAtuais.paginacao.totalPaginas} onPage={changePage} />
       )}
     </div>
   );

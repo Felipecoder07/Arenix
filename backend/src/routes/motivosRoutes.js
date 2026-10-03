@@ -8,9 +8,11 @@ router.use(verifyToken);
 
 // Qualquer usuário logado pode listar os motivos
 router.get('/', requirePermission('staff.read'), motivosController.listarMotivos);
+router.get('/estatisticas', requirePermission('staff.read'), motivosController.estatisticasMotivos);
 
-// Apenas Administrador pode criar ou excluir motivos (pode ser ajustado se Gerente puder)
+// Apenas Administrador pode criar, atualizar ou excluir motivos (pode ser ajustado se Gerente puder)
 router.post('/', requirePermission('reasons.manage'), motivosController.criarMotivo);
+router.put('/:id', requirePermission('reasons.manage'), motivosController.atualizarMotivo);
 router.delete('/:id', requirePermission('reasons.manage'), motivosController.excluirMotivo);
 
 module.exports = router;

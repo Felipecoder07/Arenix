@@ -1,0 +1,36 @@
+/* CourtManager V2: reference canvas is 1440px wide. Offsets include the
+   transparent padding in each PNG; height:auto preserves its native ratio.
+   Anchor to sections so content changes keep the boundary overlaps intact. */
+.landing-ball {
+  position: absolute;
+  display: block;
+  max-width: none;
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+  z-index: 1;
+}
+
+.landing-ball--soccer {
+  width: min(37.430556vw, 539px);
+  left: max(-18.75vw, -270px);
+  top: min(7.152778vw, 103px);
+}
+
+.landing-ball--volleyball {
+  width: min(28.055556vw, 404px);
+  right: max(-12.777778vw, -184px);
+  top: max(-11.944444vw, -172px);
+}
+
+.landing-ball--basketball {
+  width: min(31.041667vw, 447px);
+  left: max(-17.222222vw, -248px);
+  top: max(-10.277778vw, -148px);
+}
+
+.landing-ball--tennis {
+  width: min(41.666667vw, 600px);
+  right: max(-19.652778vw, -283px);
+  top: max(-13.194444vw, -190px);
+}

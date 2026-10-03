@@ -1,0 +1,1393 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CourtManager - Gestão de Quadras</title>
+    <script>
+      tailwind = { config: { corePlugins: { preflight: false } } };
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Space+Grotesk:wght@300..700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      *, ::before, ::after {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        background-color: #0F1A16;
+        font-family: 'Inter', system-ui, sans-serif;
+        overflow-x: hidden;
+      }
+    </style>
+  </head>
+  <body style="background-color: #0F1A16">
+    <div
+      data-pencil-name="CourtManager V2"
+      class="box-border w-full max-w-[1440px] h-fit flex flex-col gap-0 justify-start items-start bg-[#0F1A16] overflow-hidden"
+    >
+      <div
+        data-pencil-name="Navbar"
+        class="box-border w-full h-fit shrink-0 flex flex-row gap-0 p-[20px_64px] justify-between items-center"
+      >
+        <div
+          data-pencil-name="Brand"
+          class="box-border w-fit shrink-0 h-fit flex flex-row gap-[10px] justify-start items-center"
+        >
+          <div
+            data-pencil-name="Mark"
+            class="box-border w-[28px] shrink-0 h-[28px] flex flex-row gap-0 justify-start items-start bg-[#C8F04B] rounded-[8px]"
+          ></div>
+          <div
+            data-pencil-name="BrandName"
+            class="text-[19px]/[normal] box-border text-[#F2F6F0] font-['Space_Grotesk',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+          >
+            CourtManager
+          </div>
+        </div>
+        <div
+          data-pencil-name="Links"
+          class="box-border w-fit shrink-0 h-fit flex flex-row gap-[36px] justify-start items-center"
+        >
+          <div
+            data-pencil-name="Produto"
+            class="text-[14px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap] cursor-pointer hover:text-white transition-colors"
+          >
+            Produto
+          </div>
+          <div
+            data-pencil-name="Recursos"
+            class="text-[14px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap] cursor-pointer hover:text-white transition-colors"
+          >
+            Recursos
+          </div>
+          <div
+            data-pencil-name="Preços"
+            class="text-[14px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap] cursor-pointer hover:text-white transition-colors"
+          >
+            Preços
+          </div>
+          <div
+            data-pencil-name="Clubes"
+            class="text-[14px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap] cursor-pointer hover:text-white transition-colors"
+          >
+            Clubes
+          </div>
+          <div
+            data-pencil-name="NavCTA"
+            class="box-border w-fit shrink-0 h-fit flex flex-row gap-0 p-[10px_20px] justify-start items-start bg-[#C8F04B] rounded-[999px] cursor-pointer hover:bg-[#b5e038] transition-colors"
+          >
+            <div
+              data-pencil-name="NavCTALabel"
+              class="text-[14px]/[normal] box-border text-[#0E1512] font-[Inter,system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+            >
+              Começar grátis
+            </div>
+          </div>
+        </div>
+      </div>
+      <div
+        data-pencil-name="Hero"
+        class="box-border w-full h-fit shrink-0 flex flex-col gap-[28px] p-[80px_64px_72px_64px] justify-start items-center [background-image:radial-gradient(ellipse_60%_45%_at_50%_-10%,_#1E3327_0%,_#0F1A16_100%)] bg-no-repeat bg-[length:100%_100%]"
+      >
+        <div
+          data-pencil-name="Badge"
+          class="box-border w-fit h-fit shrink-0 flex flex-row gap-[8px] p-[8px_16px] justify-start items-center [outline:1px_solid_#243329] [outline-offset:-0.5px] rounded-[999px]"
+        >
+          <div class="box-border w-[7px] shrink-0 h-[7px] bg-[#C8F04B] rounded-full"></div>
+          <div
+            data-pencil-name="BadgeText"
+            class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            Novo · Agenda inteligente v2.0
+          </div>
+        </div>
+        <div
+          data-pencil-name="Headline"
+          class="text-[76px]/[78px] box-border w-[900px] text-[#F2F6F0] font-['Space_Grotesk',system-ui,sans-serif] font-bold text-center"
+        >
+          Gestão de quadras sem complicação.
+        </div>
+        <div
+          data-pencil-name="Subhead"
+          class="text-[19px]/[29px] box-border w-[640px] text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-center"
+        >
+          Reservas, pagamentos e alunos em um só lugar. O CourtManager cuida da burocracia para você
+          focar no jogo.
+        </div>
+        <div
+          data-pencil-name="HeroCTAs"
+          class="box-border w-fit h-fit shrink-0 flex flex-row gap-[16px] justify-start items-center"
+        >
+          <div
+            data-pencil-name="CTA-Primary"
+            class="box-border w-fit shrink-0 h-fit flex flex-row gap-[10px] p-[16px_32px] justify-start items-center bg-[#C8F04B] rounded-[12px] cursor-pointer hover:bg-[#b5e038] transition-colors"
+          >
+            <div
+              data-pencil-name="CTA1Label"
+              class="text-[16px]/[normal] box-border text-[#0E1512] font-[Inter,system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+            >
+              Testar 14 dias grátis
+            </div>
+          </div>
+          <div
+            data-pencil-name="CTA-Secondary"
+            class="box-border w-fit shrink-0 h-fit flex flex-row gap-[10px] p-[16px_32px] justify-start items-center [outline:1px_solid_#243329] [outline-offset:-0.5px] rounded-[12px] cursor-pointer hover:bg-[#16231E] transition-colors"
+          >
+            <svg
+              data-icon-name="play"
+              data-icon-set="lucide"
+              viewBox="0 0 13.99993896484375 14"
+              preserveAspectRatio="xMidYMid meet"
+              xmlns="http://www.w3.org/2000/svg"
+              class="box-border w-[16px] shrink-0 h-[16px]"
+            >
+              <path
+                d="M3.75293 1.20313q-0.5332 0.09912-0.91943 0.49218-0.38281 0.38965-0.46827 0.90918-0.02734 0.15381-0.02734 4.39551 0 4.2417 0.02734 4.39551 0.08545 0.51953 0.4751 0.90918 0.5332 0.54687 1.31934 0.51953 0.19482-0.01367 0.34179-0.04785 0.14697-0.0376 0.31446-0.10596 0.12646-0.05811 3.58887-2.07812 3.46582-2.02344 3.63671-2.13624 0.23584-0.15381 0.417-0.38281 0.18457-0.23242 0.27343-0.50586 0.09228-0.27344 0.09229-0.56738 0-0.29395-0.08545-0.57422-0.19482-0.5332-0.65625-0.85449-0.11279-0.08203-3.59912-2.11231-3.48633-2.03027-3.61279-2.10205-0.24951-0.12646-0.5503-0.16748-0.30078-0.04102-0.56738 0.01368z m0.56055 1.18945q0.12305 0.04443 3.62988 2.09521 3.51025 2.05078 3.5581 2.10205 0.04785 0.04785 0.10596 0.15723 0.02734 0.07178 0.04102 0.11963 0.01367 0.04785 0.01367 0.1333 0 0.08545-0.01367 0.1333-0.01367 0.04785-0.04102 0.11963-0.05811 0.10938-0.11621 0.16748-0.05469 0.05469-3.61621 2.12939-3.56152 2.07129-3.66748 2.09864-0.10596 0.02734-0.20508 0.01367-0.32129-0.07178-0.44775-0.33496l-0.04102-0.09912 0-8.45606 0.04102-0.09912q0.09912-0.2085 0.32129-0.29053 0.22559-0.08545 0.4375 0.01026z"
+                fill="#F2F6F0"
+              ></path>
+            </svg>
+            <div
+              data-pencil-name="CTA2Label"
+              class="text-[16px]/[normal] box-border text-[#F2F6F0] font-[Inter,system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+            >
+              Ver demonstração
+            </div>
+          </div>
+        </div>
+        <div
+          data-pencil-name="HeroNote"
+          class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+        >
+          Sem cartão de crédito · Cancele quando quiser
+        </div>
+        <div
+          data-pencil-name="AppPreview"
+          class="box-border w-[1080px] h-[460px] shrink-0 [box-shadow:0px_32px_60px_0px_#00000066] flex flex-col gap-0 justify-start items-start bg-[#16231E] [outline:1px_solid_#243329] [outline-offset:-0.5px] rounded-[20px] overflow-hidden"
+        >
+          <div
+            data-pencil-name="AppTopBar"
+            class="[box-sizing:content-box] w-[1080px] h-[47.5px] shrink-0 flex flex-row gap-[8px] p-[0px_20px] justify-start items-center [border-width:0px_0px_1px_0px] [border-style:solid] [border-color:#243329] [margin:0px_0px_-0.5px_0px]"
+          >
+            <div
+              data-pencil-name="Dot"
+              class="box-border w-[11px] shrink-0 h-[11px] bg-[#FF5F57] rounded-full"
+            ></div>
+            <div
+              data-pencil-name="Dot"
+              class="box-border w-[11px] shrink-0 h-[11px] bg-[#FEBC2E] rounded-full"
+            ></div>
+            <div
+              data-pencil-name="Dot"
+              class="box-border w-[11px] shrink-0 h-[11px] bg-[#28C840] rounded-full"
+            ></div>
+          </div>
+          <div
+            data-pencil-name="AppBody"
+            class="box-border w-full [flex:1_1_0] flex flex-row gap-0 justify-start items-start"
+          >
+            <div
+              data-pencil-name="AppSidebar"
+              class="[box-sizing:content-box] w-[199.5px] shrink-0 h-[412px] flex flex-col gap-[14px] p-[20px] justify-start items-start [border-width:0px_1px_0px_0px] [border-style:solid] [border-color:#243329] [margin:0px_-0.5px_0px_0px]"
+            >
+              <div
+                data-pencil-name="NavItem-Agenda"
+                class="box-border w-fit h-fit shrink-0 flex flex-row gap-[10px] p-[8px_10px] justify-start items-center rounded-[8px] bg-[#1F2F26]"
+              >
+                <svg
+                  data-icon-name="calendar"
+                  data-icon-set="lucide"
+                  viewBox="0 0 13.99993896484375 14"
+                  preserveAspectRatio="xMidYMid meet"
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="box-border w-[16px] shrink-0 h-[16px]"
+                >
+                  <path
+                    d="M4.57666 0.60156q-0.12305 0.01367-0.24268 0.09912-0.11963 0.08203-0.1914 0.19483-0.04102 0.08545-0.05469 0.20508-0.01367 0.11621-0.01367 0.35546l0 0.29395-1.32959 0.01367q-0.14014 0.01367-0.23926 0.02735-0.50244 0.14014-0.85449 0.50586-0.34863 0.3623-0.44776 0.88183-0.02734 0.0957-0.02734 0.81006l0 7.99463 0.05469 0.15381q0.15723 0.51953 0.56055 0.86133 0.40674 0.3418 0.93994 0.3999 0.15381 0.02734 4.26904 0.02734 4.11523 0 4.26904-0.02734 0.30762-0.02734 0.58789-0.16748 0.32471-0.15381 0.56055-0.44092 0.23926-0.28711 0.35205-0.65283l0.05469-0.15381 0-7.99463q0-0.71436-0.02735-0.81006-0.09912-0.51953-0.45117-0.88183-0.34863-0.36572-0.85107-0.50586-0.09912-0.01367-0.23926-0.02735l-1.32959-0.01367 0-0.29395q0-0.32129-0.03418-0.45459-0.03418-0.1333-0.14697-0.24609-0.14014-0.14014-0.35889-0.16064-0.21533-0.02051-0.37597 0.09228-0.16064 0.10938-0.21875 0.29395-0.02734 0.05469-0.03418 0.1333-0.00684 0.0752-0.00684 0.30078l0 0.33496-3.5 0 0-0.34863q0-0.23926-0.00684-0.30762-0.00684-0.07178-0.03418-0.12646-0.08545-0.21191-0.25293-0.30762-0.16748-0.09912-0.37939-0.05811z m-0.50244 2.67285q0.01367 0.25293 0.02051 0.31788 0.00684 0.06152 0.03418 0.14697 0.05811 0.0957 0.14013 0.18115 0.21191 0.19482 0.50586 0.14697 0.29395-0.04785 0.42041-0.31445 0.02734-0.08545 0.03418-0.14014 0.00684-0.05811 0.02051-0.32129l0-0.36572 3.5 0 0 0.36572q0.01367 0.26318 0.02051 0.32129 0.00684 0.05469 0.03418 0.14014 0.12646 0.2666 0.42041 0.31445 0.29395 0.04785 0.50586-0.14697 0.08203-0.08545 0.14013-0.18115 0.02734-0.08545 0.03418-0.14697 0.00684-0.06494 0.02051-0.31788l0-0.34863 1.31592 0 0.08545 0.04102q0.08203 0.04443 0.15722 0.12304 0.07861 0.0752 0.11963 0.16065 0.04443 0.08203 0.05811 0.28027 0.01367 0.19482 0.01367 0.85108l0 0.86816-9.35156 0 0.01367-1.72266q0.01367-0.16748 0.02734-0.20849 0.09912-0.2666 0.35206-0.36572 0.05469-0.01367 0.16748-0.02735l1.18945 0 0 0.34863z m7.58789 5.82422q0 1.89014-0.00684 2.30371-0.00683 0.41357-0.0205 0.45459-0.09912 0.25293-0.35206 0.35205l-0.0957 0.04102-8.37402 0-0.0957-0.04102q-0.15381-0.0581-0.26661-0.19824l-0.02734-0.02734q-0.04443-0.05469-0.05811-0.15381-0.02734-0.14014-0.02734-0.60156l-0.01367-4.80225 9.35156 0-0.01367 2.67285z"
+                    fill="#C8F04B"
+                  ></path>
+                </svg>
+                <div
+                  data-pencil-name="NavLabel"
+                  class="text-[13px]/[normal] box-border text-[#F2F6F0] font-[Inter,system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+                >
+                  Agenda
+                </div>
+              </div>
+              <div
+                data-pencil-name="NavItem-Alunos"
+                class="box-border w-fit h-fit shrink-0 flex flex-row gap-[10px] p-[8px_10px] justify-start items-center rounded-[8px]"
+              >
+                <svg
+                  data-icon-name="users"
+                  data-icon-set="lucide"
+                  viewBox="0 0 13.99993896484375 14"
+                  preserveAspectRatio="xMidYMid meet"
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="box-border w-[16px] shrink-0 h-[16px]"
+                >
+                  <path
+                    d="M4.84326 1.20313q-0.81006 0.11279-1.42871 0.61865-0.61523 0.50244-0.89551 1.24414-0.18115 0.48877-0.18115 1.02197 0 0.28027 0.04102 0.50586 0.04443 0.22217 0.14013 0.48877 0.15381 0.46143 0.46826 0.84766 0.31787 0.38281 0.7212 0.63574 0.36572 0.22559 0.73486 0.32471 0.37256 0.0957 0.80664 0.0957 0.22559 0 0.3623-0.01367 0.14014-0.01367 0.35206-0.05811 0.60156-0.15381 1.104-0.55713 0.50586-0.40674 0.7998-0.98096 0.19482-0.39307 0.26661-0.88183 0.02734-0.14014 0.02734-0.40674 0-0.2666-0.02734-0.40674-0.09912-0.65625-0.46485-1.20312-0.3623-0.54688-0.93652-0.89551-0.43408-0.2666-0.98096-0.36572-0.15381-0.02734-0.45459-0.03418-0.30078-0.00684-0.45459 0.02051z m4.34082 0.0581q-0.14014 0.04102-0.25293 0.14014-0.11279 0.0957-0.15381 0.2666-0.04102 0.16748 0 0.32129 0.04102 0.15381 0.15381 0.25293 0.11279 0.0957 0.33838 0.18115 0.24951 0.08203 0.40332 0.17432 0.15381 0.08887 0.30762 0.25976 0.33838 0.33496 0.45459 0.76904 0.11963 0.43408 0.01367 0.86817-0.10254 0.43408-0.41699 0.76904-0.31445 0.33496-0.7793 0.48877-0.19482 0.07178-0.28711 0.14356-0.08887 0.06836-0.16064 0.20849-0.05469 0.09912-0.05469 0.23926 0 0.13672 0.05469 0.23584 0.08545 0.19482 0.28027 0.29395 0.12646 0.05811 0.25293 0.05126 0.12646-0.01025 0.33496-0.07861 0.35205-0.11279 0.6084-0.27344 0.25977-0.16064 0.5127-0.42724 0.78271-0.78271 0.85449-1.84912 0.09912-1.18945-0.70069-2.12598-0.48877-0.58789-1.2749-0.85449-0.33496-0.11279-0.48877-0.05469z m-3.73926 1.09033q0.40674 0.02734 0.78272 0.28711 0.37939 0.25977 0.58105 0.65967 0.20508 0.39648 0.18457 0.88184-0.02051 0.48193-0.28711 0.86132-0.15381 0.23584-0.37939 0.41358-0.22217 0.17432-0.46143 0.27002-0.19482 0.05811-0.2871 0.07861-0.08887 0.02051-0.32813 0.02051-0.23926 0-0.33154-0.02051-0.08887-0.02051-0.28369-0.07861-0.39307-0.14014-0.68018-0.46826-0.28711-0.32813-0.3999-0.73487-0.10938-0.46143 0.01367-0.90918 0.12646-0.44775 0.45459-0.76904 0.33154-0.32471 0.79297-0.45117 0.08545-0.02734 0.24609-0.04785 0.16064-0.02051 0.21533-0.00684l0.16748 0.01367z m-2.35156 5.85156q-0.96387 0.14014-1.65088 0.82715-0.54687 0.54688-0.75537 1.31592-0.07178 0.23926-0.08545 0.44092-0.01367 0.20166-0.01367 0.82031l0 0.76904 0.04102 0.1128q0.05811 0.0957 0.14013 0.18115 0.21191 0.19482 0.50586 0.14697 0.29395-0.04785 0.42041-0.31445l0.04102-0.09912 0.01367-0.79639q0.01367-0.61865 0.02734-0.77246 0.01367-0.15381 0.07178-0.34863 0.14014-0.37939 0.46826-0.68018 0.32813-0.30078 0.73487-0.41357 0.15381-0.04102 0.53662-0.05469 0.38623-0.01367 1.66113-0.01367 1.2749 0 1.65771 0.01367 0.38623 0.01367 0.54004 0.05469 0.42041 0.11279 0.75538 0.43066 0.33838 0.31445 0.46142 0.71778 0.05811 0.16748 0.06494 0.3247 0.00684 0.15381 0.02051 0.7417l0.01367 0.79639 0.04102 0.09912q0.12646 0.2666 0.42041 0.31445 0.29395 0.04785 0.50586-0.14697 0.08203-0.08545 0.14013-0.18115l0.04102-0.1128 0-0.76904q0-0.61865-0.01367-0.82031-0.01367-0.20166-0.08545-0.44092-0.08203-0.32129-0.23584-0.61523-0.2666-0.51953-0.73828-0.90235-0.46826-0.38623-1.02539-0.54004l-0.04444-0.01367q-0.16748-0.05811-0.29394-0.07178-0.15381-0.01367-0.56055-0.01367l-1.60986-0.01367q-2.05762 0-2.21143 0.02734z m7.85449 0.05811q-0.23926 0.05469-0.36572 0.27344-0.12305 0.21533-0.05469 0.45459 0.05811 0.19482 0.21192 0.30761 0.06836 0.04102 0.28027 0.12647 0.24951 0.08203 0.40332 0.17432 0.15381 0.08887 0.32471 0.27343 0.33496 0.34863 0.44775 0.78272 0.02734 0.11279 0.03418 0.24609 0.00684 0.1333 0.02051 0.70752l0.01367 0.79639 0.04102 0.09912q0.12646 0.2666 0.42041 0.31445 0.29395 0.04785 0.50586-0.14697 0.08203-0.08545 0.14013-0.18115l0.04102-0.1128 0.01367-0.64599q0-0.64258-0.02734-0.95703-0.02734-0.31445-0.12647-0.59473-0.14014-0.42041-0.42724-0.81006-0.28711-0.39307-0.64942-0.65967-0.31103-0.22559-0.69726-0.35888-0.38281-0.1333-0.5503-0.08887z"
+                    fill="#9FAFA4"
+                  ></path>
+                </svg>
+                <div
+                  data-pencil-name="NavLabel"
+                  class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+                >
+                  Alunos
+                </div>
+              </div>
+              <div
+                data-pencil-name="NavItem-Pagamentos"
+                class="box-border w-fit h-fit shrink-0 flex flex-row gap-[10px] p-[8px_10px] justify-start items-center rounded-[8px]"
+              >
+                <svg
+                  data-icon-name="credit-card"
+                  data-icon-set="lucide"
+                  viewBox="0 0 13.99993896484375 14"
+                  preserveAspectRatio="xMidYMid meet"
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="box-border w-[16px] shrink-0 h-[16px]"
+                >
+                  <path
+                    d="M2.15674 2.35156q-0.29395 0.02734-0.58789 0.16748-0.29395 0.14014-0.50586 0.3794-0.30762 0.32129-0.43408 0.79638l-0.04102 0.1709 0 6.29932 0.04102 0.16748q0.07178 0.25293 0.18115 0.44092 0.11279 0.18799 0.29394 0.37256 0.18457 0.18115 0.37256 0.29394 0.18799 0.10938 0.44092 0.18115l0.16748 0.04102 9.83008 0 0.16748-0.04102q0.25293-0.07178 0.44092-0.18115 0.18799-0.11279 0.36914-0.29394 0.18457-0.18457 0.29394-0.37256 0.11279-0.18799 0.18457-0.44092l0.04102-0.16748 0-6.33008-0.04102-0.16748q-0.12646-0.46143-0.43408-0.76904-0.44775-0.48877-1.13476-0.56055-0.16748-0.01367-4.81592-0.01367-4.64844 0-4.82959 0.02734z m9.74463 1.20313q0.19482 0.09912 0.29394 0.29394l0.04102 0.09912 0.01367 1.30225-10.5 0 0.01367-1.30225 0.04102-0.09912q0.11279-0.24951 0.37939-0.32129 0.08545-0.02734 4.85694-0.02734l4.76123 0.01367 0.09912 0.04102z m0.34863 4.67578l-0.01367 1.82178-0.02735 0.08545q-0.12646 0.26318-0.37939 0.33496-0.08203 0.02734-4.82959 0.02734-4.74756 0-4.82959-0.02734-0.25293-0.07178-0.37939-0.33496l-0.02735-0.08545-0.01367-3.62647 10.5 0 0 1.80469z"
+                    fill="#9FAFA4"
+                  ></path>
+                </svg>
+                <div
+                  data-pencil-name="NavLabel"
+                  class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+                >
+                  Pagamentos
+                </div>
+              </div>
+              <div
+                data-pencil-name="NavItem-Relatórios"
+                class="box-border w-fit h-fit shrink-0 flex flex-row gap-[10px] p-[8px_10px] justify-start items-center rounded-[8px]"
+              >
+                <svg
+                  data-icon-name="activity"
+                  data-icon-set="lucide"
+                  viewBox="0 0 13.99993896484375 14"
+                  preserveAspectRatio="xMidYMid meet"
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="box-border w-[16px] shrink-0 h-[16px]"
+                >
+                  <path
+                    d="M5.13721 0.60156q-0.0957 0.01367-0.18799 0.05811-0.09229 0.04102-0.19824 0.1333-0.10254 0.08887-0.14698 0.17432-0.04102 0.08203-0.7417 2.57373-0.69727 2.4917-0.73486 2.56347-0.03418 0.06836-0.1333 0.16065-0.0957 0.09229-0.16064 0.11279-0.06152 0.02051-0.21534 0.03418l-1.60986 0.01367-0.08545 0.04102q-0.22217 0.11279-0.30078 0.33838-0.0752 0.22217 0.00684 0.43408 0.05811 0.0957 0.14013 0.18115 0.08545 0.08203 0.16748 0.11963 0.08545 0.03418 0.22559 0.03418l0.76904 0q0.71436 0 0.89551-0.01367 0.18457-0.01367 0.37939-0.08545 0.32129-0.11279 0.60157-0.36914 0.28027-0.25977 0.40674-0.56739 0.04102-0.11279 0.1538-0.49218l0.53321-1.87305q0.33496-1.22021 0.34863-1.22021 0.01367 0 1.40479 4.97998 1.39453 4.97656 1.43554 5.07226 0.07178 0.14014 0.22559 0.25977 0.15381 0.11963 0.32129 0.14697 0.22559 0.02734 0.43408-0.0752 0.21191-0.10596 0.30762-0.3042 0.05811-0.08203 0.74853-2.56005 0.69385-2.47803 0.72803-2.55323 0.0376-0.07861 0.11963-0.16064 0.08545-0.08545 0.18457-0.12988l0.0957-0.04102 1.63721-0.02734q0.12646 0 0.19482-0.03418 0.07178-0.0376 0.15381-0.11963 0.08545-0.08545 0.12647-0.18115 0.04443-0.09912 0.04443-0.22559 0-0.12646-0.04102-0.23926-0.09912-0.19482-0.29394-0.29394l-0.08545-0.04102-0.89551 0q-0.62891 0-0.79297 0-0.16064 0-0.27002 0.02734-0.44775 0.09912-0.81347 0.40674-0.09912 0.08545-0.21875 0.23243-0.11621 0.14697-0.17432 0.27343-0.05469 0.12305-0.15381 0.43408-0.0957 0.30762-0.4751 1.65088-0.43408 1.59619-0.44775 1.59619-0.01367 0-1.41504-4.98339-1.39795-4.98682-1.44238-5.07569-0.04102-0.09229-0.1333-0.18115-0.08887-0.09229-0.17432-0.1333-0.19482-0.11279-0.44775-0.07178z"
+                    fill="#9FAFA4"
+                  ></path>
+                </svg>
+                <div
+                  data-pencil-name="NavLabel"
+                  class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+                >
+                  Relatórios
+                </div>
+              </div>
+              <div
+                data-pencil-name="NavItem-Ajustes"
+                class="box-border w-fit h-fit shrink-0 flex flex-row gap-[10px] p-[8px_10px] justify-start items-center rounded-[8px]"
+              >
+                <svg
+                  data-icon-name="settings"
+                  data-icon-set="lucide"
+                  viewBox="0 0 13.99993896484375 14"
+                  preserveAspectRatio="xMidYMid meet"
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="box-border w-[16px] shrink-0 h-[16px]"
+                >
+                  <path
+                    d="M6.80518 0.60156q-0.03076 0.01367-0.15381 0.02735-0.32471 0.05811-0.63916 0.23925-0.31445 0.18115-0.50928 0.43409-0.19824 0.23926-0.29053 0.46484-0.08887 0.22217-0.15722 0.5708-0.03076 0.18115-0.07178 0.28711-0.04102 0.10596-0.1333 0.19824-0.08887 0.08887-0.2085 0.15381-0.11963 0.06152-0.24609 0.08887-0.19482 0.02734-0.48877-0.08545-0.19824-0.08203-0.33838-0.10938-0.13672-0.03076-0.36231-0.03076-0.28027-0.01367-0.44775 0.03076-0.54688 0.10938-0.93994 0.48194-0.38965 0.37256-0.54346 0.88525-0.15381 0.50928-0.01367 1.03906 0.16748 0.61523 0.72803 1.06299 0.18115 0.15723 0.26318 0.3042 0.08545 0.14697 0.08545 0.35547 0 0.2085-0.08545 0.35547-0.08203 0.14697-0.26318 0.3042-0.40674 0.32129-0.58789 0.69726-0.21191 0.42041-0.21192 0.875 0 0.45459 0.21192 0.875 0.19482 0.37939 0.52978 0.646 0.33838 0.2666 0.7417 0.3623 0.60156 0.15381 1.26123-0.11279 0.25293-0.0957 0.4751-0.06152 0.22559 0.03418 0.41357 0.21191 0.18799 0.17432 0.23243 0.49561 0.05469 0.37598 0.20849 0.68701 0.22559 0.46143 0.67334 0.74853 0.44775 0.28711 0.96387 0.31446 0.61865 0.02734 1.1416-0.30078 0.52637-0.32813 0.76221-0.90235 0.08545-0.22558 0.12646-0.51269 0.04443-0.28711 0.16748-0.44092 0.12646-0.15381 0.29395-0.23926 0.31104-0.14014 0.68701 0 0.22559 0.09912 0.39307 0.13672 0.16748 0.03418 0.37597 0.03418 0.32471 0 0.61865-0.09912 0.43408-0.14014 0.75538-0.46143 0.46143-0.44775 0.55712-1.06299 0.09912-0.61865-0.18115-1.19287-0.18115-0.37598-0.57422-0.68359-0.19482-0.15381-0.28027-0.30762-0.08203-0.15723-0.08203-0.36572 0-0.2085 0.08203-0.35547 0.08545-0.14697 0.2666-0.3042 0.30762-0.23584 0.47852-0.51611 0.29395-0.43408 0.32129-0.94336 0.02734-0.5127-0.20508-0.97412-0.229-0.46143-0.65625-0.74854-0.42725-0.28711-0.91602-0.31787-0.25293-0.02734-0.47851 0.01026-0.22217 0.03418-0.48877 0.14697-0.2085 0.08203-0.35547 0.08203-0.14697 0-0.31787-0.08203-0.16748-0.08545-0.29395-0.23926-0.12305-0.15381-0.16748-0.44092-0.04102-0.28711-0.12646-0.51269-0.18115-0.43408-0.55371-0.74854-0.36914-0.31445-0.84424-0.41357-0.08545-0.02734-0.31787-0.04102-0.229-0.01367-0.28369 0z m0.50244 1.23389q0.15381 0.06836 0.2666 0.18115 0.11279 0.11279 0.15381 0.25293 0.02734 0.06836 0.05468 0.26318 0.11279 0.67334 0.56055 1.1211 0.36572 0.37939 0.88184 0.51953 0.12646 0.04102 0.20166 0.04785 0.07861 0.00684 0.29053 0.00684 0.24951 0 0.39648-0.02735 0.14697-0.02734 0.38623-0.12646 0.2085-0.08545 0.36914-0.08545 0.16406 0 0.34521 0.09912 0.08203 0.04102 0.18799 0.14014 0.10596 0.09912 0.14698 0.18115 0.08545 0.16748 0.08545 0.35889 0 0.18799-0.08545 0.35547-0.04101 0.09912-0.09912 0.16406-0.05469 0.06152-0.18116 0.15722-0.76904 0.61865-0.76904 1.55518 0 0.93652 0.76904 1.55518 0.15381 0.12646 0.22901 0.23242 0.07861 0.10254 0.10937 0.24267 0.06836 0.30762-0.0581 0.56055-0.04101 0.08203-0.14698 0.18799-0.10596 0.10596-0.18799 0.14697-0.19482 0.08545-0.35205 0.08545-0.15381 0-0.38623-0.09228-0.229-0.09229-0.40332-0.12647-0.17432-0.03418-0.41357-0.02051-0.42041 0.01367-0.75537 0.16748-0.46143 0.22559-0.74854 0.61182-0.28711 0.38281-0.37256 0.90234-0.02734 0.2085-0.05468 0.27686-0.04102 0.14014-0.15381 0.25293-0.11279 0.11279-0.25293 0.18115-0.08203 0.04443-0.1333 0.05127-0.04785 0.00684-0.18799 0.00684-0.14014 0-0.19141-0.00684-0.04785-0.00684-0.11621-0.05127-0.30762-0.14014-0.42041-0.41699-0.02734-0.07178-0.05468-0.23926-0.05811-0.36572-0.1709-0.60156-0.18115-0.40674-0.51612-0.68701-0.33496-0.28027-0.75537-0.39307-0.12646-0.04102-0.20508-0.04785-0.0752-0.00684-0.28711-0.00684-0.24951 0-0.39648 0.02735-0.14697 0.02734-0.38623 0.12646-0.2085 0.08545-0.37256 0.08545-0.16064 0-0.3418-0.08545-0.08203-0.04102-0.18798-0.14697-0.10596-0.10596-0.14698-0.18799-0.12646-0.25293-0.0581-0.56055 0.03076-0.14014 0.10596-0.24267 0.07861-0.10596 0.23242-0.23242 0.60156-0.47852 0.7417-1.20655 0.02734-0.12305 0.02734-0.34863 0-0.22559-0.02734-0.34863-0.14014-0.71436-0.72803-1.20655-0.14014-0.0957-0.19824-0.15722-0.05469-0.06494-0.09571-0.16406-0.11279-0.23584-0.07177-0.4751 0.04443-0.23926 0.21191-0.42041 0.16748-0.18115 0.42041-0.22559 0.12646-0.01367 0.23584 0.00342 0.11279 0.01367 0.28027 0.08203 0.22559 0.08545 0.40674 0.11963 0.18115 0.03418 0.41699 0.02051 0.23926-0.01367 0.40674-0.04785 0.1709-0.0376 0.3794-0.14698 0.30762-0.15381 0.54687-0.39306 0.42041-0.43408 0.53321-1.09375 0.02734-0.2085 0.05468-0.29395 0.04102-0.10938 0.14698-0.229 0.10596-0.11963 0.20849-0.16748 0.10596-0.05127 0.18115-0.07178 0.07861-0.02051 0.20508-0.01367 0.12646 0.00684 0.17432 0.01367 0.05127 0.00684 0.1333 0.05127l-0.01367 0z m-0.66992 2.86768q-0.89893 0.15381-1.44239 0.82714-0.18457 0.22217-0.29052 0.44776-0.10254 0.22559-0.18799 0.51953-0.02734 0.10938-0.03418 0.19482-0.00684 0.08203-0.00684 0.30762 0 0.28027 0.02734 0.43408 0.02734 0.15381 0.1128 0.3794 0.16748 0.4751 0.52978 0.84082 0.36572 0.3623 0.84082 0.52978 0.22559 0.08545 0.3794 0.1128 0.15381 0.02734 0.43408 0.02734 0.28027 0 0.43408-0.02734 0.15381-0.02734 0.3794-0.1128 0.4751-0.16748 0.8374-0.52978 0.36572-0.36572 0.5332-0.84082 0.08545-0.22559 0.11279-0.3794 0.02734-0.15381 0.02735-0.43408 0-0.28027-0.02735-0.43408-0.02734-0.15381-0.11279-0.3794-0.2085-0.55713-0.6665-0.95019-0.45459-0.39307-1.04248-0.51953-0.14014-0.02734-0.42725-0.03418-0.28711-0.00684-0.41015 0.02051z m0.65625 1.1621q0.28027 0.07178 0.52294 0.31788 0.24609 0.24268 0.31788 0.52294 0.02734 0.12646 0.02734 0.29395 0 0.16748-0.02734 0.28027-0.07178 0.29395-0.3042 0.53321-0.229 0.23584-0.53662 0.32129-0.11279 0.02734-0.29395 0.02734-0.18115 0-0.29395-0.02734-0.30762-0.08545-0.54003-0.32129-0.229-0.23926-0.30079-0.53321-0.02734-0.11279-0.02734-0.28027 0-0.16748 0.02734-0.29395 0.05811-0.22559 0.22559-0.43408 0.16748-0.2085 0.40674-0.32129 0.34863-0.18115 0.79639-0.08545z"
+                    fill="#9FAFA4"
+                  ></path>
+                </svg>
+                <div
+                  data-pencil-name="NavLabel"
+                  class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+                >
+                  Ajustes
+                </div>
+              </div>
+            </div>
+            <div
+              data-pencil-name="AppMain"
+              class="box-border [flex:1_1_0] h-full flex flex-col gap-[18px] p-[24px] justify-start items-start"
+            >
+              <div
+                data-pencil-name="AppMainHeader"
+                class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-between items-center"
+              >
+                <div
+                  data-pencil-name="AppTitle"
+                  class="text-[20px]/[normal] box-border text-[#F2F6F0] font-['Space_Grotesk',system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+                >
+                  Agenda de hoje
+                </div>
+                <div
+                  data-pencil-name="FilterChip"
+                  class="box-border w-fit shrink-0 h-fit flex flex-row gap-0 p-[6px_14px] justify-start items-start bg-[#C8F04B] rounded-[8px] cursor-pointer hover:bg-[#b5e038] transition-colors"
+                >
+                  <div
+                    data-pencil-name="FilterText"
+                    class="text-[12px]/[normal] box-border text-[#0E1512] font-[Inter,system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+                  >
+                    + Nova reserva
+                  </div>
+                </div>
+              </div>
+              <div
+                data-pencil-name="Schedule"
+                class="box-border w-full [flex:1_1_0] flex flex-col gap-[10px] justify-start items-start"
+              >
+                <div
+                  data-pencil-name="BookingRow"
+                  class="box-border w-full [flex:1_1_0] flex flex-row gap-[16px] p-[0px_16px] justify-between items-center [outline:1px_solid_#243329] [outline-offset:-0.5px] rounded-[10px] bg-[#1a2b24]/40 hover:bg-[#1a2b24] transition-colors"
+                >
+                  <div
+                    data-pencil-name="Left"
+                    class="box-border w-fit shrink-0 h-fit flex flex-row gap-[14px] justify-start items-center"
+                  >
+                    <div
+                      data-pencil-name="Time"
+                      class="text-[15px]/[normal] box-border text-[#C8F04B] font-['Space_Grotesk',system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+                    >
+                      08:00
+                    </div>
+                    <div
+                      data-pencil-name="Person"
+                      class="text-[14px]/[normal] box-border text-[#F2F6F0] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+                    >
+                      Marina Alves
+                    </div>
+                  </div>
+                  <div
+                    data-pencil-name="Right"
+                    class="box-border w-fit shrink-0 h-fit flex flex-row gap-[14px] justify-start items-center"
+                  >
+                    <div
+                      data-pencil-name="Court"
+                      class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+                    >
+                      Quadra 1 · Beach Tennis
+                    </div>
+                    <div
+                      data-pencil-name="StatusChip"
+                      class="box-border w-fit shrink-0 h-fit flex flex-row gap-0 p-[4px_10px] justify-start items-start bg-[#C8F04B]/20 text-[#C8F04B] rounded-[999px]"
+                    >
+                      <div
+                        data-pencil-name="StatusText"
+                        class="text-[11px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+                      >
+                        Confirmado
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div
+                  data-pencil-name="BookingRow"
+                  class="box-border w-full [flex:1_1_0] flex flex-row gap-[16px] p-[0px_16px] justify-between items-center [outline:1px_solid_#243329] [outline-offset:-0.5px] rounded-[10px] bg-[#1a2b24]/40 hover:bg-[#1a2b24] transition-colors"
+                >
+                  <div
+                    data-pencil-name="Left"
+                    class="box-border w-fit shrink-0 h-fit flex flex-row gap-[14px] justify-start items-center"
+                  >
+                    <div
+                      data-pencil-name="Time"
+                      class="text-[15px]/[normal] box-border text-[#C8F04B] font-['Space_Grotesk',system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+                    >
+                      09:30
+                    </div>
+                    <div
+                      data-pencil-name="Person"
+                      class="text-[14px]/[normal] box-border text-[#F2F6F0] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+                    >
+                      Rafael Duarte
+                    </div>
+                  </div>
+                  <div
+                    data-pencil-name="Right"
+                    class="box-border w-fit shrink-0 h-fit flex flex-row gap-[14px] justify-start items-center"
+                  >
+                    <div
+                      data-pencil-name="Court"
+                      class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+                    >
+                      Quadra 2 · Tênis
+                    </div>
+                    <div
+                      data-pencil-name="StatusChip"
+                      class="box-border w-fit shrink-0 h-fit flex flex-row gap-0 p-[4px_10px] justify-start items-start bg-[#38bdf8]/20 text-[#38bdf8] rounded-[999px]"
+                    >
+                      <div
+                        data-pencil-name="StatusText"
+                        class="text-[11px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+                      >
+                        Pré-pago
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div
+                  data-pencil-name="BookingRow"
+                  class="box-border w-full [flex:1_1_0] flex flex-row gap-[16px] p-[0px_16px] justify-between items-center [outline:1px_solid_#243329] [outline-offset:-0.5px] rounded-[10px] bg-[#1a2b24]/40 hover:bg-[#1a2b24] transition-colors"
+                >
+                  <div
+                    data-pencil-name="Left"
+                    class="box-border w-fit shrink-0 h-fit flex flex-row gap-[14px] justify-start items-center"
+                  >
+                    <div
+                      data-pencil-name="Time"
+                      class="text-[15px]/[normal] box-border text-[#C8F04B] font-['Space_Grotesk',system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+                    >
+                      11:00
+                    </div>
+                    <div
+                      data-pencil-name="Person"
+                      class="text-[14px]/[normal] box-border text-[#F2F6F0] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+                    >
+                      Camila Rocha
+                    </div>
+                  </div>
+                  <div
+                    data-pencil-name="Right"
+                    class="box-border w-fit shrink-0 h-fit flex flex-row gap-[14px] justify-start items-center"
+                  >
+                    <div
+                      data-pencil-name="Court"
+                      class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+                    >
+                      Quadra 1 · Beach Tennis
+                    </div>
+                    <div
+                      data-pencil-name="StatusChip"
+                      class="box-border w-fit shrink-0 h-fit flex flex-row gap-0 p-[4px_10px] justify-start items-start bg-[#F4BF4F]/20 text-[#F4BF4F] rounded-[999px]"
+                    >
+                      <div
+                        data-pencil-name="StatusText"
+                        class="text-[11px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+                      >
+                        Pendente
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div
+                  data-pencil-name="BookingRow"
+                  class="box-border w-full [flex:1_1_0] flex flex-row gap-[16px] p-[0px_16px] justify-between items-center [outline:1px_solid_#243329] [outline-offset:-0.5px] rounded-[10px] bg-[#1a2b24]/40 hover:bg-[#1a2b24] transition-colors"
+                >
+                  <div
+                    data-pencil-name="Left"
+                    class="box-border w-fit shrink-0 h-fit flex flex-row gap-[14px] justify-start items-center"
+                  >
+                    <div
+                      data-pencil-name="Time"
+                      class="text-[15px]/[normal] box-border text-[#C8F04B] font-['Space_Grotesk',system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+                    >
+                      14:00
+                    </div>
+                    <div
+                      data-pencil-name="Person"
+                      class="text-[14px]/[normal] box-border text-[#F2F6F0] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+                    >
+                      Thiago Nunes
+                    </div>
+                  </div>
+                  <div
+                    data-pencil-name="Right"
+                    class="box-border w-fit shrink-0 h-fit flex flex-row gap-[14px] justify-start items-center"
+                  >
+                    <div
+                      data-pencil-name="Court"
+                      class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+                    >
+                      Quadra 3 · Vôlei
+                    </div>
+                    <div
+                      data-pencil-name="StatusChip"
+                      class="box-border w-fit shrink-0 h-fit flex flex-row gap-0 p-[4px_10px] justify-start items-start bg-[#C8F04B]/20 text-[#C8F04B] rounded-[999px]"
+                    >
+                      <div
+                        data-pencil-name="StatusText"
+                        class="text-[11px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+                      >
+                        Confirmado
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div
+                  data-pencil-name="BookingRow"
+                  class="box-border w-full [flex:1_1_0] flex flex-row gap-[16px] p-[0px_16px] justify-between items-center [outline:1px_solid_#243329] [outline-offset:-0.5px] rounded-[10px] bg-[#1a2b24]/40 hover:bg-[#1a2b24] transition-colors"
+                >
+                  <div
+                    data-pencil-name="Left"
+                    class="box-border w-fit shrink-0 h-fit flex flex-row gap-[14px] justify-start items-center"
+                  >
+                    <div
+                      data-pencil-name="Time"
+                      class="text-[15px]/[normal] box-border text-[#C8F04B] font-['Space_Grotesk',system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+                    >
+                      18:30
+                    </div>
+                    <div
+                      data-pencil-name="Person"
+                      class="text-[14px]/[normal] box-border text-[#F2F6F0] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+                    >
+                      Aula · Initiation
+                    </div>
+                  </div>
+                  <div
+                    data-pencil-name="Right"
+                    class="box-border w-fit shrink-0 h-fit flex flex-row gap-[14px] justify-start items-center"
+                  >
+                    <div
+                      data-pencil-name="Court"
+                      class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+                    >
+                      Quadra 2 · Tênis
+                    </div>
+                    <div
+                      data-pencil-name="StatusChip"
+                      class="box-border w-fit shrink-0 h-fit flex flex-row gap-0 p-[4px_10px] justify-start items-start bg-[#C8F04B]/20 text-[#C8F04B] rounded-[999px]"
+                    >
+                      <div
+                        data-pencil-name="StatusText"
+                        class="text-[11px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+                      >
+                        Confirmado
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div
+        data-pencil-name="SocialProof"
+        class="[box-sizing:content-box] w-full max-w-[1440px] h-[144px] shrink-0 flex flex-col gap-[22px] p-[44px_64px] justify-start items-center [border-width:1px_0px_1px_0px] [border-style:solid] [border-color:#243329] [margin:-0.5px_0px_-0.5px_0px]"
+      >
+        <div
+          data-pencil-name="ProofLabel"
+          class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+        >
+          A escolha de quem leva o esporte a sério
+        </div>
+        <div
+          data-pencil-name="ClubLogos"
+          class="box-border w-fit h-fit shrink-0 flex flex-row gap-[54px] justify-start items-center"
+        >
+          <div
+            data-pencil-name="ClubLogo"
+            class="text-[15px]/[normal] box-border text-[#5E7166] font-['Space_Grotesk',system-ui,sans-serif] font-semibold tracking-[1px] text-left [white-space:nowrap]"
+          >
+            ARENA 7
+          </div>
+          <div
+            data-pencil-name="ClubLogo"
+            class="text-[15px]/[normal] box-border text-[#5E7166] font-['Space_Grotesk',system-ui,sans-serif] font-semibold tracking-[1px] text-left [white-space:nowrap]"
+          >
+            CLUBE 360
+          </div>
+          <div
+            data-pencil-name="ClubLogo"
+            class="text-[15px]/[normal] box-border text-[#5E7166] font-['Space_Grotesk',system-ui,sans-serif] font-semibold tracking-[1px] text-left [white-space:nowrap]"
+          >
+            RAQUETTA
+          </div>
+          <div
+            data-pencil-name="ClubLogo"
+            class="text-[15px]/[normal] box-border text-[#5E7166] font-['Space_Grotesk',system-ui,sans-serif] font-semibold tracking-[1px] text-left [white-space:nowrap]"
+          >
+            VIVA SPORT
+          </div>
+          <div
+            data-pencil-name="ClubLogo"
+            class="text-[15px]/[normal] box-border text-[#5E7166] font-['Space_Grotesk',system-ui,sans-serif] font-semibold tracking-[1px] text-left [white-space:nowrap]"
+          >
+            BOLA NA REDE
+          </div>
+        </div>
+      </div>
+      <div
+        data-pencil-name="Features"
+        class="box-border w-full h-fit shrink-0 flex flex-col gap-[56px] p-[100px_64px] justify-start items-start bg-[#0E1512]"
+      >
+        <div
+          data-pencil-name="FeaturesHeader"
+          class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-between items-end"
+        >
+          <div
+            data-pencil-name="FeatureCopy"
+            class="box-border w-fit shrink-0 h-fit flex flex-col gap-[14px] justify-start items-start"
+          >
+            <div
+              data-pencil-name="Eyebrow"
+              class="text-[12px]/[normal] box-border text-[#C8F04B] font-[Inter,system-ui,sans-serif] font-bold tracking-[2px] text-left [white-space:nowrap]"
+            >
+              TUDO NO CONTROLE
+            </div>
+            <div
+              data-pencil-name="FeatureTitle"
+              class="text-[46px]/[50px] box-border w-[660px] text-[#F2F6F0] font-['Space_Grotesk',system-ui,sans-serif] font-bold text-left"
+            >
+              Seu clube, mais leve de operar.
+            </div>
+            <div
+              data-pencil-name="FeatureSub"
+              class="text-[16px]/[24px] box-border w-[500px] text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left"
+            >
+              Ferramentas simples para uma rotina que flui — do primeiro clique ao último ponto.
+            </div>
+          </div>
+          <div
+            data-pencil-name="FeatureLink"
+            class="text-[14px]/[normal] box-border text-[#C8F04B] font-[Inter,system-ui,sans-serif] font-semibold text-left [white-space:nowrap] cursor-pointer hover:underline"
+          >
+            Explorar todos os recursos →
+          </div>
+        </div>
+        <div
+          data-pencil-name="FeatureGrid"
+          class="box-border w-full h-fit shrink-0 flex flex-row gap-[14px] justify-start items-start"
+        >
+          <div
+            data-pencil-name="FeatureCard-01"
+            class="box-border [flex:1_1_0] h-[300px] flex flex-col gap-[18px] p-[26px] justify-start items-start bg-[#16231E] [outline:1px_solid_#243329] [outline-offset:-0.5px] rounded-[16px] hover:border-[#C8F04B]/40 transition-all"
+          >
+            <div
+              data-pencil-name="CardTop"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-between items-center"
+            >
+              <svg
+                data-pencil-name="FeatureIcon"
+                data-icon-name="calendar"
+                data-icon-set="lucide"
+                viewBox="0 0 13.99993896484375 14"
+                preserveAspectRatio="xMidYMid meet"
+                xmlns="http://www.w3.org/2000/svg"
+                class="box-border w-[24px] shrink-0 h-[24px]"
+              >
+                <path
+                  d="M4.57666 0.60156q-0.12305 0.01367-0.24268 0.09912-0.11963 0.08203-0.1914 0.19483-0.04102 0.08545-0.05469 0.20508-0.01367 0.11621-0.01367 0.35546l0 0.29395-1.32959 0.01367q-0.14014 0.01367-0.23926 0.02735-0.50244 0.14014-0.85449 0.50586-0.34863 0.3623-0.44776 0.88183-0.02734 0.0957-0.02734 0.81006l0 7.99463 0.05469 0.15381q0.15723 0.51953 0.56055 0.86133 0.40674 0.3418 0.93994 0.3999 0.15381 0.02734 4.26904 0.02734 4.11523 0 4.26904-0.02734 0.30762-0.02734 0.58789-0.16748 0.32471-0.15381 0.56055-0.44092 0.23926-0.28711 0.35205-0.65283l0.05469-0.15381 0-7.99463q0-0.71436-0.02735-0.81006-0.09912-0.51953-0.45117-0.88183-0.34863-0.36572-0.85107-0.50586-0.09912-0.01367-0.23926-0.02735l-1.32959-0.01367 0-0.29395q0-0.32129-0.03418-0.45459-0.03418-0.1333-0.14697-0.24609-0.14014-0.14014-0.35889-0.16064-0.21533-0.02051-0.37597 0.09228-0.16064 0.10938-0.21875 0.29395-0.02734 0.05469-0.03418 0.1333-0.00684 0.0752-0.00684 0.30078l0 0.33496-3.5 0 0-0.34863q0-0.23926-0.00684-0.30762-0.00684-0.07178-0.03418-0.12646-0.08545-0.21191-0.25293-0.30762-0.16748-0.09912-0.37939-0.05811z m-0.50244 2.67285q0.01367 0.25293 0.02051 0.31788 0.00684 0.06152 0.03418 0.14697 0.05811 0.0957 0.14013 0.18115 0.21191 0.19482 0.50586 0.14697 0.29395-0.04785 0.42041-0.31445 0.02734-0.08545 0.03418-0.14014 0.00684-0.05811 0.02051-0.32129l0-0.36572 3.5 0 0 0.36572q0.01367 0.26318 0.02051 0.32129 0.00684 0.05469 0.03418 0.14014 0.12646 0.2666 0.42041 0.31445 0.29395 0.04785 0.50586-0.14697 0.08203-0.08545 0.14013-0.18115 0.02734-0.08545 0.03418-0.14697 0.00684-0.06494 0.02051-0.31788l0-0.34863 1.31592 0 0.08545 0.04102q0.08203 0.04443 0.15722 0.12304 0.07861 0.0752 0.11963 0.16065 0.04443 0.08203 0.05811 0.28027 0.01367 0.19482 0.01367 0.85108l0 0.86816-9.35156 0 0.01367-1.72266q0.01367-0.16748 0.02734-0.20849 0.09912-0.2666 0.35206-0.36572 0.05469-0.01367 0.16748-0.02735l1.18945 0 0 0.34863z m7.58789 5.82422q0 1.89014-0.00684 2.30371-0.00683 0.41357-0.0205 0.45459-0.09912 0.25293-0.35206 0.35205l-0.0957 0.04102-8.37402 0-0.0957-0.04102q-0.15381-0.0581-0.26661-0.19824l-0.02734-0.02734q-0.04443-0.05469-0.05811-0.15381-0.02734-0.14014-0.02734-0.60156l-0.01367-4.80225 9.35156 0-0.01367 2.67285z"
+                  fill="#C8F04B"
+                ></path>
+              </svg>
+              <div
+                data-pencil-name="Number"
+                class="text-[14px]/[normal] box-border text-[#53665B] font-['Space_Grotesk',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+              >
+                01
+              </div>
+            </div>
+            <div
+              data-pencil-name="FeatureCardTitle"
+              class="text-[22px]/[25px] box-border w-full text-[#F2F6F0] font-['Space_Grotesk',system-ui,sans-serif] font-semibold text-left"
+            >
+              Agenda que se preenche sozinha
+            </div>
+            <div
+              data-pencil-name="FeatureCardDesc"
+              class="text-[14px]/[21px] box-border w-full text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left"
+            >
+              Clientes reservam 24/7. Você define regras, horários e limites — o sistema faz o
+              resto.
+            </div>
+          </div>
+          <div
+            data-pencil-name="FeatureCard-02"
+            class="box-border [flex:1_1_0] h-[300px] flex flex-col gap-[18px] p-[26px] justify-start items-start bg-[#16231E] [outline:1px_solid_#243329] [outline-offset:-0.5px] rounded-[16px] hover:border-[#C8F04B]/40 transition-all"
+          >
+            <div
+              data-pencil-name="CardTop"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-between items-center"
+            >
+              <svg
+                data-pencil-name="FeatureIcon"
+                data-icon-name="wallet-cards"
+                data-icon-set="lucide"
+                viewBox="0 0 13.99993896484375 14"
+                preserveAspectRatio="xMidYMid meet"
+                xmlns="http://www.w3.org/2000/svg"
+                class="box-border w-[24px] shrink-0 h-[24px]"
+              >
+                <path
+                  d="M2.60449 1.20313q-0.50586 0.08545-0.87842 0.43749-0.36914 0.34863-0.50927 0.86475-0.02734 0.08545-0.02735 0.71436l-0.01367 3.78027 0.01367 3.78027q0 0.62891 0.02735 0.71436 0.14014 0.48877 0.46826 0.82031 0.33154 0.32813 0.82031 0.46826 0.08545 0.02734 0.71436 0.02735l3.78027 0.01367 3.78027-0.01367q0.62891 0 0.71436-0.02735 0.48877-0.14014 0.81689-0.46826 0.33154-0.33154 0.47168-0.82031 0.02734-0.08545 0.02735-0.71436l0.01367-3.78027-0.01367-3.78027q0-0.62891-0.02735-0.71436-0.12646-0.48877-0.458-0.81689-0.32813-0.33154-0.80323-0.47168l-0.14013-0.04102-4.32715 0q-4.3374 0-4.4502 0.02734z m8.70899 1.17578q0.2085 0.09912 0.30761 0.30761 0.02734 0.07178 0.03418 0.14356 0.00684 0.06836 0.00684 0.3623l0.01367 0.40674-0.32129-0.08545-8.70898 0-0.32129 0.08545 0-0.40674q0.01367-0.29395 0.02051-0.3623 0.00684-0.07178 0.03418-0.14356 0.07178-0.14014 0.18798-0.229 0.11963-0.09229 0.25977-0.11963 0.08545 0 4.22803 0l4.15967 0 0.09912 0.04102z m-0.04444 2.32421q0.18457 0.05811 0.28028 0.21192 0.07178 0.0957 0.09228 0.19482 0.02051 0.09912 0.02051 0.36573l0.01367 0.34863-0.67334 0.01367q-0.66992 0-0.76904 0.02734-0.62891 0.11279-1.06299 0.46143l-0.4751 0.37939-0.46484 0.39307q-0.34863 0.30762-0.76904 0.43408-0.12646 0.02734-0.35889 0.04102-0.229 0.01367-0.38281-0.02735-0.51611-0.09912-0.86817-0.42041-0.12646-0.12646-0.40674-0.34863-0.28027-0.22559-0.43408-0.36572-0.52979-0.50244-1.34326-0.57422-0.22217-0.01367-0.78271-0.01367l-0.56055 0 0.01367-0.33496q0-0.28027 0.02051-0.3794 0.02051-0.09912 0.09228-0.19482 0.08203-0.14014 0.26661-0.21192 0.05469-0.01367 0.69726-0.02734l3.57178 0 3.51367 0q0.71435 0 0.76904 0.02734z m-7.52978 2.32422q0.29395 0.05811 0.52978 0.28028 0.12646 0.12646 0.42725 0.37256 0.30078 0.24268 0.38623 0.31445 0.18115 0.16748 0.42041 0.32129 0.71436 0.43408 1.51758 0.43408 0.80664 0 1.52099-0.43408 0.2085-0.12646 0.46143-0.33496 0.30762-0.28027 0.86816-0.72803 0.08203-0.07178 0.22901-0.14014 0.14697-0.07178 0.25976-0.09228 0.11279-0.02051 0.71436-0.02051l0.60156 0-0.01367 4.21435-0.04102 0.09913q-0.14014 0.27685-0.43408 0.33496-0.09912 0.02734-4.18701 0.02734-4.08789 0-4.18701-0.02734-0.29395-0.05811-0.43408-0.33496l-0.04102-0.09913-0.01367-4.21435 0.64258 0q0.63232 0 0.77246 0.02734z"
+                  fill="#C8F04B"
+                ></path>
+              </svg>
+              <div
+                data-pencil-name="Number"
+                class="text-[14px]/[normal] box-border text-[#53665B] font-['Space_Grotesk',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+              >
+                02
+              </div>
+            </div>
+            <div
+              data-pencil-name="FeatureCardTitle"
+              class="text-[22px]/[25px] box-border w-full text-[#F2F6F0] font-['Space_Grotesk',system-ui,sans-serif] font-semibold text-left"
+            >
+              Pagamentos sem cobrança
+            </div>
+            <div
+              data-pencil-name="FeatureCardDesc"
+              class="text-[14px]/[21px] box-border w-full text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left"
+            >
+              Pix, cartão e pacotes recorrentes. Receba em dia sem planilha ou lembrete manual.
+            </div>
+          </div>
+          <div
+            data-pencil-name="FeatureCard-03"
+            class="box-border [flex:1_1_0] h-[300px] flex flex-col gap-[18px] p-[26px] justify-start items-start bg-[#16231E] [outline:1px_solid_#243329] [outline-offset:-0.5px] rounded-[16px] hover:border-[#C8F04B]/40 transition-all"
+          >
+            <div
+              data-pencil-name="CardTop"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-between items-center"
+            >
+              <svg
+                data-pencil-name="FeatureIcon"
+                data-icon-name="sparkles"
+                data-icon-set="lucide"
+                viewBox="0 0 13.99993896484375 14"
+                preserveAspectRatio="xMidYMid meet"
+                xmlns="http://www.w3.org/2000/svg"
+                class="box-border w-[24px] shrink-0 h-[24px]"
+              >
+                <path
+                  d="M6.84619 0.58789q-0.28027 0.04102-0.54687 0.22559-0.29395 0.2085-0.40674 0.57422-0.02734 0.08203-0.3418 1.75683-0.31445 1.67139-0.35889 1.76367-0.04102 0.08887-0.10937 0.16065-0.07178 0.08203-0.15381 0.11279-0.11279 0.04102-0.4751 0.12305l-1.28857 0.23926q-1.68164 0.32129-1.77734 0.34863-0.23926 0.07178-0.44434 0.27002-0.20166 0.19482-0.29395 0.44092-0.08887 0.24268-0.06152 0.50244 0.02734 0.25635 0.16748 0.4956 0.09912 0.16748 0.27344 0.30762 0.17432 0.14014 0.35889 0.19824 0.0957 0.02734 1.76367 0.34863l1.28515 0.25293q0.37939 0.06836 0.50586 0.10938 0.08203 0.04443 0.15381 0.11279 0.05469 0.08545 0.09912 0.16748 0.04102 0.12646 0.10938 0.50586l0.23926 1.24414q0.32129 1.68164 0.34863 1.76367 0.15381 0.46484 0.58789 0.67335 0.2666 0.14014 0.51953 0.14013 0.25293 0 0.51953-0.14013 0.43408-0.2085 0.58789-0.67335 0.02734-0.08203 0.3418-1.74658 0.31445-1.66797 0.3418-1.72265 0.02734-0.11279 0.12646-0.2085 0.09912-0.09912 0.21191-0.14355 0.06836-0.02734 1.73291-0.3418 1.66797-0.31445 1.75-0.3418 0.46484-0.15381 0.67335-0.58789 0.2666-0.51953 0 1.03906-0.09912-0.2085-0.28028-0.36231-0.18115-0.15381-0.39307-0.22558-0.0957-0.02734-1.77734-0.34863l-1.23047-0.23926q-0.37939-0.06836-0.50586-0.10938-0.0957-0.03076-0.15381-0.08545-0.10938-0.11279-0.1538-0.23925-0.02734-0.06836-0.3418-1.73291-0.31445-1.66797-0.3418-1.75-0.14014-0.46484-0.60498-0.68702-0.14014-0.07178-0.31445-0.09912-0.17432-0.02734-0.3418-0.01367z m4.73047 0.01367q-0.12305 0.01367-0.24268 0.09912-0.11963 0.08203-0.1914 0.19483-0.04102 0.08545-0.05469 0.20508-0.01367 0.11621-0.01367 0.35546l0 0.29395-0.36572 0q-0.26318 0.01367-0.32813 0.02051-0.06152 0.00684-0.1333 0.03418-0.2666 0.12646-0.31445 0.42041-0.04785 0.29395 0.14697 0.50586 0.08545 0.08203 0.18115 0.14013 0.08545 0.02734 0.14697 0.03418 0.06494 0.00684 0.31788 0.02051l0.34863 0 0 0.34863q0.01367 0.25293 0.02051 0.31788 0.00683 0.06152 0.03418 0.14697 0.05811 0.0957 0.14013 0.18115 0.21191 0.19482 0.50586 0.14697 0.29395-0.04785 0.42041-0.31445 0.02734-0.08545 0.03418-0.14014 0.00684-0.05811 0.02051-0.32129l0-0.36572 0.29395 0q0.32129 0 0.45458-0.03418 0.1333-0.03418 0.25293-0.15381 0.11963-0.11963 0.15381-0.31445 0.03418-0.19824-0.04785-0.35205-0.04443-0.08203-0.12305-0.15039-0.0752-0.07178-0.1538-0.10596-0.07519-0.0376-0.14014-0.04443-0.06152-0.00684-0.32813-0.02051l-0.3623 0 0-0.34863q0-0.23926-0.00684-0.30762-0.00684-0.07178-0.03418-0.12646-0.08545-0.21191-0.25293-0.30762-0.16748-0.09912-0.37939-0.05811z m-4.26904 2.7583q0.23926 1.26123 0.29394 1.55518 0.05811 0.29395 0.1128 0.42041 0.12646 0.30762 0.38281 0.56738 0.25977 0.25635 0.56738 0.38281 0.12646 0.05469 0.41358 0.1128 0.28711 0.05469 1.54833 0.29394 1.56885 0.29395 1.57569 0.30762 0.00684 0.01367-1.60303 0.31445-1.60986 0.30078-1.72266 0.32813-0.39307 0.09912-0.72119 0.40674-0.32813 0.30762-0.46826 0.70068-0.04443 0.09912-0.09912 0.43408l-0.32129 1.63721q-0.25293 1.37402-0.2666 1.37402-0.01367 0-0.30762-1.55517-0.23926-1.2749-0.29736-1.56202-0.05469-0.28711-0.10938-0.41357-0.09912-0.23584-0.30078-0.46484-0.20166-0.23242-0.41357-0.35889-0.14014-0.09912-0.2666-0.14014-0.16748-0.04102-0.57422-0.12646l-1.28516-0.25293q-1.6543-0.30762-1.64062-0.32129 0.01367-0.01367 1.60986-0.30762l1.51416-0.29394q0.25293-0.05811 0.38965-0.1128 0.29395-0.11279 0.56738-0.37597 0.27344-0.2666 0.3999-0.57422 0.05469-0.12646 0.10938-0.41358 0.05811-0.28711 0.29736-1.56201 0.29395-1.55518 0.30762-1.55517 0.01367 0 0.30762 1.55517z m-5.33203 6.59326q-0.31104 0.07178-0.57764 0.23926-0.26318 0.16748-0.46143 0.42041-0.34863 0.4751-0.34863 1.05615 0 0.58105 0.3418 1.04249 0.34521 0.46143 0.91943 0.6289 0.64258 0.18457 1.25781-0.10937 0.32471-0.15381 0.56055-0.44092 0.23926-0.28711 0.35205-0.65283 0.02734-0.11279 0.03418-0.18116 0.00684-0.06836 0.02051-0.28027 0-0.25293-0.02051-0.3623-0.02051-0.11279-0.10596-0.32471-0.15381-0.36231-0.46826-0.63574-0.31445-0.27344-0.70752-0.38623-0.15381-0.02734-0.3999-0.03418-0.24268-0.00684-0.39648 0.0205z m0.60156 1.18946q0.24951 0.11279 0.31787 0.38623 0.07178 0.27344-0.0957 0.48193-0.12646 0.15381-0.29395 0.21192-0.16748 0.05469-0.33496 0-0.25293-0.07178-0.37939-0.33497-0.04102-0.09912-0.03418-0.23242 0.00684-0.1333 0.04785-0.23242 0.09912-0.22217 0.32129-0.29736 0.22559-0.07861 0.45117 0.01709z"
+                  fill="#C8F04B"
+                ></path>
+              </svg>
+              <div
+                data-pencil-name="Number"
+                class="text-[14px]/[normal] box-border text-[#53665B] font-['Space_Grotesk',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+              >
+                03
+              </div>
+            </div>
+            <div
+              data-pencil-name="FeatureCardTitle"
+              class="text-[22px]/[25px] box-border w-full text-[#F2F6F0] font-['Space_Grotesk',system-ui,sans-serif] font-semibold text-left"
+            >
+              Experiência que fideliza
+            </div>
+            <div
+              data-pencil-name="FeatureCardDesc"
+              class="text-[14px]/[21px] box-border w-full text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left"
+            >
+              Lista de espera, notificações e histórico para cada aluno voltar sempre.
+            </div>
+          </div>
+        </div>
+      </div>
+      <div
+        data-pencil-name="Stats"
+        class="box-border w-full h-fit shrink-0 flex flex-row gap-0 p-[56px_64px] justify-around items-center bg-[#C8F04B]"
+      >
+        <div
+          data-pencil-name="Stat"
+          class="box-border w-fit shrink-0 h-fit flex flex-col gap-[6px] justify-start items-center"
+        >
+          <div
+            data-pencil-name="StatValue"
+            class="text-[42px]/[normal] box-border text-[#0E1512] font-['Space_Grotesk',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+          >
+            +38%
+          </div>
+          <div
+            data-pencil-name="StatLabel"
+            class="text-[13px]/[normal] box-border text-[#3A4C25] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            mais reservas no primeiro mês
+          </div>
+        </div>
+        <div
+          data-pencil-name="Stat"
+          class="box-border w-fit shrink-0 h-fit flex flex-col gap-[6px] justify-start items-center"
+        >
+          <div
+            data-pencil-name="StatValue"
+            class="text-[42px]/[normal] box-border text-[#0E1512] font-['Space_Grotesk',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+          >
+            12h
+          </div>
+          <div
+            data-pencil-name="StatLabel"
+            class="text-[13px]/[normal] box-border text-[#3A4C25] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            economizadas por semana
+          </div>
+        </div>
+        <div
+          data-pencil-name="Stat"
+          class="box-border w-fit shrink-0 h-fit flex flex-col gap-[6px] justify-start items-center"
+        >
+          <div
+            data-pencil-name="StatValue"
+            class="text-[42px]/[normal] box-border text-[#0E1512] font-['Space_Grotesk',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+          >
+            4.9/5
+          </div>
+          <div
+            data-pencil-name="StatLabel"
+            class="text-[13px]/[normal] box-border text-[#3A4C25] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            satisfação dos clubes
+          </div>
+        </div>
+      </div>
+      <div
+        data-pencil-name="Pricing"
+        class="box-border w-full h-fit shrink-0 flex flex-col gap-[46px] p-[100px_64px] justify-start items-center bg-[#0F1A16]"
+      >
+        <div
+          data-pencil-name="PricingEyebrow"
+          class="text-[12px]/[normal] box-border text-[#C8F04B] font-[Inter,system-ui,sans-serif] font-bold tracking-[2px] text-left [white-space:nowrap]"
+        >
+          PLANOS QUE CRESCEM COM VOCÊ
+        </div>
+        <div
+          data-pencil-name="PricingTitle"
+          class="text-[44px]/[normal] box-border text-[#F2F6F0] font-['Space_Grotesk',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+        >
+          Comece pequeno. Jogue grande.
+        </div>
+        <div
+          data-pencil-name="PriceRow"
+          class="box-border w-full h-fit shrink-0 flex flex-row gap-[18px] justify-start items-start"
+        >
+          <div
+            data-pencil-name="Plan-Essencial"
+            class="box-border [flex:1_1_0] h-fit flex flex-col gap-[18px] p-[28px] justify-start items-start bg-[#16231E] [outline:1px_solid_#243329] [outline-offset:-0.5px] rounded-[16px] hover:border-[#C8F04B]/40 transition-all"
+          >
+            <div
+              data-pencil-name="PlanName"
+              class="text-[20px]/[normal] box-border text-[#F2F6F0] font-['Space_Grotesk',system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+            >
+              Essencial
+            </div>
+            <div
+              data-pencil-name="PlanDesc"
+              class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              Para quem está começando
+            </div>
+            <div
+              data-pencil-name="PriceLine"
+              class="box-border w-fit h-fit shrink-0 flex flex-row gap-[6px] justify-start items-end"
+            >
+              <div
+                data-pencil-name="Price"
+                class="text-[36px]/[normal] box-border text-[#F2F6F0] font-['Space_Grotesk',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+              >
+                R$ 89
+              </div>
+              <div
+                data-pencil-name="PerMonth"
+                class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                /mês
+              </div>
+            </div>
+            <div
+              data-pencil-name="PlanButton"
+              class="box-border w-fit h-fit shrink-0 flex flex-row gap-0 p-[14px] justify-start items-center bg-[#243329] rounded-[10px] cursor-pointer hover:bg-[#2d3f33] transition-colors"
+            >
+              <div
+                data-pencil-name="PlanButtonText"
+                class="text-[14px]/[normal] box-border text-[#F2F6F0] font-[Inter,system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+              >
+                Escolher plano
+              </div>
+            </div>
+            <div
+              data-pencil-name="PlanFeature"
+              class="box-border w-fit h-fit shrink-0 flex flex-row gap-[9px] justify-start items-center"
+            >
+              <svg
+                data-pencil-name="Check"
+                data-icon-name="check"
+                data-icon-set="lucide"
+                viewBox="0 0 13.99993896484375 14"
+                preserveAspectRatio="xMidYMid meet"
+                xmlns="http://www.w3.org/2000/svg"
+                class="box-border w-[15px] shrink-0 h-[15px]"
+              >
+                <path
+                  d="M11.48096 2.95313q-0.07178 0.01367-0.12989 0.0581-0.05469 0.04102-3.07617 3.06592l-3.0249 3.00781-1.28857-1.28857q-1.28857-1.28516-1.38086-1.32618-0.08887-0.04443-0.22217-0.04443-0.1333 0-0.23242 0.0376-0.0957 0.03418-0.18799 0.11279-0.08887 0.0752-0.1333 0.1709-0.02734 0.07178-0.03418 0.11279-0.00684 0.04102-0.00684 0.14014l0 0.04102q-0.01367 0.11279 0.04102 0.19824 0.07178 0.10938 0.36572 0.40332 0.19482 0.21191 0.96729 0.98096l1.49707 1.48339q0.28027 0.2666 0.38964 0.33838 0.07178 0.05469 0.18457 0.04102l0.09571 0.01367q0.07178 0 0.14013-0.02734 0.08545-0.07178 0.32129-0.28711 0.23926-0.21875 0.79981-0.76221l2.2832-2.2832q2.08496-2.09863 2.7002-2.71387 0.61524-0.61865 0.64599-0.68701 0.04102-0.08545 0.04102-0.23926 0-0.09912-0.00684-0.14014-0.00684-0.04102-0.03418-0.11279-0.04443-0.08203-0.13672-0.16406-0.08887-0.08545-0.18115-0.11963-0.08887-0.0376-0.20849-0.0376-0.11963 0-0.18799 0.02734z"
+                  fill="#C8F04B"
+                ></path>
+              </svg>
+              <div
+                data-pencil-name="FeatureText"
+                class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Agenda ilimitada
+              </div>
+            </div>
+            <div
+              data-pencil-name="PlanFeature"
+              class="box-border w-fit h-fit shrink-0 flex flex-row gap-[9px] justify-start items-center"
+            >
+              <svg
+                data-pencil-name="Check"
+                data-icon-name="check"
+                data-icon-set="lucide"
+                viewBox="0 0 13.99993896484375 14"
+                preserveAspectRatio="xMidYMid meet"
+                xmlns="http://www.w3.org/2000/svg"
+                class="box-border w-[15px] shrink-0 h-[15px]"
+              >
+                <path
+                  d="M11.48096 2.95313q-0.07178 0.01367-0.12989 0.0581-0.05469 0.04102-3.07617 3.06592l-3.0249 3.00781-1.28857-1.28857q-1.28857-1.28516-1.38086-1.32618-0.08887-0.04443-0.22217-0.04443-0.1333 0-0.23242 0.0376-0.0957 0.03418-0.18799 0.11279-0.08887 0.0752-0.1333 0.1709-0.02734 0.07178-0.03418 0.11279-0.00684 0.04102-0.00684 0.14014l0 0.04102q-0.01367 0.11279 0.04102 0.19824 0.07178 0.10938 0.36572 0.40332 0.19482 0.21191 0.96729 0.98096l1.49707 1.48339q0.28027 0.2666 0.38964 0.33838 0.07178 0.05469 0.18457 0.04102l0.09571 0.01367q0.07178 0 0.14013-0.02734 0.08545-0.07178 0.32129-0.28711 0.23926-0.21875 0.79981-0.76221l2.2832-2.2832q2.08496-2.09863 2.7002-2.71387 0.61524-0.61865 0.64599-0.68701 0.04102-0.08545 0.04102-0.23926 0-0.09912-0.00684-0.14014-0.00684-0.04102-0.03418-0.11279-0.04443-0.08203-0.13672-0.16406-0.08887-0.08545-0.18115-0.11963-0.08887-0.0376-0.20849-0.0376-0.11963 0-0.18799 0.02734z"
+                  fill="#C8F04B"
+                ></path>
+              </svg>
+              <div
+                data-pencil-name="FeatureText"
+                class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Pagamentos integrados
+              </div>
+            </div>
+            <div
+              data-pencil-name="PlanFeature"
+              class="box-border w-fit h-fit shrink-0 flex flex-row gap-[9px] justify-start items-center"
+            >
+              <svg
+                data-pencil-name="Check"
+                data-icon-name="check"
+                data-icon-set="lucide"
+                viewBox="0 0 13.99993896484375 14"
+                preserveAspectRatio="xMidYMid meet"
+                xmlns="http://www.w3.org/2000/svg"
+                class="box-border w-[15px] shrink-0 h-[15px]"
+              >
+                <path
+                  d="M11.48096 2.95313q-0.07178 0.01367-0.12989 0.0581-0.05469 0.04102-3.07617 3.06592l-3.0249 3.00781-1.28857-1.28857q-1.28857-1.28516-1.38086-1.32618-0.08887-0.04443-0.22217-0.04443-0.1333 0-0.23242 0.0376-0.0957 0.03418-0.18799 0.11279-0.08887 0.0752-0.1333 0.1709-0.02734 0.07178-0.03418 0.11279-0.00684 0.04102-0.00684 0.14014l0 0.04102q-0.01367 0.11279 0.04102 0.19824 0.07178 0.10938 0.36572 0.40332 0.19482 0.21191 0.96729 0.98096l1.49707 1.48339q0.28027 0.2666 0.38964 0.33838 0.07178 0.05469 0.18457 0.04102l0.09571 0.01367q0.07178 0 0.14013-0.02734 0.08545-0.07178 0.32129-0.28711 0.23926-0.21875 0.79981-0.76221l2.2832-2.2832q2.08496-2.09863 2.7002-2.71387 0.61524-0.61865 0.64599-0.68701 0.04102-0.08545 0.04102-0.23926 0-0.09912-0.00684-0.14014-0.00684-0.04102-0.03418-0.11279-0.04443-0.08203-0.13672-0.16406-0.08887-0.08545-0.18115-0.11963-0.08887-0.0376-0.20849-0.0376-0.11963 0-0.18799 0.02734z"
+                  fill="#C8F04B"
+                ></path>
+              </svg>
+              <div
+                data-pencil-name="FeatureText"
+                class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Suporte especializado
+              </div>
+            </div>
+          </div>
+          <div
+            data-pencil-name="Plan-Profissional"
+            class="box-border [flex:1_1_0] h-fit flex flex-col gap-[18px] p-[28px] justify-start items-start bg-[#21372A] [outline:2px_solid_#C8F04B] [outline-offset:-1px] rounded-[16px] shadow-[0_0_30px_rgba(200,240,75,0.1)] hover:border-[#C8F04B] transition-all"
+          >
+            <div
+              data-pencil-name="Popular"
+              class="box-border w-fit h-fit shrink-0 flex flex-row gap-0 p-[5px_10px] justify-start items-start bg-[#C8F04B] rounded-[999px]"
+            >
+              <div
+                data-pencil-name="PopularText"
+                class="text-[10px]/[normal] box-border text-[#0E1512] font-[Inter,system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+              >
+                MAIS POPULAR
+              </div>
+            </div>
+            <div
+              data-pencil-name="PlanName"
+              class="text-[20px]/[normal] box-border text-[#F2F6F0] font-['Space_Grotesk',system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+            >
+              Profissional
+            </div>
+            <div
+              data-pencil-name="PlanDesc"
+              class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              Para clubes em crescimento
+            </div>
+            <div
+              data-pencil-name="PriceLine"
+              class="box-border w-fit h-fit shrink-0 flex flex-row gap-[6px] justify-start items-end"
+            >
+              <div
+                data-pencil-name="Price"
+                class="text-[36px]/[normal] box-border text-[#F2F6F0] font-['Space_Grotesk',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+              >
+                R$ 189
+              </div>
+              <div
+                data-pencil-name="PerMonth"
+                class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                /mês
+              </div>
+            </div>
+            <div
+              data-pencil-name="PlanButton"
+              class="box-border w-fit h-fit shrink-0 flex flex-row gap-0 p-[14px] justify-start items-center bg-[#C8F04B] rounded-[10px] cursor-pointer hover:bg-[#b5e038] transition-colors"
+            >
+              <div
+                data-pencil-name="PlanButtonText"
+                class="text-[14px]/[normal] box-border text-[#0E1512] font-[Inter,system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+              >
+                Escolher plano
+              </div>
+            </div>
+            <div
+              data-pencil-name="PlanFeature"
+              class="box-border w-fit h-fit shrink-0 flex flex-row gap-[9px] justify-start items-center"
+            >
+              <svg
+                data-pencil-name="Check"
+                data-icon-name="check"
+                data-icon-set="lucide"
+                viewBox="0 0 13.99993896484375 14"
+                preserveAspectRatio="xMidYMid meet"
+                xmlns="http://www.w3.org/2000/svg"
+                class="box-border w-[15px] shrink-0 h-[15px]"
+              >
+                <path
+                  d="M11.48096 2.95313q-0.07178 0.01367-0.12989 0.0581-0.05469 0.04102-3.07617 3.06592l-3.0249 3.00781-1.28857-1.28857q-1.28857-1.28516-1.38086-1.32618-0.08887-0.04443-0.22217-0.04443-0.1333 0-0.23242 0.0376-0.0957 0.03418-0.18799 0.11279-0.08887 0.0752-0.1333 0.1709-0.02734 0.07178-0.03418 0.11279-0.00684 0.04102-0.00684 0.14014l0 0.04102q-0.01367 0.11279 0.04102 0.19824 0.07178 0.10938 0.36572 0.40332 0.19482 0.21191 0.96729 0.98096l1.49707 1.48339q0.28027 0.2666 0.38964 0.33838 0.07178 0.05469 0.18457 0.04102l0.09571 0.01367q0.07178 0 0.14013-0.02734 0.08545-0.07178 0.32129-0.28711 0.23926-0.21875 0.79981-0.76221l2.2832-2.2832q2.08496-2.09863 2.7002-2.71387 0.61524-0.61865 0.64599-0.68701 0.04102-0.08545 0.04102-0.23926 0-0.09912-0.00684-0.14014-0.00684-0.04102-0.03418-0.11279-0.04443-0.08203-0.13672-0.16406-0.08887-0.08545-0.18115-0.11963-0.08887-0.0376-0.20849-0.0376-0.11963 0-0.18799 0.02734z"
+                  fill="#C8F04B"
+                ></path>
+              </svg>
+              <div
+                data-pencil-name="FeatureText"
+                class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Agenda ilimitada
+              </div>
+            </div>
+            <div
+              data-pencil-name="PlanFeature"
+              class="box-border w-fit h-fit shrink-0 flex flex-row gap-[9px] justify-start items-center"
+            >
+              <svg
+                data-pencil-name="Check"
+                data-icon-name="check"
+                data-icon-set="lucide"
+                viewBox="0 0 13.99993896484375 14"
+                preserveAspectRatio="xMidYMid meet"
+                xmlns="http://www.w3.org/2000/svg"
+                class="box-border w-[15px] shrink-0 h-[15px]"
+              >
+                <path
+                  d="M11.48096 2.95313q-0.07178 0.01367-0.12989 0.0581-0.05469 0.04102-3.07617 3.06592l-3.0249 3.00781-1.28857-1.28857q-1.28857-1.28516-1.38086-1.32618-0.08887-0.04443-0.22217-0.04443-0.1333 0-0.23242 0.0376-0.0957 0.03418-0.18799 0.11279-0.08887 0.0752-0.1333 0.1709-0.02734 0.07178-0.03418 0.11279-0.00684 0.04102-0.00684 0.14014l0 0.04102q-0.01367 0.11279 0.04102 0.19824 0.07178 0.10938 0.36572 0.40332 0.19482 0.21191 0.96729 0.98096l1.49707 1.48339q0.28027 0.2666 0.38964 0.33838 0.07178 0.05469 0.18457 0.04102l0.09571 0.01367q0.07178 0 0.14013-0.02734 0.08545-0.07178 0.32129-0.28711 0.23926-0.21875 0.79981-0.76221l2.2832-2.2832q2.08496-2.09863 2.7002-2.71387 0.61524-0.61865 0.64599-0.68701 0.04102-0.08545 0.04102-0.23926 0-0.09912-0.00684-0.14014-0.00684-0.04102-0.03418-0.11279-0.04443-0.08203-0.13672-0.16406-0.08887-0.08545-0.18115-0.11963-0.08887-0.0376-0.20849-0.0376-0.11963 0-0.18799 0.02734z"
+                  fill="#C8F04B"
+                ></path>
+              </svg>
+              <div
+                data-pencil-name="FeatureText"
+                class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Suporte especializado
+              </div>
+            </div>
+          </div>
+          <div
+            data-pencil-name="Plan-Rede"
+            class="box-border [flex:1_1_0] h-fit flex flex-col gap-[18px] p-[28px] justify-start items-start bg-[#16231E] [outline:1px_solid_#243329] [outline-offset:-0.5px] rounded-[16px] hover:border-[#C8F04B]/40 transition-all"
+          >
+            <div
+              data-pencil-name="PlanName"
+              class="text-[20px]/[normal] box-border text-[#F2F6F0] font-['Space_Grotesk',system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+            >
+              Rede
+            </div>
+            <div
+              data-pencil-name="PlanDesc"
+              class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              Para múltiplas unidades
+            </div>
+            <div
+              data-pencil-name="PriceLine"
+              class="box-border w-fit h-fit shrink-0 flex flex-row gap-[6px] justify-start items-end"
+            >
+              <div
+                data-pencil-name="Price"
+                class="text-[36px]/[normal] box-border text-[#F2F6F0] font-['Space_Grotesk',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+              >
+                R$ 389
+              </div>
+              <div
+                data-pencil-name="PerMonth"
+                class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                /mês
+              </div>
+            </div>
+            <div
+              data-pencil-name="PlanButton"
+              class="box-border w-fit h-fit shrink-0 flex flex-row gap-0 p-[14px] justify-start items-center bg-[#243329] rounded-[10px] cursor-pointer hover:bg-[#2d3f33] transition-colors"
+            >
+              <div
+                data-pencil-name="PlanButtonText"
+                class="text-[14px]/[normal] box-border text-[#F2F6F0] font-[Inter,system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+              >
+                Escolher plano
+              </div>
+            </div>
+            <div
+              data-pencil-name="PlanFeature"
+              class="box-border w-fit h-fit shrink-0 flex flex-row gap-[9px] justify-start items-center"
+            >
+              <svg
+                data-pencil-name="Check"
+                data-icon-name="check"
+                data-icon-set="lucide"
+                viewBox="0 0 13.99993896484375 14"
+                preserveAspectRatio="xMidYMid meet"
+                xmlns="http://www.w3.org/2000/svg"
+                class="box-border w-[15px] shrink-0 h-[15px]"
+              >
+                <path
+                  d="M11.48096 2.95313q-0.07178 0.01367-0.12989 0.0581-0.05469 0.04102-3.07617 3.06592l-3.0249 3.00781-1.28857-1.28857q-1.28857-1.28516-1.38086-1.32618-0.08887-0.04443-0.22217-0.04443-0.1333 0-0.23242 0.0376-0.0957 0.03418-0.18799 0.11279-0.08887 0.0752-0.1333 0.1709-0.02734 0.07178-0.03418 0.11279-0.00684 0.04102-0.00684 0.14014l0 0.04102q-0.01367 0.11279 0.04102 0.19824 0.07178 0.10938 0.36572 0.40332 0.19482 0.21191 0.96729 0.98096l1.49707 1.48339q0.28027 0.2666 0.38964 0.33838 0.07178 0.05469 0.18457 0.04102l0.09571 0.01367q0.07178 0 0.14013-0.02734 0.08545-0.07178 0.32129-0.28711 0.23926-0.21875 0.79981-0.76221l2.2832-2.2832q2.08496-2.09863 2.7002-2.71387 0.61524-0.61865 0.64599-0.68701 0.04102-0.08545 0.04102-0.23926 0-0.09912-0.00684-0.14014-0.00684-0.04102-0.03418-0.11279-0.04443-0.08203-0.13672-0.16406-0.08887-0.08545-0.18115-0.11963-0.08887-0.0376-0.20849-0.0376-0.11963 0-0.18799 0.02734z"
+                  fill="#C8F04B"
+                ></path>
+              </svg>
+              <div
+                data-pencil-name="FeatureText"
+                class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Agenda ilimitada
+              </div>
+            </div>
+            <div
+              data-pencil-name="PlanFeature"
+              class="box-border w-fit h-fit shrink-0 flex flex-row gap-[9px] justify-start items-center"
+            >
+              <svg
+                data-pencil-name="Check"
+                data-icon-name="check"
+                data-icon-set="lucide"
+                viewBox="0 0 13.99993896484375 14"
+                preserveAspectRatio="xMidYMid meet"
+                xmlns="http://www.w3.org/2000/svg"
+                class="box-border w-[15px] shrink-0 h-[15px]"
+              >
+                <path
+                  d="M11.48096 2.95313q-0.07178 0.01367-0.12989 0.0581-0.05469 0.04102-3.07617 3.06592l-3.0249 3.00781-1.28857-1.28857q-1.28857-1.28516-1.38086-1.32618-0.08887-0.04443-0.22217-0.04443-0.1333 0-0.23242 0.0376-0.0957 0.03418-0.18799 0.11279-0.08887 0.0752-0.1333 0.1709-0.02734 0.07178-0.03418 0.11279-0.00684 0.04102-0.00684 0.14014l0 0.04102q-0.01367 0.11279 0.04102 0.19824 0.07178 0.10938 0.36572 0.40332 0.19482 0.21191 0.96729 0.98096l1.49707 1.48339q0.28027 0.2666 0.38964 0.33838 0.07178 0.05469 0.18457 0.04102l0.09571 0.01367q0.07178 0 0.14013-0.02734 0.08545-0.07178 0.32129-0.28711 0.23926-0.21875 0.79981-0.76221l2.2832-2.2832q2.08496-2.09863 2.7002-2.71387 0.61524-0.61865 0.64599-0.68701 0.04102-0.08545 0.04102-0.23926 0-0.09912-0.00684-0.14014-0.00684-0.04102-0.03418-0.11279-0.04443-0.08203-0.13672-0.16406-0.08887-0.08545-0.18115-0.11963-0.08887-0.0376-0.20849-0.0376-0.11963 0-0.18799 0.02734z"
+                  fill="#C8F04B"
+                ></path>
+              </svg>
+              <div
+                data-pencil-name="FeatureText"
+                class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Pagamentos integrados
+              </div>
+            </div>
+            <div
+              data-pencil-name="PlanFeature"
+              class="box-border w-fit h-fit shrink-0 flex flex-row gap-[9px] justify-start items-center"
+            >
+              <svg
+                data-pencil-name="Check"
+                data-icon-name="check"
+                data-icon-set="lucide"
+                viewBox="0 0 13.99993896484375 14"
+                preserveAspectRatio="xMidYMid meet"
+                xmlns="http://www.w3.org/2000/svg"
+                class="box-border w-[15px] shrink-0 h-[15px]"
+              >
+                <path
+                  d="M11.48096 2.95313q-0.07178 0.01367-0.12989 0.0581-0.05469 0.04102-3.07617 3.06592l-3.0249 3.00781-1.28857-1.28857q-1.28857-1.28516-1.38086-1.32618-0.08887-0.04443-0.22217-0.04443-0.1333 0-0.23242 0.0376-0.0957 0.03418-0.18799 0.11279-0.08887 0.0752-0.1333 0.1709-0.02734 0.07178-0.03418 0.11279-0.00684 0.04102-0.00684 0.14014l0 0.04102q-0.01367 0.11279 0.04102 0.19824 0.07178 0.10938 0.36572 0.40332 0.19482 0.21191 0.96729 0.98096l1.49707 1.48339q0.28027 0.2666 0.38964 0.33838 0.07178 0.05469 0.18457 0.04102l0.09571 0.01367q0.07178 0 0.14013-0.02734 0.08545-0.07178 0.32129-0.28711 0.23926-0.21875 0.79981-0.76221l2.2832-2.2832q2.08496-2.09863 2.7002-2.71387 0.61524-0.61865 0.64599-0.68701 0.04102-0.08545 0.04102-0.23926 0-0.09912-0.00684-0.14014-0.00684-0.04102-0.03418-0.11279-0.04443-0.08203-0.13672-0.16406-0.08887-0.08545-0.18115-0.11963-0.08887-0.0376-0.20849-0.0376-0.11963 0-0.18799 0.02734z"
+                  fill="#C8F04B"
+                ></path>
+              </svg>
+              <div
+                data-pencil-name="FeatureText"
+                class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Suporte especializado
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div
+        data-pencil-name="FinalCTA"
+        class="box-border w-full h-fit shrink-0 flex flex-col gap-[24px] p-[110px_64px] justify-start items-center [background-image:radial-gradient(ellipse_50%_50%_at_50%_20%,_#29472C_0%,_#0F1A16_100%)] bg-no-repeat bg-[length:100%_100%]"
+      >
+        <div
+          data-pencil-name="CTAEyebrow"
+          class="text-[12px]/[normal] box-border text-[#C8F04B] font-[Inter,system-ui,sans-serif] font-bold tracking-[2px] text-left [white-space:nowrap]"
+        >
+          PRONTO PARA MUDAR O JOGO?
+        </div>
+        <div
+          data-pencil-name="CTATitle"
+          class="text-[54px]/[57px] box-border w-[760px] text-[#F2F6F0] font-['Space_Grotesk',system-ui,sans-serif] font-bold text-center"
+        >
+          Menos operação. Mais quadra.
+        </div>
+        <div
+          data-pencil-name="CTADesc"
+          class="text-[17px]/[26px] box-border w-[560px] text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-center"
+        >
+          Junte-se a centenas de clubes que já deixaram a gestão no automático.
+        </div>
+        <div
+          data-pencil-name="CTAButton"
+          class="box-border w-fit h-fit shrink-0 flex flex-row gap-0 p-[16px_28px] justify-start items-start bg-[#C8F04B] rounded-[12px] cursor-pointer hover:bg-[#b5e038] transition-colors"
+        >
+          <div
+            data-pencil-name="CTAButtonText"
+            class="text-[16px]/[normal] box-border text-[#0E1512] font-[Inter,system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+          >
+            Começar meu teste grátis →
+          </div>
+        </div>
+      </div>
+      <div
+        data-pencil-name="Footer"
+        class="[box-sizing:content-box] w-full max-w-[1440px] h-fit shrink-0 flex flex-col gap-[42px] p-[52px_64px_36px_64px] justify-start items-start bg-[#0E1512] [border-width:1px_0px_0px_0px] [border-style:solid] [border-color:#243329] [margin:-0.5px_0px_0px_0px]"
+      >
+        <div
+          data-pencil-name="FooterTop"
+          class="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-between items-start"
+        >
+          <div
+            data-pencil-name="FooterBrand"
+            class="box-border w-fit shrink-0 h-fit flex flex-col gap-[14px] justify-start items-start"
+          >
+            <div
+              data-pencil-name="FooterBrandName"
+              class="text-[19px]/[normal] box-border text-[#F2F6F0] font-['Space_Grotesk',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+            >
+              CourtManager
+            </div>
+            <div
+              data-pencil-name="FooterTagline"
+              class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              A operação do seu clube, no ritmo do jogo.
+            </div>
+          </div>
+          <div
+            data-pencil-name="FooterColumns"
+            class="box-border w-fit shrink-0 h-fit flex flex-row gap-[72px] justify-start items-start"
+          >
+            <div
+              data-pencil-name="FooterCol-Produto"
+              class="box-border w-fit shrink-0 h-fit flex flex-col gap-[11px] justify-start items-start"
+            >
+              <div
+                data-pencil-name="FooterColTitle"
+                class="text-[13px]/[normal] box-border text-[#F2F6F0] font-[Inter,system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+              >
+                Produto
+              </div>
+              <div
+                data-pencil-name="FooterLink"
+                class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Recursos
+              </div>
+              <div
+                data-pencil-name="FooterLink"
+                class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Integrações
+              </div>
+              <div
+                data-pencil-name="FooterLink"
+                class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Atualizações
+              </div>
+            </div>
+            <div
+              data-pencil-name="FooterCol-Empresa"
+              class="box-border w-fit shrink-0 h-fit flex flex-col gap-[11px] justify-start items-start"
+            >
+              <div
+                data-pencil-name="FooterColTitle"
+                class="text-[13px]/[normal] box-border text-[#F2F6F0] font-[Inter,system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+              >
+                Empresa
+              </div>
+              <div
+                data-pencil-name="FooterLink"
+                class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Sobre nós
+              </div>
+              <div
+                data-pencil-name="FooterLink"
+                class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Clientes
+              </div>
+              <div
+                data-pencil-name="FooterLink"
+                class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Contato
+              </div>
+            </div>
+            <div
+              data-pencil-name="FooterCol-Suporte"
+              class="box-border w-fit shrink-0 h-fit flex flex-col gap-[11px] justify-start items-start"
+            >
+              <div
+                data-pencil-name="FooterColTitle"
+                class="text-[13px]/[normal] box-border text-[#F2F6F0] font-[Inter,system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+              >
+                Suporte
+              </div>
+              <div
+                data-pencil-name="FooterLink"
+                class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Central de ajuda
+              </div>
+              <div
+                data-pencil-name="FooterLink"
+                class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Status
+              </div>
+              <div
+                data-pencil-name="FooterLink"
+                class="text-[13px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Privacidade
+              </div>
+            </div>
+          </div>
+        </div>
+        <div
+          data-pencil-name="FooterBottom"
+          class="[box-sizing:content-box] w-full max-w-[1312px] h-fit shrink-0 flex flex-row gap-0 p-[22px_0px_0px_0px] justify-between items-start [border-width:1px_0px_0px_0px] [border-style:solid] [border-color:#243329] [margin:-0.5px_0px_0px_0px]"
+        >
+          <div
+            data-pencil-name="Copyright"
+            class="text-[12px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            © 2025 CourtManager. Feito para quem faz o esporte acontecer.
+          </div>
+          <div
+            data-pencil-name="Locale"
+            class="text-[12px]/[normal] box-border text-[#9FAFA4] font-[Inter,system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+          >
+            Português (BR) · Termos
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

@@ -35,7 +35,8 @@ async function withIntent(method,reservationId,value,tenantId,create) {
   if(selected.cached) return selected.cached;
   try {
     const response=await create(selected.id);
-    await db.runAsync("UPDATE PaymentIntents SET state=CASE WHEN state='paid' OR EXISTS(SELECT 1 FROM TransacoesGateway t WHERE t.gateway_ref=? AND t.status='Pago') THEN 'paid' ELSE 'pending' END,gateway_ref=?,response_json=?,updated=? WHERE id=?",[response.gateway_ref,response.gateway_ref,JSON.stringify(response),Date.now(),selected.id]);
+    const responseState = ['rejected','cancelled'].includes(response.status) ? 'failed' : 'pending';
+    await db.runAsync("UPDATE PaymentIntents SET state=CASE WHEN state='paid' OR EXISTS(SELECT 1 FROM TransacoesGateway t WHERE t.gateway_ref=? AND t.status='Pago') THEN 'paid' ELSE ? END,gateway_ref=?,response_json=?,updated=? WHERE id=?",[response.gateway_ref,responseState,response.gateway_ref,JSON.stringify(response),Date.now(),selected.id]);
     return response;
   } catch(error) {
     await db.runAsync("UPDATE PaymentIntents SET state='unknown',updated=? WHERE id=?",[Date.now(),selected.id]);

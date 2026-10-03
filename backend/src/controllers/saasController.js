@@ -746,7 +746,7 @@ const resetUsuarioPassword=async(req,res)=>{
  try {
   const user=await db.getAsync('SELECT id,email,perfil,activation_pending FROM Usuarios WHERE id=?',[req.params.id]);
   if(!user) return res.sendStatus(404);
-  if(user.perfil==='SuperAdmin') return res.status(403).json({error:'Use recuperacao pessoal com segundo fator.'});
+  if(user.perfil==='SuperAdmin') return res.status(403).json({error:'Use a recuperação pessoal pelo e-mail cadastrado.'});
   const code=await require('../services/recoveryService').createChallenge(user.id,user.activation_pending ? 'activation' : 'password');
   const url=require('../utils/security').frontendUrl()+'/redefinir-senha?token='+code;
   await require('../services/sessionService').revokeUser(user.id);

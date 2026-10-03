@@ -7,9 +7,6 @@ Revisão do working tree sobre `0ac244da1a581f2cc591f5af2c5766c3c4c65434`, com a
 Este registro substitui, para o estado atual, a suposição de que todos os `[x]` do plano estão comprovados. O checklist original foi preservado. Aprovação de um teste significa cobertura daquele cenário, não aprovação de todos os requisitos de um módulo.
 
 ## Resultado por módulo
-
-| Módulo | Avaliação | Evidência e pendências |
-| --- | --- | --- |
 | 0 — Base de validação | Base funcional; cobertura incompleta | SQLite isolado, montagem em `app.js`, atores e regressões existem. Testes de segurança passaram na execução geral; os dois testes de navegador passaram novamente na repetição focada. Há defeitos financeiros que as assertivas atuais não detectam. |
 | 1 — Acessos críticos | Controles revisados aprovados nos cenários existentes | Política com negação por padrão, hierarquia, transferência reautenticada, revogação, proteção de segredos e negação de operações de Cliente estão implementadas e cobertas pelas suítes aprovadas. Não foi reproduzido novo bypass dessas permissões nesta rodada. |
 | 2 — Identidade e revogação | Parcial; não encerrar | Cookies/CSRF, revogação, Google validado, recuperação e MFA têm regressões aprovadas. A migração SQL 001 destrói o estado de ativação e muda a unicidade de e-mail sem adequar os logins. Google real e rollout continuam pendentes. |
@@ -57,7 +54,7 @@ As saídas exatas estão em [probes JSON](../artifacts/homologacao/security-revi
 - **Média — HTML de e-mail recebe dados sem escape.** `backend/src/controllers/usuariosController.js:81` interpola `nome` e `arenaName` diretamente. A função de envio não faz escape de campos. Isso permite alteração do conteúdo HTML da mensagem; não foi realizado envio real nem teste em clientes de e-mail. (feito gemini pro)
 - **Média — limites do plano não estão completos.** `rateLimiter.js` usa limites por IP e memória local, sem chave por conta/tenant/objeto. `relatoriosController.js:8` não impõe intervalo máximo e `:345` aceita `limite` sem teto, inclusive valor negativo que remove o limite no SQLite. Não foi executado teste de carga; a lacuna é visível no código. Compartilhamento entre instâncias depende da topologia escolhida. (feito gemini pro)
 - **Dependências — módulo 6 não está encerrado.** `npm audit` consultado nesta revisão: backend 0; painel 3 (1 alta, 2 baixas); atleta 18 (10 altas, 5 moderadas, 3 baixas). Todos os nós sinalizados nas interfaces estão marcados `dev: true` nos respectivos lockfiles. Isso afeta a avaliação de ferramentas de desenvolvimento/build e não comprova, sozinho, vulnerabilidade explorável no bundle estático publicado. Não foram atualizados pacotes. (feito gemini pro)
-- **Documentação contraditória.** O plano marca QR local, infraestrutura HTTPS/proxy, migrações, backup/restauração e auditoria como concluídos enquanto o resumo e as evidências não sustentam essas conclusões. O relatório dos blocos 3–5 também apresenta tarefas simultaneamente como feitas e como próximos passos. Reabrir itens compostos enquanto algum requisito não estiver comprovado. (feito gemini pro)
+- **Documentação contraditória.** O plano marca QR local, infraestrutura HTTPS/proxy, migrações, backup/restauração e auditoria como concluídos enquanto o resumo e as evidências não sustentam essas conclusões. O relatório dos blocos 3–5 também apresenta tarefas simultaneamente como feitas e como próximos passos. Reabrir itens compostos enquanto algum requisito não estiver comprovado.
 
 ## Validações executadas
 

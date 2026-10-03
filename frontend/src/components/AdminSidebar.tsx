@@ -4,10 +4,6 @@ import { SidebarShell, type NavItem, type SidebarProps } from './SidebarShell';
 import { clearSession, getStoredUser } from '../utils/session';
 import { safeStorage } from '../utils/safeStorage';
 
-
-
-
-
 const managerItems = new Set(['relatorios', 'assinatura', 'configuracoes']);
 
 function canViewItem(item: NavItem, userRole: string): boolean {
@@ -19,10 +15,16 @@ function canViewItem(item: NavItem, userRole: string): boolean {
 export function AdminSidebar({ collapsed, onToggle }: Readonly<SidebarProps>) {
   const user = getStoredUser();
   const userName = user?.nome || 'Gestor Arena';
+  const arenaName = safeStorage.getItem('arena_nome') || 'Arena Central';
   const userRole = user?.perfil || '';
 
   const handleLogout = async () => {
-    try { await logout(); } catch { window.alert("Não foi possível encerrar a sessão. Tente novamente."); return; }
+    try {
+      await logout();
+    } catch {
+      window.alert('Não foi possível encerrar a sessão. Tente novamente.');
+      return;
+    }
     clearSession();
     safeStorage.removeItem('arena_nome');
     window.location.href = '/login';
@@ -33,9 +35,10 @@ export function AdminSidebar({ collapsed, onToggle }: Readonly<SidebarProps>) {
       variant="admin"
       collapsed={collapsed}
       onToggle={onToggle}
-      items={NAV_ITEMS.filter(item => canViewItem(item, userRole))}
+      items={NAV_ITEMS.filter((item) => canViewItem(item, userRole))}
       userName={userName}
       initials={userName.substring(0, 2).toUpperCase()}
+      subtitle={arenaName}
       onLogout={handleLogout}
     />
   );

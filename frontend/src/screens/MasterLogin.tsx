@@ -1,16 +1,15 @@
 import { apiFetch as fetch } from '../utils/apiFetch';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, Lock, Mail, Eye, EyeOff } from 'lucide-react';
+import { Lock, Mail, Eye, EyeOff } from 'lucide-react';
 import { safeStorage } from '../utils/safeStorage';
 import { Card, Button, Input, Field } from '../components/ui';
+import '../assets/css/master.css';
+import '../assets/css/master-reference.css';
 
 export function MasterLogin() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [factor,setFactor]=useState('');
-  const [qr,setQr]=useState('');
-  const [recoveryCodes,setRecoveryCodes]=useState<string[]>([]);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -27,21 +26,20 @@ export function MasterLogin() {
     setErrorMsg('');
 
     try {
-      if(qr){
-        const confirmation=await fetch('/api/auth/mfa/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codigo_2fa:factor})});
-        const data=await confirmation.json();
-        if(!confirmation.ok){setErrorMsg(data.error);setLoading(false);return;}
-        setRecoveryCodes(data.recovery_codes);setQr('');setLoading(false);return;
-      }
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email, senha: password, codigo_2fa:factor.length===6?factor:undefined,recovery_code:factor.length>6?factor:undefined }),
+        body: JSON.stringify({ email, senha: password }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!data) {
+        setErrorMsg('Servidor indisponível. Verifique se o backend está em execução.');
+        setLoading(false);
+        return;
+      }
 
       if (!res.ok) {
         setErrorMsg(data.error || 'E-mail ou senha incorretos.');
@@ -59,46 +57,37 @@ export function MasterLogin() {
 
       safeStorage.setItem('courtmanager_user', safeUser);
 
-      if(data.requires_mfa_setup){
-        const setup=await fetch('/api/auth/mfa/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({senha:password})});
-        const enrollment=await setup.json();
-        if(!setup.ok) setErrorMsg(enrollment.error); else {setQr(enrollment.qr_code);setFactor('');}
-        setLoading(false);return;
-      }
       navigate('/master/dashboard', { replace: true });
     } catch (err) {
       const safeErr = String(err instanceof Error ? err.message : err).replace(/[\r\n]/g, '');
       console.error('Erro no login Master:', safeErr);
-      setErrorMsg('Erro de conexão com o servidor.');
+      setErrorMsg('Servidor indisponível. Verifique se o backend está em execução.');
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-[#fdfcf9] to-[#eae7e0] p-4 select-none">
-      <div className="w-full max-w-sm">
+    <div className="master-login">
+      <Card className="master-login-card">
         {/* Header / Logo */}
-        <div className="flex flex-col items-center mb-6">
-          <div className="w-12 h-12 rounded-xl bg-charcoal text-off-white flex items-center justify-center shadow-lg mb-3">
-            <ShieldCheck size={24} />
-          </div>
-          <h1 className="text-xl font-bold text-charcoal tracking-tight">CourtManager SaaS</h1>
-          <p className="text-xs text-muted mt-0.5">Painel Administrativo Master</p>
+        <div className="master-brand master-login-brand">
+          <span className="master-monogram">CM</span>
+          <div><h1>courtly</h1><small>PAINEL MASTER</small></div>
         </div>
 
         {/* Card de Login */}
-        <Card className="p-6 bg-off-white border border-border-passive rounded-2xl shadow-card">
           <form onSubmit={handleLogin} className="space-y-4">
             {errorMsg && (
-              <div className="p-3 rounded-lg bg-danger/10 border border-danger/20 text-danger text-xs text-center font-medium animate-pulse">
+              <div role="alert" className="master-login-error p-3 rounded-lg text-xs text-center font-medium">
                 {errorMsg}
               </div>
             )}
 
-            <Field label="E-mail Administrativo">
+            <Field label="E-mail">
               <div className="relative">
                 <Input
                   type="email"
+                  autoComplete="username"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -111,10 +100,11 @@ export function MasterLogin() {
               </div>
             </Field>
 
-            <Field label="Senha Master">
+            <Field label="Senha">
               <div className="relative">
                 <Input
                   type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -126,6 +116,7 @@ export function MasterLogin() {
                 </div>
                 <button
                   type="button"
+                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute inset-y-0 right-0 pr-3 flex items-center text-muted hover:text-charcoal focus:outline-none"
                 >
@@ -134,22 +125,16 @@ export function MasterLogin() {
               </div>
             </Field>
 
-            <Field label="Codigo do autenticador ou recuperacao">
-              <Input value={factor} onChange={(e: React.ChangeEvent<HTMLInputElement>)=>setFactor(e.target.value)} autoComplete="one-time-code" />
-            </Field>
-            {qr && <div><p>Escaneie no autenticador e confirme o codigo de 6 digitos.</p><img src={qr} alt="Cadastrar segundo fator" /></div>}
-            {recoveryCodes.length>0 && <div><p>Guarde estes codigos em local seguro. Cada codigo permite recuperar o acesso uma vez.</p><pre>{recoveryCodes.join('\n')}</pre><button type="button" onClick={()=>navigate('/master/dashboard',{replace:true})}>Codigos guardados. Continuar</button></div>}
             <Button
               type="submit"
               variant="primary"
               disabled={loading}
               className="w-full justify-center py-2 shadow-sm mt-2 font-medium"
             >
-              {loading ? 'Acessando...' : 'Acessar Painel Master'}
+              {loading ? 'Acessando...' : 'Entrar'}
             </Button>
           </form>
-        </Card>
-      </div>
+      </Card>
     </div>
   );
 }

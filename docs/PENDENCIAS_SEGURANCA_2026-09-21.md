@@ -1,14 +1,40 @@
 # Retomada das correções de segurança — 21/09/2026
 
-## Estado vigente — retomada de 22/09/2026
+**Alteração solicitada em 02/10/2026 — acesso Master:** removido o código
+autenticador do login, da recuperação de senha e das confirmações Master. O
+acesso agora depende de e-mail e senha; operações sensíveis continuam exigindo
+a senha atual e a recuperação usa link de uso único enviado ao e-mail cadastrado.
+Essa mudança reduz a proteção da conta com acesso global. Resultados históricos
+abaixo que mencionam MFA descrevem o comportamento anterior e não aprovam o
+modelo atual para produção. O backend precisa estar disponível na porta 3000
+para o proxy local do painel; frontend sozinho mostra erro de conexão.
 
-**Última atualização do item 5, 19:38 BRT:** ver o
+**Escopo de pagamentos confirmado em 29/09:** reservas do atleta somente Pix;
+cartão online inativo e adiado. A liberação financeira depende agora da
+liquidação Pix e de seus cenários de repetição, recuperação e estorno.
+O Pix TEST existente continua `pending` e sem crédito na consulta de 29/09.
+
+**Atualização 29/09/2026 — pagamentos:** ver
+[relatório vigente do bloqueador financeiro](PAGAMENTOS_LIBERACAO_2026-09-29.md).
+Validação de aprovação imediata e estorno corrigida; 103 testes direcionados
+e depois 364 testes do backend completo aprovados. Ensaio externo TEST continua impedido na criação de pagamento
+(HTTP 400, causa 10113). Não considerar aprovação/recusa/estorno externos concluídos.
+
+## Estado vigente — retomada de 23/09/2026
+
+**Última atualização do item 5, 23/09:** ver o
 [guia de execução e retomada](RETOMADA_HOMOLOGACAO_2026-09-22.md). Assinatura de
-webhook instalada cifrada; 1 notificação pública com HTTP 200 observada, ainda
-sem evidência de consulta/liquidação desse evento ou segunda notificação.
-Pix fictício permanece pending, 1 transação/1 intenção, zero créditos.
-Google não confirmado. Script de cartão sintético preparado, não validado:
-execução parou por rede antes de tokenizar, deixando só reserva fictícia 20001.
+webhook instalada cifrada; 3 notificações do Pix fictício com assinatura válida,
+ID/action corretos e consulta GET HTTP 200 em cada entrega. Estado pending;
+liquidação ainda não comprovada. Repetição manteve 1 transação/1 intenção e zero
+créditos. Pagamento permanece pending.
+Login Google no portal do atleta confirmado: entrada, perfil e logout;
+1 vínculo registrado na instância isolada. Painel e outros cenários de identidade
+seguem pendentes. Cartões seguem pendentes: em 23/09, APRO foi recusado por regra
+do provedor nas tentativas com Mastercard e Visa de teste; OTHE retornou token
+não encontrado. Nenhum pagamento criado; três intents `unknown` sem transação na
+instância isolada. O ensaio preparado usa tokenização de backend e não valida
+cartão no navegador; requer revisar credenciais/regra com MP e fluxo web oficial.
 Nenhum pagamento real. Não declarar o item 5 concluído.
 
 Esta seção prevalece sobre os resultados históricos abaixo. Domínio, hospedagem,

@@ -3,23 +3,19 @@ const express = require('express');
 const router = express.Router();
 const { 
   listarClientes, 
+  obterEstatisticasClientes,
   criarCliente, 
   obterCliente, 
   atualizarCliente, 
   excluirCliente, 
   arquivarCliente, 
-  desarquivarCliente, 
-  listarVinculosPendentes, 
-  aprovarVinculo, 
-  rejeitarVinculo 
+  desarquivarCliente
 } = require('../controllers/clientesController');
 const { verifyToken } = require('../middlewares/auth');
 
 router.use(verifyToken);
 router.use(requirePermission('clients.manage'));
-router.get('/vinculos-pendentes', listarVinculosPendentes);
-router.post('/vinculos-pendentes/:usuario_id/:cliente_id/aprovar', aprovarVinculo);
-router.post('/vinculos-pendentes/:usuario_id/:cliente_id/rejeitar', rejeitarVinculo);
+router.get('/estatisticas', obterEstatisticasClientes);
 
 router.get('/', listarClientes);
 router.post('/', criarCliente);

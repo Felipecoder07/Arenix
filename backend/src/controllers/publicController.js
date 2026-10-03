@@ -3,7 +3,7 @@ const {fetch}=require('../utils/providerHttp');
 const { modalities, getReservationPrice, timeMinutes } = require('../utils/bookingPrice');
 const db = require('../config/database');
 const logAuditEvent = require('../utils/auditLogger');
-const { criarCobrancaPix, resolverContextoWebhookMercadoPago, liquidarWebhookMercadoPago } = require('../services/gatewayService');
+const { criarCobrancaPix, criarCobrancaCartao, resolverContextoWebhookMercadoPago, liquidarWebhookMercadoPago } = require('../services/gatewayService');
 const { getTodayString, getLocalTimeString } = require('../utils/dateUtils');
 
 /**
@@ -30,7 +30,8 @@ const getTenantBySlug = async (req, res) => {
 
   try {
     const arena = await db.getAsync(
-      `SELECT id, nome, endereco, telefone, email, fuso_horario, horario_abertura, horario_fechamento, status, slug, foto_capa, criado_em
+      `SELECT id, nome, endereco, telefone, email, fuso_horario, horario_abertura, horario_fechamento, status, slug, foto_capa, criado_em,
+              CASE WHEN gateway_access_token IS NOT NULL AND TRIM(gateway_access_token)!='' THEN gateway_public_key ELSE NULL END AS gateway_public_key
        FROM Arenas 
        WHERE slug = ? AND status != -1`,
       [slug]
@@ -310,6 +311,11 @@ function gerarPixEMV({ chave, nome, cidade = 'SAO PAULO', valor, txid = '***' })
 const agendarReservaPublica = async (req, res) => {
   const { slug } = req.params;
   const { nome, telefone, cpf, email, quadra_id, data_reserva, hora_inicio, hora_fim, itens, esporte } = req.body;
+  const paymentMethod = req.body.payment_method === 'card' ? 'card' : 'pix';
+
+  if (paymentMethod === 'card' && process.env.ENABLE_PUBLIC_BOOKING_CARD !== 'true') {
+    return res.status(403).json({ error: 'Pagamento com cartão indisponível para reservas. Escolha Pix.' });
+  }
 
   const listaItens = getBookingItems({ itens, quadra_id, data_reserva, hora_inicio, hora_fim, esporte });
   if (!listaItens) {
@@ -323,7 +329,7 @@ const agendarReservaPublica = async (req, res) => {
   let reservasCriadasIds = [];
   try {
     const arena = await db.getAsync(
-      'SELECT id, nome, email, telefone, chave_pix, titular_pix, cidade_pix, gateway_access_token FROM Arenas WHERE slug = ? AND status = 1',
+      'SELECT id, nome, email, telefone, chave_pix, titular_pix, cidade_pix, pix_checkout_mode, gateway_access_token, gateway_public_key FROM Arenas WHERE slug = ? AND status = 1',
       [slug]
     );
     if (!arena) {
@@ -332,12 +338,21 @@ const agendarReservaPublica = async (req, res) => {
 
     const hasGateway = !!(arena.gateway_access_token?.trim());
     const hasChavePix = !!(arena.chave_pix?.trim());
+    const pixMode = arena.pix_checkout_mode === 'chave_pix' ? 'chave_pix'
+      : arena.pix_checkout_mode === 'mercado_pago' ? 'mercado_pago'
+      : hasGateway ? 'mercado_pago' : 'chave_pix';
 
-    if (!hasGateway && !hasChavePix) {
+    if (paymentMethod === 'card' && (!hasGateway || !arena.gateway_public_key?.trim())) {
+      return res.status(400).json({ error: 'Pagamento com cartão não está configurado para esta arena.' });
+    }
+
+    if (paymentMethod === 'pix' && ((pixMode === 'mercado_pago' && !hasGateway) || (pixMode === 'chave_pix' && !hasChavePix))) {
       return res.status(400).json({
         payment_not_configured: true,
         telefone_arena: arena.telefone || null,
-        error: 'Esta arena ainda não configurou o recebimento de pagamentos online via Pix. Entre em contato direto com a recepção para agendar.'
+        error: pixMode === 'chave_pix'
+          ? 'Esta arena ainda não cadastrou uma chave Pix para reservas online. Entre em contato com a recepção.'
+          : 'Esta arena ainda não conectou o Mercado Pago para reservas online. Entre em contato com a recepção.'
       });
     }
 
@@ -347,48 +362,57 @@ const agendarReservaPublica = async (req, res) => {
     const created = await db.transaction(async()=>{
       const inserted=await require('../services/bookingService').createBookings({tenantId:arena.id,items:listaItens,actor:req.user,contact:{nome,email,telefone,cpf}});
       const guestAccess=await clientAccess.createGuestAccess(arena.id,inserted.grupoId);
-      return {inserted,guestAccess};
+      const placeholders=inserted.reservasCriadasIds.map(() => '?').join(',');
+      const staticCopiaCola = paymentMethod === 'pix' && pixMode === 'chave_pix'
+        ? gerarPixEMV({ chave: arena.chave_pix.trim(), nome: arena.titular_pix || arena.nome || 'Arena',
+          cidade: arena.cidade_pix || 'SAO PAULO', valor: inserted.valorTotalGeral / 100,
+          txid: `RES${inserted.reservasCriadasIds[0]}` }) : null;
+      await db.runAsync(`UPDATE Reservas SET pix_checkout_mode=?, pix_copia_cola=? WHERE id IN (${placeholders})`,
+        [paymentMethod === 'pix' ? pixMode : null, staticCopiaCola, ...inserted.reservasCriadasIds]);
+      return {inserted,guestAccess,staticCopiaCola};
     });
-    const {inserted,guestAccess}=created;
+    const {inserted,guestAccess,staticCopiaCola}=created;
     const valorTotalGeral = inserted.valorTotalGeral / 100;
     reservasCriadasIds = inserted.reservasCriadasIds;
     const primeiraReservaId = reservasCriadasIds[0];
     clientAccess.setGuestCookies(res,guestAccess);
 
     let pixData = null;
-    try {
-      if (arena.gateway_access_token) {
-        pixData = await criarCobrancaPix(primeiraReservaId, inserted.valorTotalGeral, arena.id);
+    if (paymentMethod === 'pix') {
+      try {
+        if (pixMode === 'chave_pix') {
+          pixData = { gateway_ref: `PIX_ESTATICO_${primeiraReservaId}`, copia_cola: staticCopiaCola,
+            qr_code: await require('qrcode').toDataURL(staticCopiaCola) };
+        } else {
+          pixData = await criarCobrancaPix(primeiraReservaId, inserted.valorTotalGeral, arena.id);
+        }
+      } catch (eGateway) {
+        const safeMsg = String(eGateway?.message || '').replace(/[\r\n]/g, '');
+        logger.warn('[Public Checkout Warning] Falha ao gerar Pix no gateway:', safeMsg);
       }
-    } catch (eGateway) {
-      const safeMsg = String(eGateway?.message || '').replace(/[\r\n]/g, '');
-      logger.warn('[Public Checkout Warning] Falha ao gerar Pix no gateway:', safeMsg);
     }
 
-    if (!pixData && !hasChavePix) {
-      if (reservasCriadasIds.length > 0) {
-        const placeholders = reservasCriadasIds.map(() => '?').join(',');
-        await db.runAsync(`UPDATE Reservas SET observacoes_cancelamento='Cobranca pendente de conciliacao' WHERE id IN (${placeholders})`, reservasCriadasIds);
-      }
-      return res.status(400).json({
-        payment_not_configured: true,
-        telefone_arena: arena.telefone || null,
-        error: 'Esta arena ainda não configurou o recebimento de pagamentos online via Pix.'
+    if (paymentMethod === 'card') {
+      logAuditEvent(0, 'Reserva Publica Multi-Slot', `Atleta agendou ${reservasCriadasIds.length} reserva(s) para pagamento com cartão.`, req.ip);
+      return res.status(201).json({
+        message: 'Reserva criada. Conclua o pagamento com cartão.',
+        reserva_id: primeiraReservaId,
+        reservas_ids: reservasCriadasIds,
+        valor_total: valorTotalGeral,
+        payment_method: 'card'
       });
     }
 
-    const chavePixArena = arena.chave_pix?.trim();
-    const titularArena = arena.titular_pix || arena.nome || 'Arena';
-    const cidadeArena = arena.cidade_pix || 'SAO PAULO';
-
-    const gatewayRef = pixData?.gateway_ref || `PIX_MULTI_${primeiraReservaId}_${Date.now()}`;
-    const copiaCola = pixData?.copia_cola || gerarPixEMV({
-      chave: chavePixArena,
-      nome: titularArena,
-      cidade: cidadeArena,
-      valor: valorTotalGeral,
-      txid: `RES${primeiraReservaId}`
-    });
+    if (paymentMethod === 'pix' && !pixData) {
+      const placeholders = reservasCriadasIds.map(() => '?').join(',');
+      await db.runAsync(`UPDATE Reservas SET observacoes_cancelamento='Cobranca pendente de conciliacao' WHERE id IN (${placeholders})`, reservasCriadasIds);
+      return res.status(202).json({
+        payment_pending_review: true,
+        reserva_id: primeiraReservaId,
+        reservas_ids: reservasCriadasIds,
+        message: 'Reserva registrada, mas não foi possível confirmar a cobrança Pix. Consulte o status antes de tentar novamente.'
+      });
+    }
 
     logAuditEvent(
       0,
@@ -401,11 +425,12 @@ const agendarReservaPublica = async (req, res) => {
       message: 'Reserva(s) realizada(s) com sucesso! Realize o pagamento via Pix para garantir a vaga.',
       reserva_id: primeiraReservaId,
       reservas_ids: reservasCriadasIds,
-      gateway_ref: gatewayRef,
-      copia_cola: copiaCola,
-      qr_code: pixData?.qr_code || await require('qrcode').toDataURL(copiaCola),
+      gateway_ref: pixData.gateway_ref,
+      copia_cola: pixData.copia_cola,
+      qr_code: pixData.qr_code || await require('qrcode').toDataURL(pixData.copia_cola),
+      manual_confirmation: pixMode === 'chave_pix',
       valor_total: valorTotalGeral,
-      expira_em_minutos: 15
+      expira_em_minutos: pixMode === 'chave_pix' ? null : 15
     });
   } catch (err) {
     if (reservasCriadasIds.length > 0) {
@@ -418,6 +443,47 @@ const agendarReservaPublica = async (req, res) => {
     }
     logger.error('[Public Controller Error] agendarReservaPublica:', err);
     res.status(err.status||500).json({ error: require('../utils/security').publicError(err,'Erro ao concluir o agendamento.') });
+  }
+};
+
+const pagarReservaCartaoPublica = async (req, res) => {
+  const { slug } = req.params;
+  const ids = req.body.reservas_ids;
+  const card = req.body.card_data;
+  try {
+    if (!Array.isArray(ids) || !ids.length || ids.length > 24 || !card ||
+        typeof card.token !== 'string' || card.token.length > 8192 ||
+        typeof card.payment_method_id !== 'string' || !/^[a-z0-9_-]{1,40}$/i.test(card.payment_method_id) ||
+        typeof card.cardholderEmail !== 'string' || card.cardholderEmail.length > 254 ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(card.cardholderEmail) ||
+        typeof card.identificationNumber !== 'string' || !/^\d{5,20}$/.test(card.identificationNumber) ||
+        typeof card.identificationType !== 'string' || !/^[A-Z]{2,8}$/i.test(card.identificationType) ||
+        !Number.isInteger(Number(card.installments)) || Number(card.installments) < 1 || Number(card.installments) > 24) {
+      return res.status(400).json({ error: 'Dados de pagamento inválidos.' });
+    }
+    const arena = await db.getAsync('SELECT id,gateway_access_token,gateway_public_key FROM Arenas WHERE slug=? AND status=1',[slug]);
+    if (!arena?.gateway_access_token || !arena.gateway_public_key) return res.status(400).json({ error: 'Pagamento com cartão não está configurado para esta arena.' });
+    const reservations = await db.allAsync(`SELECT id,tenant_id,grupo_id,valor_total FROM Reservas WHERE tenant_id=? AND id IN (${ids.map(()=>'?').join(',')})`,[arena.id,...ids]);
+    if (reservations.length !== ids.length || new Set(reservations.map(row=>row.grupo_id)).size !== 1) return res.status(404).json({ error: 'Reservas não encontradas.' });
+    const first = reservations[0];
+    if (!first.grupo_id || reservations.some(row=>row.grupo_id!==first.grupo_id)) return res.status(409).json({ error: 'Grupo de reservas inválido.' });
+    const total = reservations.reduce((sum,row)=>sum+Number(row.valor_total),0);
+    if (!Number.isSafeInteger(total) || total <= 0) return res.status(400).json({ error: 'Valor de pagamento inválido.' });
+    const payment = await criarCobrancaCartao(first.id,total,{
+      token: card.token,
+      payment_method_id: card.payment_method_id,
+      issuer_id: card.issuerId,
+      installments: Number(card.installments),
+      email: card.cardholderEmail.trim().toLowerCase(),
+      identification: { type: card.identificationType, number: card.identificationNumber }
+    },arena.id);
+    if (['rejected','cancelled'].includes(payment.status)) {
+      await require('../services/bookingCancellationService').requestCancellation(ids,{tenantId:arena.id,onlyUnpaid:true,reason:'Pagamento com cartão recusado'});
+    }
+    return res.json({ payment_status: payment.status, gateway_ref: payment.gateway_ref });
+  } catch (err) {
+    logger.error('[Public Controller Error] pagarReservaCartaoPublica:', err);
+    return res.status(err.status || 502).json({ error: require('../utils/security').publicError(err,'Não foi possível confirmar o pagamento. A reserva ficará pendente para verificação.') });
   }
 };
 
@@ -596,12 +662,34 @@ function calcularExpiracaoSegundos(criadoEm) {
 
 async function resolverPixDados(reserva, arena) {
   let transacao = await db.getAsync('SELECT gateway_ref FROM TransacoesGateway WHERE reserva_id = ? ORDER BY id DESC', [reserva.id]);
-  let gatewayRef = transacao?.gateway_ref || `PIX_${reserva.id}_${Date.now()}`;
+  const modo = reserva.pix_checkout_mode || (transacao ? 'mercado_pago'
+    : arena.pix_checkout_mode === 'chave_pix' ? 'chave_pix'
+    : arena.pix_checkout_mode === 'mercado_pago' ? 'mercado_pago'
+    : arena.gateway_access_token?.trim() ? 'mercado_pago' : 'chave_pix');
+  if (modo === 'chave_pix') {
+    if (reserva.pix_copia_cola) {
+      return { gatewayRef: `PIX_ESTATICO_${reserva.id}`, copiaCola: reserva.pix_copia_cola,
+        qrCode: await require('qrcode').toDataURL(reserva.pix_copia_cola), manualConfirmation: true };
+    }
+    if (!arena.chave_pix?.trim()) return { errorConfig: true };
+    const full = await db.getAsync('SELECT * FROM Reservas WHERE id=?', [reserva.id]);
+    const members = await require('../services/paymentLedgerService').scopeReservations(full);
+    let balance = 0;
+    for (const member of members) {
+      const paid = await db.getAsync('SELECT COALESCE(SUM(valor),0) AS total FROM Pagamentos WHERE reserva_id=?', [member.id]);
+      balance += Math.max(0, member.valor_total - paid.total);
+    }
+    const copiaCola = gerarPixEMV({ chave: arena.chave_pix.trim(), nome: arena.titular_pix || arena.nome || 'Arena',
+      cidade: arena.cidade_pix || 'SAO PAULO', valor: balance / 100, txid: `RES${reserva.id}` });
+    return { gatewayRef: `PIX_ESTATICO_${reserva.id}`, copiaCola,
+      qrCode: await require('qrcode').toDataURL(copiaCola), manualConfirmation: true };
+  }
+  if (!arena.gateway_access_token?.trim()) return { errorConfig: true };
+  let gatewayRef = transacao?.gateway_ref || null;
   let copiaCola = null;
   let qrCode = null;
 
-  if (arena.gateway_access_token) {
-    try {
+  try {
       const full=await db.getAsync('SELECT * FROM Reservas WHERE id=?',[reserva.id]);
       const members=await require('../services/paymentLedgerService').scopeReservations(full);
       let balance=0;
@@ -612,23 +700,13 @@ async function resolverPixDados(reserva, arena) {
         copiaCola = pixData.copia_cola;
         qrCode = pixData.qr_code;
       }
-    } catch (eGateway) {
-      const safeMsg = String(eGateway?.message || '').replace(/[\r\n]/g, '');
-      logger.warn('[Public Controller Warning] Erro ao re-gerar Pix via gatewayService:', safeMsg);
-    }
+  } catch (eGateway) {
+    const safeMsg = String(eGateway?.message || '').replace(/[\r\n]/g, '');
+    logger.warn('[Public Controller Warning] Erro ao re-gerar Pix via gatewayService:', safeMsg);
   }
 
   if (!copiaCola) {
-    if (!arena.chave_pix?.trim()) {
-      return { errorConfig: true };
-    }
-    copiaCola = gerarPixEMV({
-      chave: arena.chave_pix.trim(),
-      nome: arena.titular_pix || arena.nome || 'Arena',
-      cidade: arena.cidade_pix || 'SAO PAULO',
-      valor: reserva.valor_total / 100,
-      txid: `RES${reserva.id}`
-    });
+    return { paymentPendingReview: true };
   }
 
   if (!qrCode) {
@@ -644,7 +722,7 @@ const obterPixReservaPendente = async (req, res) => {
 
   try {
     const arena = await db.getAsync(
-      'SELECT id, nome, email, telefone, chave_pix, titular_pix, cidade_pix, gateway_access_token FROM Arenas WHERE slug = ? AND status = 1',
+      'SELECT id, nome, email, telefone, chave_pix, titular_pix, cidade_pix, pix_checkout_mode, gateway_access_token FROM Arenas WHERE slug = ? AND status = 1',
       [slug]
     );
     if (!arena) {
@@ -656,7 +734,7 @@ const obterPixReservaPendente = async (req, res) => {
     const reserva = await db.getAsync(
       `SELECT r.id, r.tenant_id, r.cliente_id, r.quadra_id, q.nome as quadra_nome, 
               r.data_reserva, r.hora_inicio, r.hora_fim, r.valor_total, 
-              r.status, r.status_pagamento, r.criado_em,
+              r.status, r.status_pagamento, r.criado_em, r.pix_checkout_mode, r.pix_copia_cola,
               c.nome as cliente_nome, c.email as cliente_email, c.telefone as cliente_telefone, c.cpf as cliente_cpf
        FROM Reservas r
        JOIN Quadras q ON r.quadra_id = q.id
@@ -687,7 +765,14 @@ const obterPixReservaPendente = async (req, res) => {
       return res.status(400).json({
         payment_not_configured: true,
         telefone_arena: arena.telefone || null,
-        error: 'Esta arena não tem uma chave Pix configurada. Entre em contato com a recepção.'
+        error: 'Esta arena não tem a forma de Pix da reserva configurada. Entre em contato com a recepção.'
+      });
+    }
+    if (pixDados.paymentPendingReview) {
+      return res.status(202).json({
+        payment_pending_review: true,
+        reserva_id: reserva.id,
+        message: 'Não foi possível confirmar a cobrança Pix. Consulte o status antes de tentar novamente.'
       });
     }
 
@@ -705,8 +790,9 @@ const obterPixReservaPendente = async (req, res) => {
       gateway_ref: pixDados.gatewayRef,
       copia_cola: pixDados.copiaCola,
       qr_code: pixDados.qrCode,
-      expira_em_minutos: expiraEmMinutos,
-      expira_em_segundos: restanteSegundos
+      manual_confirmation: Boolean(pixDados.manualConfirmation),
+      expira_em_minutos: pixDados.manualConfirmation ? null : expiraEmMinutos,
+      expira_em_segundos: pixDados.manualConfirmation ? null : restanteSegundos
     });
   } catch (err) {
     logger.error('[Public Controller Error] obterPixReservaPendente:', err);
@@ -753,6 +839,7 @@ module.exports = {
   getQuadrasBySlug,
   getDisponibilidadeBySlug,
   agendarReservaPublica,
+  pagarReservaCartaoPublica,
   cadastrarAtletaPublico,
   loginAtletaPublico,
   googleAuthAtletaPublico,

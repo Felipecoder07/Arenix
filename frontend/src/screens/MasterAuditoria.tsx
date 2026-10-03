@@ -1,15 +1,15 @@
 import type { AuditLog, ActiveSession } from '../types/api';
+import { MasterPageHeader as PageHeader } from '../components/MasterPageHeader';
 import { apiFetch as fetch } from '../utils/apiFetch';
 import { useState, useEffect } from 'react';
 import { ShieldCheck, Search, KeyRound, Activity, Lock, Eye, EyeOff } from 'lucide-react';
-import { Card, Badge, Button, PageHeader, Field, Input, Select, EmptyState } from '../components/ui';
+import { Card, Badge, Button, Field, Input, Select, EmptyState } from '../components/ui';
 import { formatDateTime, relativeTime } from '../data/mock';
 
 export function MasterAuditoria() {
   const [arenaSearch, setArenaSearch] = useState('');
   const [pwCurrent, setPwCurrent] = useState('');
   const [pwNew, setPwNew] = useState('');
-  const [pw2fa, setPw2fa] = useState('');
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,8 +51,7 @@ export function MasterAuditoria() {
         },
         body: JSON.stringify({
           senha_atual: pwCurrent,
-          nova_senha: pwNew,
-          codigo_2fa: pw2fa
+          nova_senha: pwNew
         })
       });
       const data = await res.json();
@@ -60,7 +59,6 @@ export function MasterAuditoria() {
         setPwMsg({ text: 'Senha master alterada com sucesso!', type: 'success' });
         setPwCurrent('');
         setPwNew('');
-        setPw2fa('');
         fetchAuditoria(); // recarrega logs
       } else {
         setPwMsg({ text: data.error || 'Erro ao alterar a senha.', type: 'danger' });
@@ -221,12 +219,6 @@ export function MasterAuditoria() {
                 </button>
               </div>
             </Field>
-            <Field label="Segundo fator (código 2FA)" hint="Informe o código de 6 dígitos do app autenticador.">
-              <Input type="text" inputMode="numeric" maxLength={6} value={pw2fa} onChange={(e) => setPw2fa(e.target.value)} placeholder="000000" className="font-mono tracking-widest" />
-            </Field>
-            <p className="text-[11px] text-muted -mt-2">
-              Configure seu autenticador com a chave individual fornecida no cadastro.
-            </p>
             {pwMsg && (
               <p className={`text-sm font-medium ${pwMsg.type === 'success' ? 'text-success' : 'text-danger'}`}>
                 {pwMsg.text}
@@ -235,7 +227,7 @@ export function MasterAuditoria() {
             <div className="flex justify-end">
               <Button 
                 variant="primary" 
-                disabled={!pwCurrent || !pwNew || pw2fa.length !== 6 || submittingPw}
+                disabled={!pwCurrent || !pwNew || submittingPw}
                 onClick={handleChangePassword}
               >
                 <Lock size={14} /> {submittingPw ? 'Alterando...' : 'Confirmar alteração'}

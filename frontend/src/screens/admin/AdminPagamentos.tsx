@@ -1,9 +1,29 @@
 import { useEventCallback } from '../../hooks/useEventCallback';
-import { useCallback } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { errorMessage } from '../../utils/errorMessage';
 import { apiFetch as fetch } from '../../utils/apiFetch';
-import React, { useState, useEffect } from 'react';
+import { safeStorage } from '../../utils/safeStorage';
+import { getStoredUser } from '../../utils/session';
+import type { Announcement } from '../../types/api';
 import '../../assets/css/pagamentos.css';
+import { useOutletContext } from 'react-router-dom';
+import {
+  Download,
+  Plus,
+  Search,
+  ArrowDownToLine,
+  Clock3,
+  CalendarCheck,
+  AlertTriangle,
+  Globe,
+  Bell,
+  X,
+  Copy,
+  ExternalLink,
+  Share2,
+  Check,
+  Menu,
+} from 'lucide-react';
 
 interface Pagamento {
   id: number;
@@ -151,6 +171,60 @@ const AdminPagamentosKPIs: React.FC<AdminPagamentosKPIsProps> = ({ dataFiltro, k
 };
 
 export function AdminPagamentos() {
+  const outletContext = useOutletContext<{ onToggleSidebar?: () => void }>() || {};
+  const onToggleSidebar = outletContext.onToggleSidebar;
+
+  const [arenaSlug, setArenaSlug] = useState(() => safeStorage.getItem('arena_slug') || 'felp-arena');
+  const [arenaName, setArenaName] = useState(() => safeStorage.getItem('arena_nome') || 'Arena Central');
+  const [showPortalMenu, setShowPortalMenu] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState<Announcement[]>([]);
+  const [copied, setCopied] = useState(false);
+
+  const user = getStoredUser();
+  const userName = user?.nome || 'fefe';
+
+  const isLocal =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.startsWith('192.168.') ||
+      window.location.hostname.startsWith('10.') ||
+      window.location.hostname.startsWith('172.') ||
+      window.location.port === '5173' ||
+      window.location.port === '5176');
+
+  const clientPortalUrl = isLocal
+    ? `${window.location.protocol}//${window.location.hostname}:5176/arena/${arenaSlug}`
+    : `${window.location.protocol}//${window.location.hostname}/arena/${arenaSlug}`;
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(clientPortalUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
+
+  const handleOpen = () => {
+    window.open(clientPortalUrl, '_blank');
+  };
+
+  const handleWhatsApp = () => {
+    const ball = String.fromCodePoint(0x1f3d0); // 🏐
+    const hand = String.fromCodePoint(0x1f449); // 👉
+    const messageText = `${ball} Agende sua quadra na ${arenaName} de forma rápida e online. Escolha o melhor horário e reserve agora:
+
+${hand} ${clientPortalUrl}`;
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(messageText)}`, '_blank');
+  };
+
+  useEffect(() => {
+    fetch('/api/auth/comunicados/ativos', { headers: {} })
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setNotifications(data);
+      })
+      .catch(() => {});
+  }, []);
 
   // KPIs
   const [kpis, setKpis] = useState<KPIResumo | null>(null);
@@ -547,242 +621,934 @@ export function AdminPagamentos() {
   const countPagos = kpis?.counts?.pagos ?? kpis?.countsGlobais?.pagos ?? 0;
   const countInadimplentes = kpis?.counts?.inadimplentes ?? kpis?.countsGlobais?.inadimplentes ?? 0;
   const countTodos = kpis?.counts?.todos ?? kpis?.countsGlobais?.todos ?? 0;
-
   return (
-    <div className="admin-pagamentos-page">
+    <div className="admin-pagamentos-page w-full flex flex-col min-w-0">
       {/* Toast Alert */}
       {toast && (
-        <div 
-          className={`fixed bottom-4 right-4 z-50 px-4 py-3 rounded-lg text-white font-medium shadow-lg transition-transform duration-200 ${
-            toast.type === 'success' ? 'bg-success' : 'bg-danger'
+        <div
+          style={{ zIndex: 999999 }}
+          className={`fixed bottom-5 right-5 px-4 py-3 rounded-xl text-white text-xs font-semibold shadow-2xl flex items-center gap-2.5 animate-slideUp border ${
+            toast.type === 'success'
+              ? 'bg-emerald-600 border-emerald-500'
+              : 'bg-rose-600 border-rose-500'
           }`}
         >
-          {toast.message}
+          <span>{toast.message}</span>
         </div>
       )}
 
-      {/* Badge de Filtro Ativo quando há data selecionada */}
-      {dataFiltro && (
-        <div 
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            backgroundColor: '#eff6ff',
-            border: '1px solid #bfdbfe',
-            borderRadius: '10px',
-            padding: '10px 16px',
-            marginBottom: '16px'
-          }}
+      {/* Área Principal Pagamentos (Fiel ao mockup do Penpot) */}
+      <div
+        data-pencil-name="Área Principal Pagamentos"
+        className="box-border w-full flex flex-col gap-[18px] justify-start items-start"
+      >
+        {/* Cabeçalho Pagamentos Melhorado */}
+        <div
+          data-pencil-name="Cabeçalho Pagamentos Melhorado"
+          className="box-border w-full min-h-[70px] shrink-0 flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center select-none"
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13.5px', color: '#1e40af', fontWeight: 600 }}>
-            <span>📅</span>
-            <span>Visualizando dados filtrados para: <strong>{formatData(dataFiltro)}</strong></span>
+          <div className="flex items-center gap-3">
+            {onToggleSidebar && (
+              <button
+                type="button"
+                onClick={onToggleSidebar}
+                className="md:hidden p-2 rounded-xl text-[#071915] hover:bg-[#F1EDE6] transition-colors cursor-pointer border-none"
+                aria-label="Abrir menu"
+              >
+                <Menu size={20} />
+              </button>
+            )}
+            <div
+              data-pencil-name="Título Pagamentos Melhorado"
+              className="box-border w-fit shrink-0 h-fit flex flex-col gap-[6px] justify-start items-start"
+            >
+              <div
+                data-pencil-name="Breadcrumb Pagamentos Melhorado"
+                className="text-[13px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+              >
+                Financeiro / Controle de pagamentos
+              </div>
+              <div
+                data-pencil-name="Título Pagamentos Melhorado Texto"
+                className="text-[34px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-normal tracking-[-1px] text-left whitespace-nowrap leading-tight"
+              >
+                Pagamentos
+              </div>
+            </div>
           </div>
-          <button
-            onClick={() => definirData('limpar')}
-            style={{
-              padding: '4px 10px',
-              backgroundColor: '#ffffff',
-              border: '1px solid #93c5fd',
-              borderRadius: '6px',
-              color: '#1d4ed8',
-              fontSize: '12px',
-              fontWeight: 600,
-              cursor: 'pointer'
-            }}
+
+          <div
+            data-pencil-name="Ações Pagamentos Melhorado"
+            className="box-border w-fit shrink-0 h-fit flex flex-wrap gap-[12px] justify-start items-center"
           >
-            ✕ Limpar filtro de data
-          </button>
+            {/* Exportar CSV */}
+            <button
+              type="button"
+              onClick={exportarCSV}
+              data-pencil-name="Exportar CSV Melhorado"
+              className="box-border w-fit shrink-0 h-[42px] flex flex-row gap-[8px] px-[16px] justify-start items-center bg-[#FFFFFF] outline outline-1 outline-[#DDD6CA] -outline-offset-1 rounded-[12px] cursor-pointer hover:bg-[#F9F7F3] transition-colors border-none"
+            >
+              <Download size={16} className="text-[#071915] shrink-0" />
+              <div
+                data-pencil-name="Texto Exportar Melhorado"
+                className="text-[13px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+              >
+                Exportar CSV
+              </div>
+            </button>
+
+            {/* Registrar pagamento */}
+            <button
+              type="button"
+              onClick={() => {
+                const pendente = reservas.find((r) => r.status_pagamento !== 'Pago');
+                if (pendente) {
+                  abrirPagamento(pendente);
+                } else if (reservas.length > 0) {
+                  showToast('Todas as reservas da listagem já estão quitadas.', 'error');
+                } else {
+                  showToast('Nenhuma reserva encontrada.', 'error');
+                }
+              }}
+              data-pencil-name="Registrar Pagamento Melhorado"
+              className="box-border w-fit shrink-0 h-[42px] shadow-[0px_10px_20px_#07191533] flex flex-row gap-[8px] px-[18px] justify-start items-center bg-[#071915] hover:bg-[#1E2522] rounded-[12px] cursor-pointer transition-colors border-none active:scale-[0.99]"
+            >
+              <Plus size={16} className="text-[#C9FF3B] shrink-0" />
+              <div
+                data-pencil-name="Texto Registrar Melhorado"
+                className="text-[13px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+              >
+                Registrar pagamento
+              </div>
+            </button>
+
+            {/* Acesso usuário Pagamentos */}
+            <div
+              data-pencil-name="Acesso usuário Pagamentos"
+              className="box-border w-fit shrink-0 h-fit flex flex-row gap-[10px] justify-start items-center"
+            >
+              {/* Portal do Cliente Pill */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowPortalMenu(!showPortalMenu)}
+                  data-pencil-name="Portal do Cliente Pagamentos"
+                  className="box-border w-fit shrink-0 h-[34px] flex flex-row gap-[7px] px-[12px] justify-start items-center bg-[#ECFFF4] hover:bg-[#DCFCE7] rounded-[17px] cursor-pointer transition-colors border-none"
+                >
+                  <Globe size={14} className="text-[#008A5A] shrink-0" />
+                  <div
+                    data-pencil-name="Texto Portal Pagamentos"
+                    className="text-[12px]/[normal] box-border text-[#007A50] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                  >
+                    Portal do Cliente
+                  </div>
+                </button>
+
+                {showPortalMenu && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setShowPortalMenu(false)}
+                    />
+                    <div className="absolute right-0 mt-2 w-80 bg-[#F7F2EA] outline outline-1 outline-[#E6DED2] rounded-[16px] shadow-xl p-4 z-50 animate-scale-in">
+                      <div className="flex items-center justify-between border-b border-[#E6DED2] pb-2 mb-3">
+                        <span className="text-xs font-bold text-[#071915] flex items-center gap-1.5">
+                          <Globe size={14} className="text-[#008A5A]" />
+                          Link da Sua Arena
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setShowPortalMenu(false)}
+                          className="text-[#6F766F] hover:text-[#071915] p-1 rounded-md border-none bg-transparent cursor-pointer"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+
+                      <p className="text-[11px] text-[#6F766F] mb-3 leading-relaxed">
+                        Compartilhe o link direto para que seus clientes possam visualizar a grade e solicitar agendamentos online:
+                      </p>
+
+                      <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl outline outline-1 outline-[#DDD6CA] mb-3">
+                        <input
+                          type="text"
+                          readOnly
+                          value={clientPortalUrl}
+                          className="text-xs text-[#071915] font-medium bg-transparent border-none outline-none w-full truncate select-all cursor-text"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleCopy}
+                          className={`p-1.5 rounded-lg border-none cursor-pointer flex items-center gap-1 transition-all ${
+                            copied
+                              ? 'bg-[#EAF9F0] text-[#138A4B]'
+                              : 'bg-[#F7F2EA] text-[#071915] hover:bg-[#E6DED2]'
+                          }`}
+                          title="Copiar link"
+                        >
+                          {copied ? <Check size={14} /> : <Copy size={14} />}
+                        </button>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handleOpen}
+                          className="flex-1 py-2 px-3 bg-white outline outline-1 outline-[#DDD6CA] rounded-xl text-xs font-semibold text-[#071915] hover:bg-[#F9F7F3] flex items-center justify-center gap-1.5 transition-colors cursor-pointer border-none"
+                        >
+                          <ExternalLink size={13} />
+                          Abrir Portal
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleWhatsApp}
+                          className="flex-1 py-2 px-3 bg-[#071915] text-white rounded-xl text-xs font-semibold hover:bg-black flex items-center justify-center gap-1.5 transition-colors cursor-pointer border-none"
+                        >
+                          <Share2 size={13} className="text-[#C9FF3B]" />
+                          Enviar WhatsApp
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Usuário logado */}
+              <div
+                data-pencil-name="Usuário logado Pagamentos"
+                className="box-border w-fit shrink-0 h-[34px] flex flex-row gap-[7px] px-[11px] justify-start items-center bg-[#F1EDE6] rounded-[17px]"
+              >
+                <div
+                  data-pencil-name="Status online Pagamentos"
+                  className="box-border w-[7px] shrink-0 h-[7px] bg-[#188A45] rounded-full"
+                />
+                <div
+                  data-pencil-name="Nome usuário Pagamentos"
+                  className="text-[12px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                >
+                  {userName}
+                </div>
+              </div>
+
+              {/* Notificações */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  data-pencil-name="Notificações Pagamentos"
+                  className="box-border w-[34px] shrink-0 h-[34px] bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[17px] relative flex items-center justify-center cursor-pointer hover:bg-[#F9F7F3] transition-colors border-none"
+                  title="Notificações"
+                >
+                  <Bell size={16} className="text-[#071915]" />
+                  {notifications.length > 0 && (
+                    <div
+                      data-pencil-name="Bolinha notificação Pagamentos"
+                      className="box-border w-[7px] h-[7px] absolute right-[6px] top-[6px] bg-[#D11F2A] outline outline-1.5 outline-[#FFFFFF] -outline-offset-0.75 rounded-full"
+                    />
+                  )}
+                </button>
+
+                {showNotifications && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setShowNotifications(false)}
+                    />
+                    <div className="absolute right-0 mt-2 w-80 bg-[#F7F2EA] outline outline-1 outline-[#E6DED2] rounded-[16px] shadow-xl p-4 z-50 animate-scale-in">
+                      <div className="flex items-center justify-between border-b border-[#E6DED2] pb-2 mb-3">
+                        <span className="text-xs font-bold text-[#071915] flex items-center gap-1.5">
+                          <Bell size={14} className="text-[#071915]" />
+                          Avisos e Comunicados
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setShowNotifications(false)}
+                          className="text-[#6F766F] hover:text-[#071915] p-1 rounded-md border-none bg-transparent cursor-pointer"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+
+                      {notifications.length === 0 ? (
+                        <p className="text-xs text-[#6F766F] py-2 text-center">
+                          Nenhum comunicado ativo no momento.
+                        </p>
+                      ) : (
+                        <div className="max-h-60 overflow-y-auto space-y-2">
+                          {notifications.map((n) => (
+                            <div
+                              key={n.id}
+                              className="bg-white p-3 rounded-xl outline outline-1 outline-[#DDD6CA] text-xs"
+                            >
+                              <div className="font-semibold text-[#071915] leading-relaxed">{n.message}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
-      )}
 
-      {/* KPI strip Adaptativo */}
-      <AdminPagamentosKPIs dataFiltro={dataFiltro} kpis={kpis} />
+        {/* Resumo Financeiro Melhorado */}
+        <div
+          data-pencil-name="Resumo Financeiro Melhorado"
+          className="box-border w-full h-auto min-h-[128px] shrink-0 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-[16px] justify-start items-start"
+        >
+          {/* Card 1: Recebido hoje */}
+          <div
+            data-pencil-name="Resumo Recebido hoje"
+            className="box-border w-full h-full min-h-[128px] shadow-[0px_14px_28px_#0719150D] flex flex-col gap-[10px] p-[18px] justify-start items-start bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[20px]"
+          >
+            <div
+              data-pencil-name="Topo Recebido hoje"
+              className="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-between items-center"
+            >
+              <div
+                data-pencil-name="Label Recebido hoje"
+                className="text-[11px]/[normal] box-border text-[#59615A] font-[Inter,system-ui,sans-serif] font-normal tracking-[0.6px] text-left whitespace-nowrap"
+              >
+                {dataFiltro ? `RECEBIDO (${formatData(dataFiltro)})` : 'RECEBIDO HOJE'}
+              </div>
+              <div
+                data-pencil-name="Ícone Recebido hoje"
+                className="box-border w-[34px] shrink-0 h-[34px] flex flex-row gap-0 justify-center items-center bg-[#EAF9F0] rounded-[12px]"
+              >
+                <ArrowDownToLine size={17} className="text-[#138A4B]" />
+              </div>
+            </div>
+            <div
+              data-pencil-name="Valor Recebido hoje"
+              className="text-[30px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-normal tracking-[-0.5px] text-left whitespace-nowrap"
+            >
+              {formatCurrency(dataFiltro && kpis?.resumoFiltrado ? kpis.resumoFiltrado.recebido : (kpis?.recebidoHoje || 0))}
+            </div>
+            <div
+              data-pencil-name="Rodapé Recebido hoje"
+              className="box-border w-fit h-fit shrink-0 flex flex-row gap-[6px] justify-start items-center"
+            >
+              <div
+                data-pencil-name="Ponto Recebido hoje"
+                className="box-border w-[7px] shrink-0 h-[7px] bg-[#138A4B] rounded-full"
+              />
+              <div
+                data-pencil-name="Nota Recebido hoje"
+                className="text-[12px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+              >
+                {dataFiltro && kpis?.resumoFiltrado ? kpis.resumoFiltrado.qtdPagamentos : (kpis?.qtdPagamentosHoje || 0)} pagamento(s)
+              </div>
+            </div>
+          </div>
 
-      {/* Toolbar / Filtros com Atalhos Rápidos */}
-      <div className="page-toolbar mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="filter-bar flex items-center flex-wrap gap-2">
-          <input 
-            type="text" 
-            className="search-input" 
-            placeholder="Buscar por cliente ou ID..." 
-            style={{ width: '220px' }}
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-          />
-          <input 
-            type="date" 
-            style={{ width: 'auto' }}
-            value={dataFiltro}
-            onChange={(e) => setDataFiltro(e.target.value)}
-          />
-          <div style={{ display: 'flex', gap: '4px' }}>
-            <button 
-              type="button" 
-              className={`btn-ghost ${dataFiltro === new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0] ? 'active' : ''}`}
-              onClick={() => definirData('hoje')} 
-              style={{ fontSize: '11.5px', padding: '6px 10px' }}
+          {/* Card 2: Pendente hoje */}
+          <div
+            data-pencil-name="Resumo Pendente hoje"
+            className="box-border w-full h-full min-h-[128px] shadow-[0px_14px_28px_#0719150D] flex flex-col gap-[10px] p-[18px] justify-start items-start bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[20px]"
+          >
+            <div
+              data-pencil-name="Topo Pendente hoje"
+              className="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-between items-center"
             >
-              Hoje
+              <div
+                data-pencil-name="Label Pendente hoje"
+                className="text-[11px]/[normal] box-border text-[#59615A] font-[Inter,system-ui,sans-serif] font-normal tracking-[0.6px] text-left whitespace-nowrap"
+              >
+                {dataFiltro ? `PENDENTE (${formatData(dataFiltro)})` : 'PENDENTE HOJE'}
+              </div>
+              <div
+                data-pencil-name="Ícone Pendente hoje"
+                className="box-border w-[34px] shrink-0 h-[34px] flex flex-row gap-0 justify-center items-center bg-[#FFF5E8] rounded-[12px]"
+              >
+                <Clock3 size={17} className="text-[#C8661A]" />
+              </div>
+            </div>
+            <div
+              data-pencil-name="Valor Pendente hoje"
+              className="text-[30px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-normal tracking-[-0.5px] text-left whitespace-nowrap"
+            >
+              {formatCurrency(dataFiltro && kpis?.resumoFiltrado ? kpis.resumoFiltrado.pendente : (kpis?.pendenteHoje || 0))}
+            </div>
+            <div
+              data-pencil-name="Rodapé Pendente hoje"
+              className="box-border w-fit h-fit shrink-0 flex flex-row gap-[6px] justify-start items-center"
+            >
+              <div
+                data-pencil-name="Ponto Pendente hoje"
+                className="box-border w-[7px] shrink-0 h-[7px] bg-[#C8661A] rounded-full"
+              />
+              <div
+                data-pencil-name="Nota Pendente hoje"
+                className="text-[12px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+              >
+                {dataFiltro && kpis?.resumoFiltrado ? kpis.resumoFiltrado.qtdPendente : (kpis?.qtdPendenteHoje || 0)} reserva(s)
+              </div>
+            </div>
+          </div>
+
+          {/* Card 3: Recebido no mês */}
+          <div
+            data-pencil-name="Resumo Recebido no mês"
+            className="box-border w-full h-full min-h-[128px] shadow-[0px_14px_28px_#0719150D] flex flex-col gap-[10px] p-[18px] justify-start items-start bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[20px]"
+          >
+            <div
+              data-pencil-name="Topo Recebido no mês"
+              className="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-between items-center"
+            >
+              <div
+                data-pencil-name="Label Recebido no mês"
+                className="text-[11px]/[normal] box-border text-[#59615A] font-[Inter,system-ui,sans-serif] font-normal tracking-[0.6px] text-left whitespace-nowrap"
+              >
+                RECEBIDO NO MÊS
+              </div>
+              <div
+                data-pencil-name="Ícone Recebido no mês"
+                className="box-border w-[34px] shrink-0 h-[34px] flex flex-row gap-0 justify-center items-center bg-[#EEF3FF] rounded-[12px]"
+              >
+                <CalendarCheck size={17} className="text-[#2E5BFF]" />
+              </div>
+            </div>
+            <div
+              data-pencil-name="Valor Recebido no mês"
+              className="text-[30px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-normal tracking-[-0.5px] text-left whitespace-nowrap"
+            >
+              {formatCurrency(kpis?.recebidoMes || 0)}
+            </div>
+            <div
+              data-pencil-name="Rodapé Recebido no mês"
+              className="box-border w-fit h-fit shrink-0 flex flex-row gap-[6px] justify-start items-center"
+            >
+              <div
+                data-pencil-name="Ponto Recebido no mês"
+                className="box-border w-[7px] shrink-0 h-[7px] bg-[#2E5BFF] rounded-full"
+              />
+              <div
+                data-pencil-name="Nota Recebido no mês"
+                className="text-[12px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+              >
+                mês atual
+              </div>
+            </div>
+          </div>
+
+          {/* Card 4: Inadimplência */}
+          <div
+            data-pencil-name="Resumo Inadimplência"
+            className="box-border w-full h-full min-h-[128px] shadow-[0px_14px_28px_#0719150D] flex flex-col gap-[10px] p-[18px] justify-start items-start bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[20px]"
+          >
+            <div
+              data-pencil-name="Topo Inadimplência"
+              className="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-between items-center"
+            >
+              <div
+                data-pencil-name="Label Inadimplência"
+                className="text-[11px]/[normal] box-border text-[#59615A] font-[Inter,system-ui,sans-serif] font-normal tracking-[0.6px] text-left whitespace-nowrap"
+              >
+                INADIMPLÊNCIA
+              </div>
+              <div
+                data-pencil-name="Ícone Inadimplência"
+                className="box-border w-[34px] shrink-0 h-[34px] flex flex-row gap-0 justify-center items-center bg-[#FFF1F0] rounded-[12px]"
+              >
+                <AlertTriangle size={17} className="text-[#B32323]" />
+              </div>
+            </div>
+            <div
+              data-pencil-name="Valor Inadimplência"
+              className="text-[30px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-normal tracking-[-0.5px] text-left whitespace-nowrap"
+            >
+              {formatCurrency(kpis?.totalInadimplencia || 0)}
+            </div>
+            <div
+              data-pencil-name="Rodapé Inadimplência"
+              className="box-border w-fit h-fit shrink-0 flex flex-row gap-[6px] justify-start items-center"
+            >
+              <div
+                data-pencil-name="Ponto Inadimplência"
+                className="box-border w-[7px] shrink-0 h-[7px] bg-[#B32323] rounded-full"
+              />
+              <div
+                data-pencil-name="Nota Inadimplência"
+                className="text-[12px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+              >
+                {kpis?.qtdInadimplentes || 0} reserva(s) vencidas
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Controles Pagamentos Melhorado */}
+        <div
+          data-pencil-name="Controles Pagamentos Melhorado"
+          className="box-border w-full h-auto shrink-0 flex flex-col gap-[12px] justify-start items-start"
+        >
+          {/* Linha Filtros */}
+          <div
+            data-pencil-name="Linha Filtros Melhorado"
+            className="box-border w-full min-h-[40px] shrink-0 flex flex-wrap gap-3 justify-between items-center"
+          >
+            <div
+              data-pencil-name="Filtros Pagamento Esquerda Melhorado"
+              className="box-border w-fit shrink-0 h-fit flex flex-wrap gap-[8px] justify-start items-center"
+            >
+              {/* Busca */}
+              <label
+                data-pencil-name="Busca Pagamentos Melhorada"
+                className="box-border w-[310px] shrink-0 h-[40px] flex flex-row gap-[8px] px-[12px] justify-start items-center bg-[#FFFFFF] outline outline-1 outline-[#E2D9CC] -outline-offset-1 rounded-[12px] cursor-text"
+              >
+                <Search size={16} className="text-[#9C9389] shrink-0" />
+                <input
+                  type="text"
+                  placeholder="Buscar por cliente, ID ou quadra..."
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                  className="text-[13px] text-[#071915] font-[Inter,system-ui,sans-serif] font-normal w-full bg-transparent outline-none border-none placeholder:text-[#9C9389]"
+                />
+              </label>
+
+              {/* Filtro dd/mm/aaaa */}
+              <label
+                data-pencil-name="Filtro Melhorado dd/mm/aaaa"
+                className="box-border w-fit shrink-0 h-[40px] flex flex-row gap-0 px-[12px] justify-start items-center bg-[#FFFFFF] outline outline-1 outline-[#E2D9CC] -outline-offset-1 rounded-[12px] cursor-pointer hover:bg-[#F9F7F3] transition-colors relative"
+              >
+                <input
+                  type="date"
+                  value={dataFiltro}
+                  onChange={(e) => setDataFiltro(e.target.value)}
+                  className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
+                  onClick={(e) => {
+                    try {
+                      e.currentTarget.showPicker?.();
+                    } catch {}
+                  }}
+                />
+                <div
+                  data-pencil-name="Texto Filtro Melhorado dd/mm/aaaa"
+                  className="text-[12px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                >
+                  {dataFiltro ? dataFiltro.split('-').reverse().join('/') : 'dd/mm/aaaa'}
+                </div>
+              </label>
+
+              {/* Hoje */}
+              <button
+                type="button"
+                data-pencil-name="Filtro Melhorado Hoje"
+                onClick={() => definirData('hoje')}
+                className={`box-border w-fit shrink-0 h-[40px] flex flex-row gap-0 px-[12px] justify-start items-center outline outline-1 outline-[#E2D9CC] -outline-offset-1 rounded-[12px] cursor-pointer transition-colors border-none ${
+                  dataFiltro === new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0]
+                    ? 'bg-[#071915] text-[#FFFFFF]'
+                    : 'bg-[#FFFFFF] text-[#071915] hover:bg-[#F9F7F3]'
+                }`}
+              >
+                <div
+                  data-pencil-name="Texto Filtro Melhorado Hoje"
+                  className="text-[12px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                >
+                  Hoje
+                </div>
+              </button>
+
+              {/* Ontem */}
+              <button
+                type="button"
+                data-pencil-name="Filtro Melhorado Ontem"
+                onClick={() => definirData('ontem')}
+                className="box-border w-fit shrink-0 h-[40px] flex flex-row gap-0 px-[12px] justify-start items-center bg-[#FFFFFF] text-[#071915] outline outline-1 outline-[#E2D9CC] -outline-offset-1 rounded-[12px] cursor-pointer hover:bg-[#F9F7F3] transition-colors border-none"
+              >
+                <div
+                  data-pencil-name="Texto Filtro Melhorado Ontem"
+                  className="text-[12px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                >
+                  Ontem
+                </div>
+              </button>
+
+              {/* Amanhã */}
+              <button
+                type="button"
+                data-pencil-name="Filtro Melhorado Amanhã"
+                onClick={() => definirData('amanha')}
+                className="box-border w-fit shrink-0 h-[40px] flex flex-row gap-0 px-[12px] justify-start items-center bg-[#FFFFFF] text-[#071915] outline outline-1 outline-[#E2D9CC] -outline-offset-1 rounded-[12px] cursor-pointer hover:bg-[#F9F7F3] transition-colors border-none"
+              >
+                <div
+                  data-pencil-name="Texto Filtro Melhorado Amanhã"
+                  className="text-[12px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                >
+                  Amanhã
+                </div>
+              </button>
+
+              {/* Limpar */}
+              <button
+                type="button"
+                data-pencil-name="Filtro Melhorado Limpar"
+                onClick={limparFiltros}
+                className="box-border w-fit shrink-0 h-[40px] flex flex-row gap-0 px-[12px] justify-start items-center bg-[#FFFFFF] text-[#071915] outline outline-1 outline-[#E2D9CC] -outline-offset-1 rounded-[12px] cursor-pointer hover:bg-[#F9F7F3] transition-colors border-none"
+              >
+                <div
+                  data-pencil-name="Texto Filtro Melhorado Limpar"
+                  className="text-[12px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                >
+                  Limpar
+                </div>
+              </button>
+            </div>
+
+            <div
+              data-pencil-name="Resumo Lista Pagamentos"
+              className="text-[13px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+            >
+              {reservas.length} reservas encontradas
+            </div>
+          </div>
+
+          {/* Tabs Pagamentos */}
+          <div
+            data-pencil-name="Tabs Pagamentos Melhorado"
+            className="box-border w-full h-[38px] shrink-0 flex flex-row gap-[8px] justify-start items-start overflow-x-auto custom-scrollbar"
+          >
+            <button
+              type="button"
+              onClick={() => setTabAtiva('Pendente')}
+              data-pencil-name="Tab Melhorado Pendentes (0)"
+              className={`box-border w-fit shrink-0 h-[36px] flex flex-row gap-0 px-[16px] justify-start items-center outline outline-1 outline-[#E2D9CC] -outline-offset-1 rounded-[10px] cursor-pointer transition-colors border-none ${
+                tabAtiva === 'Pendente' ? 'bg-[#071915] text-[#FFFFFF]' : 'bg-[#FFFFFF] text-[#4F5550] hover:bg-[#F9F7F3]'
+              }`}
+            >
+              <div
+                data-pencil-name="Texto Tab Melhorado Pendentes (0)"
+                className="text-[12px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-extrabold text-left whitespace-nowrap"
+              >
+                Pendentes ({countPendentes})
+              </div>
             </button>
-            <button 
-              type="button" 
-              className="btn-ghost" 
-              onClick={() => definirData('ontem')} 
-              style={{ fontSize: '11.5px', padding: '6px 10px' }}
+
+            <button
+              type="button"
+              onClick={() => setTabAtiva('Pago')}
+              data-pencil-name="Tab Melhorado Pagos (24)"
+              className={`box-border w-fit shrink-0 h-[36px] flex flex-row gap-0 px-[16px] justify-start items-center outline outline-1 outline-[#E2D9CC] -outline-offset-1 rounded-[10px] cursor-pointer transition-colors border-none ${
+                tabAtiva === 'Pago' ? 'bg-[#071915] text-[#FFFFFF]' : 'bg-[#FFFFFF] text-[#4F5550] hover:bg-[#F9F7F3]'
+              }`}
             >
-              Ontem
+              <div
+                data-pencil-name="Texto Tab Melhorado Pagos (24)"
+                className="text-[12px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-extrabold text-left whitespace-nowrap"
+              >
+                Pagos ({countPagos})
+              </div>
             </button>
-            <button 
-              type="button" 
-              className="btn-ghost" 
-              onClick={() => definirData('amanha')} 
-              style={{ fontSize: '11.5px', padding: '6px 10px' }}
+
+            <button
+              type="button"
+              onClick={() => setTabAtiva('inadimplentes')}
+              data-pencil-name="Tab Melhorado Inadimplência (0)"
+              className={`box-border w-fit shrink-0 h-[36px] flex flex-row gap-0 px-[16px] justify-start items-center outline outline-1 outline-[#E2D9CC] -outline-offset-1 rounded-[10px] cursor-pointer transition-colors border-none ${
+                tabAtiva === 'inadimplentes' ? 'bg-[#071915] text-[#FFFFFF]' : 'bg-[#FFFFFF] text-[#4F5550] hover:bg-[#F9F7F3]'
+              }`}
             >
-              Amanhã
+              <div
+                data-pencil-name="Texto Tab Melhorado Inadimplência (0)"
+                className="text-[12px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-extrabold text-left whitespace-nowrap"
+              >
+                Inadimplência ({countInadimplentes})
+              </div>
             </button>
-            <button 
-              type="button" 
-              className="btn-ghost" 
-              onClick={limparFiltros} 
-              style={{ fontSize: '11.5px', padding: '6px 10px' }}
+
+            <button
+              type="button"
+              onClick={() => setTabAtiva('todos')}
+              data-pencil-name="Tab Melhorado Todos (24)"
+              className={`box-border w-fit shrink-0 h-[36px] flex flex-row gap-0 px-[16px] justify-start items-center outline outline-1 outline-[#E2D9CC] -outline-offset-1 rounded-[10px] cursor-pointer transition-colors border-none ${
+                tabAtiva === 'todos' ? 'bg-[#071915] text-[#FFFFFF]' : 'bg-[#FFFFFF] text-[#4F5550] hover:bg-[#F9F7F3]'
+              }`}
             >
-              Limpar
+              <div
+                data-pencil-name="Texto Tab Melhorado Todos (24)"
+                className="text-[12px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-extrabold text-left whitespace-nowrap"
+              >
+                Todos ({countTodos})
+              </div>
             </button>
           </div>
         </div>
-        <button className="btn-ghost" onClick={exportarCSV}>↓ Exportar CSV</button>
-      </div>
 
-      {/* Tabs com Contadores Sincronizados */}
-      <div className="tab-bar mb-4" role="tablist">
-        <button 
-          className={`tab-btn ${tabAtiva === 'Pendente' ? 'active' : ''}`}
-          onClick={() => setTabAtiva('Pendente')}
+        {/* Tabela Pagamentos Melhorada */}
+        <div
+          data-pencil-name="Tabela Pagamentos Melhorada"
+          className="box-border w-full flex flex-col gap-0 justify-start items-start bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[18px] overflow-hidden"
         >
-          Pendentes ({countPendentes})
-        </button>
-        <button 
-          className={`tab-btn ${tabAtiva === 'Pago' ? 'active' : ''}`}
-          onClick={() => setTabAtiva('Pago')}
-        >
-          Pagos ({countPagos})
-        </button>
-        <button 
-          className={`tab-btn ${tabAtiva === 'inadimplentes' ? 'active' : ''}`}
-          onClick={() => setTabAtiva('inadimplentes')}
-        >
-          Inadimplência ({countInadimplentes})
-        </button>
-        <button 
-          className={`tab-btn ${tabAtiva === 'todos' ? 'active' : ''}`}
-          onClick={() => setTabAtiva('todos')}
-        >
-          Todos ({countTodos})
-        </button>
-      </div>
+          <div className="w-full overflow-x-auto custom-scrollbar">
+            {/* Header Tabela Pagamentos */}
+            <div
+              data-pencil-name="Header Tabela Pagamentos Melhorada"
+              className="box-border w-full min-w-[998px] h-[42px] shrink-0 flex flex-row gap-[10px] px-[18px] justify-start items-center bg-[#FBFAF7] select-none"
+            >
+              <div
+                data-pencil-name="Head Melhorado ID"
+                className="text-[10px]/[normal] box-border w-[62px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal tracking-[0.5px] text-left"
+              >
+                ID
+              </div>
+              <div
+                data-pencil-name="Head Melhorado CLIENTE"
+                className="text-[10px]/[normal] box-border w-[150px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal tracking-[0.5px] text-left"
+              >
+                CLIENTE
+              </div>
+              <div
+                data-pencil-name="Head Melhorado QUADRA"
+                className="text-[10px]/[normal] box-border w-[90px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal tracking-[0.5px] text-left"
+              >
+                QUADRA
+              </div>
+              <div
+                data-pencil-name="Head Melhorado DATA/HORA"
+                className="text-[10px]/[normal] box-border w-[160px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal tracking-[0.5px] text-left"
+              >
+                DATA/HORA
+              </div>
+              <div
+                data-pencil-name="Head Melhorado VALOR"
+                className="text-[10px]/[normal] box-border w-[90px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal tracking-[0.5px] text-left"
+              >
+                VALOR
+              </div>
+              <div
+                data-pencil-name="Head Melhorado PAGO"
+                className="text-[10px]/[normal] box-border w-[90px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal tracking-[0.5px] text-left"
+              >
+                PAGO
+              </div>
+              <div
+                data-pencil-name="Head Melhorado MÉTODO"
+                className="text-[10px]/[normal] box-border w-[94px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal tracking-[0.5px] text-left"
+              >
+                MÉTODO
+              </div>
+              <div
+                data-pencil-name="Head Melhorado STATUS"
+                className="text-[10px]/[normal] box-border w-[70px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal tracking-[0.5px] text-left"
+              >
+                STATUS
+              </div>
+              <div
+                data-pencil-name="Head Melhorado AÇÕES"
+                className="text-[10px]/[normal] box-border w-[76px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal tracking-[0.5px] text-left"
+              >
+                AÇÕES
+              </div>
+            </div>
 
-      {/* Tabela de Pagamentos */}
-      <div className="table-card" style={{ overflow: 'hidden' }}>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Reserva</th>
-                <th>Cliente</th>
-                <th>Quadra</th>
-                <th>Data/Hora</th>
-                <th>Valor Total</th>
-                <th>Pago</th>
-                <th>Saldo</th>
-                <th>Método</th>
-                <th>Status</th>
-                <th>Ações</th>
-              </tr>
-            </thead>
-            <tbody>
+            {/* Linhas da Tabela */}
+            <div className="w-full flex flex-col min-h-[140px] max-h-[520px] overflow-y-auto custom-scrollbar">
               {loading ? (
-                <tr>
-                  <td colSpan={10} style={{ textAlign: 'center', padding: '40px' }}>Carregando faturamentos...</td>
-                </tr>
+                <div className="w-full min-w-[998px] py-12 text-center text-[13px] text-[#6F766F]">
+                  Carregando faturamentos...
+                </div>
               ) : reservas.length === 0 ? (
-                <tr>
-                  <td colSpan={10} style={{ textAlign: 'center', padding: '40px' }}>Nenhuma reserva encontrada para os filtros aplicados.</td>
-                </tr>
+                <div className="w-full min-w-[998px] py-12 text-center text-[13px] text-[#6F766F]">
+                  Nenhuma reserva encontrada para os filtros aplicados.
+                </div>
               ) : (
-                reservas.map(r => {
-                  const statusClass = r.status_pagamento === 'Pago' 
-                    ? 'badge-green' 
-                    : r.status_pagamento === 'Parcial' 
-                      ? 'badge-amber' 
-                      : 'badge-red';
+                reservas.map((r) => {
+                  const statusBg =
+                    r.status_pagamento === 'Pago'
+                      ? 'bg-[#DFF8E8]'
+                      : r.status_pagamento === 'Parcial'
+                      ? 'bg-[#FFF5E8]'
+                      : 'bg-[#FFF1F0]';
+
+                  const statusColor =
+                    r.status_pagamento === 'Pago'
+                      ? 'text-[#138A4B]'
+                      : r.status_pagamento === 'Parcial'
+                      ? 'text-[#C8661A]'
+                      : 'text-[#B32323]';
 
                   return (
-                    <tr key={r.id}>
-                      <td><span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--charcoal-82)' }}>#{r.id}</span></td>
-                      <td>{r.cliente_nome}</td>
-                      <td>{r.quadra_nome}</td>
-                      <td>{formatData(r.data_reserva)} · {r.hora_inicio}–{r.hora_fim}</td>
-                      <td>{formatCurrency(r.valor_total)}</td>
-                      <td className={r.total_pago > 0 ? 'valor-positivo' : ''}>{formatCurrency(r.total_pago)}</td>
-                      <td className={r.saldo_devedor > 0 ? 'valor-negativo' : ''}>
-                        {r.saldo_devedor > 0 ? formatCurrency(r.saldo_devedor) : '—'}
-                      </td>
-                      <td style={{ fontSize: '12px' }}>{r.metodos || '—'}</td>
-                      <td><span className={`badge ${statusClass}`}>{r.status_pagamento}</span></td>
-                      <td>
-                        {r.status_pagamento !== 'Pago' ? (
-                          <button className="btn-action btn-action-pay" onClick={() => abrirPagamento(r)}>Registrar</button>
+                    <div
+                      key={r.id}
+                      data-pencil-name={`Linha Pagamento Melhorada #${r.id}`}
+                      className="box-border w-full min-w-[998px] h-[49.5px] shrink-0 flex flex-row gap-[10px] px-[18px] justify-start items-center bg-[#FFFFFF] hover:bg-[#F9F7F3] transition-colors border-t border-[#F0EBE4]"
+                    >
+                      <div
+                        data-pencil-name={`Cel Melhorada ID #${r.id}`}
+                        className="text-[12px]/[normal] box-border w-[62px] shrink-0 text-[#071915] font-[Inter,system-ui,sans-serif] font-normal text-left"
+                      >
+                        #{r.id}
+                      </div>
+                      <div
+                        data-pencil-name={`Cel Melhorada CLIENTE #${r.id}`}
+                        className="text-[12px]/[normal] box-border w-[150px] shrink-0 text-[#071915] font-[Inter,system-ui,sans-serif] font-semibold text-left truncate pr-2"
+                        title={r.cliente_nome}
+                      >
+                        {r.cliente_nome}
+                      </div>
+                      <div
+                        data-pencil-name={`Cel Melhorada QUADRA #${r.id}`}
+                        className="text-[12px]/[normal] box-border w-[90px] shrink-0 text-[#071915] font-[Inter,system-ui,sans-serif] font-semibold text-left truncate pr-2"
+                        title={r.quadra_nome}
+                      >
+                        {r.quadra_nome}
+                      </div>
+                      <div
+                        data-pencil-name={`Cel Melhorada DATA/HORA #${r.id}`}
+                        className="text-[12px]/[normal] box-border w-[160px] shrink-0 text-[#071915] font-[Inter,system-ui,sans-serif] font-semibold text-left truncate pr-2"
+                      >
+                        {formatData(r.data_reserva)} · {r.hora_inicio}–{r.hora_fim}
+                      </div>
+                      <div
+                        data-pencil-name={`Cel Melhorada VALOR #${r.id}`}
+                        className="text-[12px]/[normal] box-border w-[90px] shrink-0 text-[#071915] font-[Inter,system-ui,sans-serif] font-semibold text-left"
+                      >
+                        {formatCurrency(r.valor_total)}
+                      </div>
+                      <div
+                        data-pencil-name={`Cel Melhorada PAGO #${r.id}`}
+                        className={`text-[12px]/[normal] box-border w-[90px] shrink-0 font-[Inter,system-ui,sans-serif] font-normal text-left ${
+                          r.total_pago > 0 ? 'text-[#138A4B]' : 'text-[#6F766F]'
+                        }`}
+                      >
+                        {formatCurrency(r.total_pago)}
+                      </div>
+                      <div
+                        data-pencil-name={`Cel Melhorada MÉTODO #${r.id}`}
+                        className="text-[12px]/[normal] box-border w-[94px] shrink-0 text-[#071915] font-[Inter,system-ui,sans-serif] font-semibold text-left truncate pr-2"
+                        title={r.metodos || '—'}
+                      >
+                        {r.metodos || '—'}
+                      </div>
+                      <div className="box-border w-[70px] shrink-0 flex items-center justify-start">
+                        <div
+                          data-pencil-name={`Status Melhorado #${r.id}`}
+                          className={`box-border w-[70px] shrink-0 h-[26px] flex flex-row gap-0 justify-center items-center ${statusBg} rounded-[13px]`}
+                        >
+                          <div
+                            data-pencil-name={`Texto Status Melhorado #${r.id}`}
+                            className={`text-[12px]/[normal] box-border ${statusColor} font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap`}
+                          >
+                            {r.status_pagamento}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="box-border w-[76px] shrink-0 flex items-center justify-start">
+                        {r.status_pagamento === 'Pago' ? (
+                          <button
+                            type="button"
+                            onClick={() => abrirEstorno(r)}
+                            data-pencil-name={`Estornar Melhorado #${r.id}`}
+                            className="box-border w-[76px] shrink-0 h-[30px] flex flex-row gap-0 justify-center items-center bg-[#FFF1F0] outline outline-1 outline-[#F4B4AD] -outline-offset-1 rounded-[9px] cursor-pointer hover:bg-[#FFEAE8] transition-colors border-none"
+                          >
+                            <div
+                              data-pencil-name={`Texto Estornar Melhorado #${r.id}`}
+                              className="text-[12px]/[normal] box-border text-[#B32323] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+                            >
+                              Estornar
+                            </div>
+                          </button>
                         ) : (
-                          <button className="btn-action btn-action-refund" onClick={() => abrirEstorno(r)}>Estornar</button>
+                          <button
+                            type="button"
+                            onClick={() => abrirPagamento(r)}
+                            data-pencil-name={`Registrar Melhorado #${r.id}`}
+                            className="box-border w-[76px] shrink-0 h-[30px] flex flex-row gap-0 justify-center items-center bg-[#071915] rounded-[9px] cursor-pointer hover:bg-black transition-colors border-none"
+                          >
+                            <div
+                              data-pencil-name={`Texto Registrar Melhorado #${r.id}`}
+                              className="text-[12px]/[normal] box-border text-[#C9FF3B] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                            >
+                              Registrar
+                            </div>
+                          </button>
                         )}
-                      </td>
-                    </tr>
+                      </div>
+                    </div>
                   );
                 })
               )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Rodapé Totalizador da Tabela */}
-        {!loading && reservas.length > 0 && (
-          <div 
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: '16px',
-              padding: '14px 20px',
-              backgroundColor: '#f8fafc',
-              borderTop: '1px solid #e2e8f0',
-              fontSize: '13px'
-            }}
-          >
-            <div style={{ color: '#64748b', fontWeight: 500 }}>
-              Listando <strong>{reservas.length}</strong> reserva(s)
             </div>
-            <div style={{ display: 'flex', gap: '24px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <div>
-                <span style={{ color: '#64748b', fontSize: '11px', fontWeight: 600, display: 'block', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Valor Total</span>
-                <strong style={{ color: '#0f172a', fontSize: '14px' }}>{formatCurrency(totalValor)}</strong>
+
+            {/* Resumo Tabela Pagamentos Melhorado */}
+            <div
+              data-pencil-name="Resumo Tabela Pagamentos Melhorado"
+              className="box-border w-full min-w-[998px] flex flex-row gap-0 px-[18px] py-[16px] justify-between items-center bg-[#F5FAFF] border-t border-[#E1EDF8] select-none"
+            >
+              <div
+                data-pencil-name="Listando Pagamentos Melhorado"
+                className="text-[13px]/[normal] box-border text-[#356078] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+              >
+                Listando {reservas.length} reserva(s)
               </div>
-              <div>
-                <span style={{ color: '#16a34a', fontSize: '11px', fontWeight: 600, display: 'block', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total Pago</span>
-                <strong style={{ color: '#16a34a', fontSize: '14px' }}>{formatCurrency(totalPago)}</strong>
-              </div>
-              <div>
-                <span style={{ color: totalSaldo > 0 ? '#dc2626' : '#64748b', fontSize: '11px', fontWeight: 600, display: 'block', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Saldo a Receber</span>
-                <strong style={{ color: totalSaldo > 0 ? '#dc2626' : '#64748b', fontSize: '14px' }}>{formatCurrency(totalSaldo)}</strong>
+              <div
+                data-pencil-name="Totais Pagamentos Melhorado"
+                className="box-border w-fit shrink-0 h-fit flex flex-row gap-[34px] justify-start items-start"
+              >
+                <div
+                  data-pencil-name="Total Melhorado VALOR TOTAL"
+                  className="box-border w-fit shrink-0 h-fit flex flex-col gap-[4px] justify-start items-start"
+                >
+                  <div
+                    data-pencil-name="Label Total Melhorado VALOR TOTAL"
+                    className="text-[10px]/[normal] box-border text-[#356078] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+                  >
+                    VALOR TOTAL
+                  </div>
+                  <div
+                    data-pencil-name="Valor Total Melhorado VALOR TOTAL"
+                    className="text-[13px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                  >
+                    {formatCurrency(totalValor)}
+                  </div>
+                </div>
+
+                <div
+                  data-pencil-name="Total Melhorado TOTAL PAGO"
+                  className="box-border w-fit shrink-0 h-fit flex flex-col gap-[4px] justify-start items-start"
+                >
+                  <div
+                    data-pencil-name="Label Total Melhorado TOTAL PAGO"
+                    className="text-[10px]/[normal] box-border text-[#356078] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+                  >
+                    TOTAL PAGO
+                  </div>
+                  <div
+                    data-pencil-name="Valor Total Melhorado TOTAL PAGO"
+                    className="text-[13px]/[normal] box-border text-[#138A4B] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                  >
+                    {formatCurrency(totalPago)}
+                  </div>
+                </div>
+
+                <div
+                  data-pencil-name="Total Melhorado SALDO A RECEBER"
+                  className="box-border w-fit shrink-0 h-fit flex flex-col gap-[4px] justify-start items-start"
+                >
+                  <div
+                    data-pencil-name="Label Total Melhorado SALDO A RECEBER"
+                    className="text-[10px]/[normal] box-border text-[#356078] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+                  >
+                    SALDO A RECEBER
+                  </div>
+                  <div
+                    data-pencil-name="Valor Total Melhorado SALDO A RECEBER"
+                    className={`text-[13px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap ${
+                      totalSaldo > 0 ? 'text-[#B32323]' : 'text-[#356078]'
+                    }`}
+                  >
+                    {formatCurrency(totalSaldo)}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* MODAL: REGISTRAR PAGAMENTO */}
+{/* MODAL: REGISTRAR PAGAMENTO */}
       <div className={`modal-overlay ${activeModal === 'registrar-pagamento' ? 'open' : ''}`}>
         {reservaAtual && (
           <div className="modal">

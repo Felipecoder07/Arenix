@@ -9,7 +9,7 @@ const getMinhaArena = async (req, res) => {
   try {
     const arena = await db.getAsync(`SELECT id, nome, endereco, telefone, email, slug, status,
       notif_reserva_email, notif_reserva_whatsapp, notif_cancelamento_email, notif_pagamento_email,
-      alerta_pagamento_minutos, horario_abertura, horario_fechamento, chave_pix, titular_pix, cidade_pix,
+      alerta_pagamento_minutos, horario_abertura, horario_fechamento, chave_pix, titular_pix, cidade_pix, pix_checkout_mode,
       foto_capa, fuso_horario, plano_id, dia_vencimento, trial_expira_em, ciclo_cobranca,
       gateway_device_id, gateway_public_key, criado_em,
       CASE WHEN gateway_access_token IS NOT NULL AND TRIM(gateway_access_token) != '' THEN 1 ELSE 0 END AS gateway_connected
@@ -41,35 +41,61 @@ const atualizarMinhaArena = async (req, res) => {
     notif_reserva_email, notif_reserva_whatsapp,
     notif_cancelamento_email, notif_pagamento_email,
     alerta_pagamento_minutos,
-    chave_pix, titular_pix, cidade_pix,
+    chave_pix, titular_pix, cidade_pix, pix_checkout_mode,
     foto_capa
   } = req.body;
 
-  if (!nome) {
-    return res.status(400).json({ error: 'O nome da arena é obrigatório.' });
+  if (pix_checkout_mode !== undefined && !['auto', 'mercado_pago', 'chave_pix'].includes(pix_checkout_mode)) {
+    return res.status(400).json({ error: 'Forma de Pix online inválida.' });
   }
 
   try {
+    const currentArena = await db.getAsync(`SELECT * FROM Arenas WHERE id = ?`, [tenant_id]);
+    if (!currentArena) {
+      return res.status(404).json({ error: 'Arena não encontrada.' });
+    }
+
+    const finalNome = nome !== undefined ? nome : currentArena.nome;
+    if (!finalNome) {
+      return res.status(400).json({ error: 'O nome da arena é obrigatório.' });
+    }
+
+    const finalEndereco = endereco !== undefined ? endereco : currentArena.endereco;
+    const finalTelefone = telefone !== undefined ? telefone : currentArena.telefone;
+    const finalEmail = email !== undefined ? email : currentArena.email;
+    const finalFusoHorario = fuso_horario !== undefined ? fuso_horario : (currentArena.fuso_horario || 'America/Sao_Paulo');
+    const finalNotifReservaEmail = notif_reserva_email !== undefined ? (notif_reserva_email ? 1 : 0) : currentArena.notif_reserva_email;
+    const finalNotifReservaWhatsapp = notif_reserva_whatsapp !== undefined ? (notif_reserva_whatsapp ? 1 : 0) : currentArena.notif_reserva_whatsapp;
+    const finalNotifCancelamentoEmail = notif_cancelamento_email !== undefined ? (notif_cancelamento_email ? 1 : 0) : currentArena.notif_cancelamento_email;
+    const finalNotifPagamentoEmail = notif_pagamento_email !== undefined ? (notif_pagamento_email ? 1 : 0) : currentArena.notif_pagamento_email;
+    const finalAlertaPagamentoMinutos = alerta_pagamento_minutos !== undefined ? alerta_pagamento_minutos : (currentArena.alerta_pagamento_minutos || 30);
+    const finalChavePix = chave_pix !== undefined ? chave_pix : currentArena.chave_pix;
+    const finalTitularPix = titular_pix !== undefined ? titular_pix : currentArena.titular_pix;
+    const finalCidadePix = cidade_pix !== undefined ? cidade_pix : currentArena.cidade_pix;
+    const finalPixCheckoutMode = pix_checkout_mode !== undefined ? pix_checkout_mode : currentArena.pix_checkout_mode;
+    const finalFotoCapa = foto_capa !== undefined ? foto_capa : currentArena.foto_capa;
+
     await db.runAsync(
       `UPDATE Arenas 
        SET nome = ?, endereco = ?, telefone = ?, email = ?, fuso_horario = ?,
            notif_reserva_email = ?, notif_reserva_whatsapp = ?,
            notif_cancelamento_email = ?, notif_pagamento_email = ?,
            alerta_pagamento_minutos = ?,
-           chave_pix = ?, titular_pix = ?, cidade_pix = ?,
+           chave_pix = ?, titular_pix = ?, cidade_pix = ?, pix_checkout_mode = ?,
            foto_capa = ?
        WHERE id = ?`,
       [
-        nome, endereco, telefone, email, fuso_horario || 'America/Sao_Paulo',
-        notif_reserva_email !== undefined ? (notif_reserva_email ? 1 : 0) : 1,
-        notif_reserva_whatsapp !== undefined ? (notif_reserva_whatsapp ? 1 : 0) : 0,
-        notif_cancelamento_email !== undefined ? (notif_cancelamento_email ? 1 : 0) : 1,
-        notif_pagamento_email !== undefined ? (notif_pagamento_email ? 1 : 0) : 1,
-        alerta_pagamento_minutos || 30,
-        chave_pix || null,
-        titular_pix || null,
-        cidade_pix || null,
-        foto_capa !== undefined ? foto_capa : null,
+        finalNome, finalEndereco, finalTelefone, finalEmail, finalFusoHorario,
+        finalNotifReservaEmail,
+        finalNotifReservaWhatsapp,
+        finalNotifCancelamentoEmail,
+        finalNotifPagamentoEmail,
+        finalAlertaPagamentoMinutos,
+        finalChavePix,
+        finalTitularPix,
+        finalCidadePix,
+        finalPixCheckoutMode,
+        finalFotoCapa,
         tenant_id
       ]
     );
