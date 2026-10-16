@@ -11,6 +11,15 @@ router.get('/resumo', verifyToken, requirePermission('payments.read'), resumoPag
 // Listagem de reservas com dados de pagamento
 router.get('/reservas', verifyToken, requirePermission('payments.read'), listarReservasPagamentos);
 
+router.get('/reserva/:reserva_id/estorno', verifyToken, requirePermission('payments.refund'), async (req, res) => {
+  try {
+    const { targets, ...quote } = await require('../services/refundService').preview(req.params.reserva_id, req.user.tenant_id);
+    res.set('Cache-Control', 'no-store').json(quote);
+  } catch (error) {
+    res.status(error.status || 500).json({ error: require('../utils/security').publicError(error, 'Falha ao consultar estorno.') });
+  }
+});
+
 // Listar pagamentos de uma reserva específica (com validação multi-tenant)
 router.get('/reserva/:reserva_id', verifyToken, requirePermission('payments.read'), async (req, res) => {
   try {

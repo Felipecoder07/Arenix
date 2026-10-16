@@ -1,10 +1,11 @@
+import { DatePicker } from '../../components/ui/date-picker';
+import { ArenaPortalButton } from '../../components/ArenaPortalButton';
 import { useEventCallback } from '../../hooks/useEventCallback';
 import { apiFetch as fetch } from '../../utils/apiFetch';
 import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Download,
-  Globe,
   Bell,
   LockKeyhole,
   ListChecks,
@@ -16,10 +17,8 @@ import {
   Check,
   ShieldCheck,
   X,
-  CalendarDays,
 } from 'lucide-react';
 import { getStoredUser } from '../../utils/session';
-import { safeStorage } from '../../utils/safeStorage';
 import type { Announcement } from '../../types/api';
 
 interface AuditLog {
@@ -84,7 +83,6 @@ export function AdminAuditoria() {
   // Usuário e Arena
   const user = getStoredUser();
   const userName = user?.nome || 'fefe';
-  const [arenaSlug, setArenaSlug] = useState(() => safeStorage.getItem('arena_slug') || 'felp-arena');
   const [notifications, setNotifications] = useState<Announcement[]>([]);
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
 
@@ -125,15 +123,7 @@ export function AdminAuditoria() {
 
   // Carregar dados de arena e notificações
   useEffect(() => {
-    fetch('/api/arenas/minha', { headers: {} })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data && data.slug) {
-          setArenaSlug(data.slug);
-          safeStorage.setItem('arena_slug', data.slug);
-        }
-      })
-      .catch(() => {});
+
 
     fetch('/api/auth/comunicados/ativos', { headers: {} })
       .then((r) => r.json())
@@ -401,22 +391,7 @@ export function AdminAuditoria() {
             className="box-border w-fit shrink-0 h-fit flex flex-row gap-[10px] justify-start items-center"
           >
             {/* Portal do Cliente Pill */}
-            <a
-              data-pencil-name="Portal do Cliente Auditoria"
-              href={`/portal/${arenaSlug}`}
-              target="_blank"
-              rel="noreferrer"
-              className="box-border w-fit shrink-0 h-[34px] flex flex-row gap-[7px] px-[12px] justify-start items-center bg-[#ECFFF4] hover:bg-[#d8fae4] transition-colors rounded-[17px] cursor-pointer no-underline"
-              title="Acessar Portal do Atleta / Cliente"
-            >
-              <Globe size={14} className="text-[#008A5A]" />
-              <div
-                data-pencil-name="Texto Portal Auditoria"
-                className="text-[12px]/[normal] box-border text-[#007A50] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
-              >
-                Portal do Cliente
-              </div>
-            </a>
+            <ArenaPortalButton />
 
             {/* Usuário logado */}
             <div
@@ -795,10 +770,10 @@ export function AdminAuditoria() {
           data-pencil-name="Filtro Auditoria 01/09/2026"
           className="box-border w-[145px] shrink-0 h-[38px] flex flex-row gap-[4px] px-[10px] justify-between items-center bg-[#FFFFFF] outline outline-1 outline-[#DED6CA] -outline-offset-1 rounded-[9px]"
         >
-          <input
-            type="date"
+          <DatePicker
+            
             value={dataInicio}
-            onChange={(e) => setDataInicio(e.target.value)}
+            onValueChange={(value) => setDataInicio(value)}
             className="w-full bg-transparent border-none outline-none text-[12px] text-[#071915] font-[Inter,system-ui,sans-serif] cursor-pointer"
             title="Data inicial"
           />
@@ -809,10 +784,10 @@ export function AdminAuditoria() {
           data-pencil-name="Filtro Auditoria 27/09/2026"
           className="box-border w-[145px] shrink-0 h-[38px] flex flex-row gap-[4px] px-[10px] justify-between items-center bg-[#FFFFFF] outline outline-1 outline-[#DED6CA] -outline-offset-1 rounded-[9px]"
         >
-          <input
-            type="date"
+          <DatePicker
+            
             value={dataFim}
-            onChange={(e) => setDataFim(e.target.value)}
+            onValueChange={(value) => setDataFim(value)}
             className="w-full bg-transparent border-none outline-none text-[12px] text-[#071915] font-[Inter,system-ui,sans-serif] cursor-pointer"
             title="Data final"
           />

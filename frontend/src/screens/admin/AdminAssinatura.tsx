@@ -1,6 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { ToastLayer } from "../../components/ToastLayer";
+import { ArenaPortalButton } from '../../components/ArenaPortalButton';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { usePixRecovery } from '../../hooks/usePixRecovery';
 import { createPortal } from 'react-dom';
-import { useOutletContext, Link } from 'react-router-dom';
+import { useOutletContext } from 'react-router-dom';
 import QRCode from 'react-qr-code';
 import {
   Zap,
@@ -16,17 +19,15 @@ import {
   AlertTriangle,
   ShieldCheck,
   X,
-  CreditCard,
   FileText,
   Copy,
   CheckCheck,
-  ExternalLink,
   Menu,
 } from 'lucide-react';
 import { enterpriseContactUrl } from '../../utils/commercialContact';
 import { errorMessage } from '../../utils/errorMessage';
+import { subscriptionDate } from '../../utils/subscriptionDate';
 import { apiFetch as fetch } from '../../utils/apiFetch';
-import { safeStorage } from '../../utils/safeStorage';
 import { getStoredUser } from '../../utils/session';
 import type { Announcement } from '../../types/api';
 
@@ -107,8 +108,9 @@ interface ReciboData {
     descricao: string;
     data_vencimento: string;
     data_pagamento: string;
-    metodo_pagamento: string;
-    gateway_ref: string;
+    metodo_pagamento: string | null;
+    gateway_ref: string | null;
+    periodo_fim: string;
     status: string;
   };
   plano: {
@@ -124,20 +126,14 @@ interface ReciboData {
     slug: string;
   };
   emissor: {
-    empresa: string;
-    sistema: string;
-    cnpj: string;
-    suporte: string;
+    empresa: string | null;
+    cnpj: string | null;
+    suporte: string | null;
   };
 }
 
-const DEFAULT_PLANOS: PlanoItem[] = [
-  { id: 1, nome: 'Basic', max_quadras: 2, max_usuarios: 3, valor_mensal: 49.99, valor_anual: 39.99 },
-  { id: 2, nome: 'Pro', max_quadras: 6, max_usuarios: 8, valor_mensal: 89.99, valor_anual: 71.99 },
-  { id: 3, nome: 'Enterprise', max_quadras: 999, max_usuarios: 999, valor_mensal: 149.99, valor_anual: 119.99 },
-];
-
 export function AdminAssinatura() {
+  const pixRecovery = usePixRecovery();
   const { onToggleSidebar } = useOutletContext<{ onToggleSidebar?: () => void }>() || {};
 
   const [loading, setLoading] = useState(true);
@@ -148,7 +144,6 @@ export function AdminAssinatura() {
   const [faturas, setFaturas] = useState<Fatura[]>([]);
 
   // Arena & Usuário
-  const [arenaSlug, setArenaSlug] = useState(() => safeStorage.getItem('arena_slug') || 'felp-arena');
   const user = getStoredUser();
   const userName = user?.nome || 'fefe';
 
@@ -158,7 +153,10 @@ export function AdminAssinatura() {
 
   // Modal Planos / Upgrade
   const [modalPlanosOpen, setModalPlanosOpen] = useState(false);
-  const [planosDisponiveis, setPlanosDisponiveis] = useState<PlanoItem[]>(DEFAULT_PLANOS);
+  const [planosDisponiveis, setPlanosDisponiveis] = useState<PlanoItem[]>([]);
+  const [erroPlanos, setErroPlanos] = useState<string | null>(null);
+  const [confirmacaoPlano, setConfirmacaoPlano] = useState<{ plano: PlanoItem; ciclo: 'mensal' | 'anual'; totalCentavos: number } | null>(null);
+  const enviandoTroca = useRef(false);
   const [loadingPlanos, setLoadingPlanos] = useState(false);
   const [solicitandoUpgradeId, setSolicitandoUpgradeId] = useState<number | null>(null);
   const [cicloSelecionado, setCicloSelecionado] = useState<'mensal' | 'anual'>('mensal');
@@ -209,6 +207,12 @@ export function AdminAssinatura() {
       const dataPlano = await resPlano.json();
       const dataFaturas = await resFaturas.json();
 
+      if (!dataPlano?.plano?.nome || !dataPlano?.uso ||
+          ![dataPlano.plano.valor_mensal, dataPlano.plano.max_quadras, dataPlano.plano.max_usuarios,
+            dataPlano.uso.quadras_usadas, dataPlano.uso.usuarios_usados].every(v => typeof v === 'number' && Number.isFinite(v) && v >= 0)) {
+        throw new Error('Os dados da assinatura estão indisponíveis. Tente novamente.');
+      }
+
       setDados(dataPlano);
       setFaturas(Array.isArray(dataFaturas) ? dataFaturas : []);
     } catch (e) {
@@ -221,15 +225,7 @@ export function AdminAssinatura() {
   useEffect(() => {
     carregarDados();
 
-    fetch('/api/arenas/minha', { headers: {} })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data && data.slug) {
-          setArenaSlug(data.slug);
-          safeStorage.setItem('arena_slug', data.slug);
-        }
-      })
-      .catch(() => {});
+
 
     fetch('/api/auth/comunicados/ativos', { headers: {} })
       .then((r) => r.json())
@@ -277,38 +273,50 @@ export function AdminAssinatura() {
   // Abrir modal de seleção de planos
   const abrirModalPlanos = async () => {
     setModalPlanosOpen(true);
+    setConfirmacaoPlano(null);
     setLoadingPlanos(true);
+    setErroPlanos(null);
+    setPlanosDisponiveis([]);
     try {
       const res = await fetch('/api/tenant/assinatura/planos-disponiveis');
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          setPlanosDisponiveis(data);
-        }
+      if (!res.ok) throw new Error('Não foi possível carregar os planos.');
+      const data = await res.json();
+      if (!Array.isArray(data) || !data.length || data.some(p =>
+        !Number.isInteger(p.id) || !p.nome ||
+        ![p.valor_mensal, p.valor_anual, p.max_quadras, p.max_usuarios].every(v => typeof v === 'number' && Number.isFinite(v) && v >= 0))) {
+        throw new Error('Os dados dos planos estão indisponíveis.');
       }
+      setPlanosDisponiveis(data);
     } catch (err) {
-      console.error('Erro ao buscar planos:', err);
+      setErroPlanos(errorMessage(err));
     } finally {
       setLoadingPlanos(false);
     }
   };
 
   // Solicitar upgrade de plano
-  const handleSolicitarUpgrade = async (planoId: number, cicloEscolhido: 'mensal' | 'anual' = cicloSelecionado) => {
+  const handleSolicitarUpgrade = async () => {
+    if (!confirmacaoPlano || enviandoTroca.current) return;
+    const { plano, ciclo: cicloEscolhido, totalCentavos } = confirmacaoPlano;
+    const planoId = plano.id;
+    enviandoTroca.current = true;
     setSolicitandoUpgradeId(planoId);
     try {
       const res = await fetch('/api/tenant/assinatura/solicitar-upgrade', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plano_id: planoId, ciclo: cicloEscolhido }),
+        body: JSON.stringify({ plano_id: planoId, ciclo: cicloEscolhido, valor_confirmado_centavos: totalCentavos }),
       });
 
       const resData = await res.json();
       if (!res.ok) {
+        if (resData.fatura_id) pixRecovery.show(resData, `/api/tenant/assinatura/faturas/${resData.fatura_id}/pix`);
+        void carregarDados();
         throw new Error(resData.error || 'Erro ao solicitar upgrade.');
       }
 
       setModalPlanosOpen(false);
+      setConfirmacaoPlano(null);
       setFaturaSelecionada({
         id: resData.fatura_id,
         valor: resData.valor,
@@ -331,6 +339,7 @@ export function AdminAssinatura() {
     } catch (err) {
       showToast(errorMessage(err) || 'Erro ao processar upgrade de plano.', 'error');
     } finally {
+      enviandoTroca.current = false;
       setSolicitandoUpgradeId(null);
     }
   };
@@ -369,7 +378,10 @@ export function AdminAssinatura() {
       });
 
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Erro ao gerar Pix.');
+      if (!res.ok) {
+        pixRecovery.show(json, `/api/tenant/assinatura/faturas/${fatura.id}/pix`);
+        throw new Error(json.error || 'Erro ao gerar Pix.');
+      }
 
       setPixData(json);
     } catch (err) {
@@ -397,7 +409,11 @@ export function AdminAssinatura() {
         method: 'POST',
       });
       const resData = await res.json();
-      if (!res.ok) throw new Error(resData.error || 'Erro ao gerar fatura antecipada.');
+      if (!res.ok) {
+        if (resData.fatura_id) pixRecovery.show(resData, `/api/tenant/assinatura/faturas/${resData.fatura_id}/pix`);
+        void carregarDados();
+        throw new Error(resData.error || 'Erro ao gerar fatura antecipada.');
+      }
 
       setFaturaSelecionada({
         id: resData.fatura_id,
@@ -435,7 +451,7 @@ export function AdminAssinatura() {
       if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
       const d = new Date(str);
       if (!isNaN(d.getTime())) return d.toLocaleDateString('pt-BR');
-    } catch {}
+    } catch { /* Preserva o valor original quando a data não pode ser formatada. */ }
     return String(dataStr);
   };
 
@@ -444,46 +460,28 @@ export function AdminAssinatura() {
   };
 
   // Detalhes da próxima data de cobrança
-  const getProximaDataDetalhada = () => {
-    const dataStr = dados?.proximo_vencimento || dados?.trial_expira_em || dados?.fatura_atual?.data_vencimento;
-    if (!dataStr) {
-      return { dia: '11', mes: 'OUT', formatada: '11/10/2026' };
-    }
-    try {
-      const raw = String(dataStr).split('T')[0];
-      const parts = raw.split('-');
-      if (parts.length === 3) {
-        const dia = parts[2];
-        const meses = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
-        const mesIdx = parseInt(parts[1], 10) - 1;
-        const mes = meses[mesIdx] || 'OUT';
-        return { dia, mes, formatada: `${parts[2]}/${parts[1]}/${parts[0]}` };
-      }
-    } catch {}
-    return { dia: '11', mes: 'OUT', formatada: '11/10/2026' };
-  };
-
-  const proximaData = getProximaDataDetalhada();
+  const proximaData = subscriptionDate(dados?.proximo_vencimento || dados?.trial_expira_em || dados?.fatura_atual?.data_vencimento);
 
   // Cálculos de capacidade e trial
-  const quadrasUsadas = dados?.uso?.quadras_usadas ?? 1;
-  const maxQuadras = dados?.plano?.max_quadras ?? 2;
+  const quadrasUsadas = dados?.uso?.quadras_usadas ?? 0;
+  const maxQuadras = dados?.plano?.max_quadras ?? 0;
   const quadrasDisponiveis = Math.max(0, maxQuadras - quadrasUsadas);
-  const quadrasPct = Math.min(100, Math.round((quadrasUsadas / maxQuadras) * 100));
+  const quadrasPct = maxQuadras > 0 ? Math.min(100, Math.round((quadrasUsadas / maxQuadras) * 100)) : 0;
 
-  const usuariosUsados = dados?.uso?.usuarios_usados ?? 1;
-  const maxUsuarios = dados?.plano?.max_usuarios ?? 3;
+  const usuariosUsados = dados?.uso?.usuarios_usados ?? 0;
+  const maxUsuarios = dados?.plano?.max_usuarios ?? 0;
   const usuariosDisponiveis = Math.max(0, maxUsuarios - usuariosUsados);
-  const usuariosPct = Math.min(100, Math.round((usuariosUsados / maxUsuarios) * 100));
+  const usuariosPct = maxUsuarios > 0 ? Math.min(100, Math.round((usuariosUsados / maxUsuarios) * 100)) : 0;
 
-  const isTrial = dados?.em_trial ?? true;
-  const diasRestantes = dados?.dias_restantes_trial ?? 14;
+  const isTrial = dados?.em_trial ?? false;
+  const diasRestantes = dados?.dias_restantes_trial ?? 0;
   const diasConsumidos = Math.max(0, 30 - diasRestantes);
   const trialPercentage = Math.min(100, Math.max(0, Math.round((diasConsumidos / 30) * 100))) || 50;
 
   // Fatura mais recente / pendente
-  const faturaPendente = faturas.find((f) => f.status === 'Pendente' || f.status === 'Atrasada') || dados?.fatura_atual;
-  const valorFaturaAtual = faturaPendente?.valor ?? dados?.plano?.valor_mensal ?? 49.99;
+  const faturaPendente = faturas.filter((f) => f.status === 'Pendente' || f.status === 'Atrasada')
+    .sort((a, b) => a.data_vencimento.localeCompare(b.data_vencimento) || a.id - b.id)[0];
+  const valorFaturaAtual = faturaPendente?.valor;
 
   if (loading) {
     return (
@@ -517,9 +515,10 @@ export function AdminAssinatura() {
       data-pencil-name="Assinatura"
       className="admin-assinatura-page w-full flex flex-col min-w-0 font-[Inter,system-ui,sans-serif]"
     >
+      {pixRecovery.notice}
       {/* Toast Notification */}
       {toast && (
-        <div
+        <ToastLayer><div
           style={{ zIndex: 999999 }}
           className={`fixed bottom-5 right-5 px-4 py-3 rounded-xl text-white text-xs font-semibold shadow-2xl flex items-center gap-2.5 animate-slideUp border ${
             toast.type === 'success'
@@ -530,7 +529,7 @@ export function AdminAssinatura() {
           }`}
         >
           <span>{toast.message}</span>
-        </div>
+        </div></ToastLayer>
       )}
 
       {/* Área Principal Assinatura */}
@@ -617,21 +616,7 @@ export function AdminAssinatura() {
               className="box-border w-fit shrink-0 h-fit flex flex-row gap-[10px] justify-start items-center"
             >
               {/* Portal do Cliente */}
-              <Link
-                data-pencil-name="Portal do Cliente Assinatura refinado"
-                to={`/portal/${arenaSlug}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="box-border w-fit shrink-0 h-[34px] flex flex-row gap-[7px] px-[12px] justify-start items-center bg-[#ECFFF4] hover:bg-[#d8fced] transition-colors rounded-[17px] cursor-pointer no-underline"
-              >
-                <Globe size={14} className="text-[#008A5A]" />
-                <div
-                  data-pencil-name="Texto Portal Assinatura refinado"
-                  className="text-[12px]/[normal] box-border text-[#007A50] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
-                >
-                  Portal do Cliente
-                </div>
-              </Link>
+              <ArenaPortalButton />
 
               {/* Usuário fefe */}
               <div
@@ -734,7 +719,7 @@ export function AdminAssinatura() {
               data-pencil-name="Plano Basic Hero"
               className="text-[31px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap leading-tight"
             >
-              Plano {dados?.plano?.nome || 'Basic'}
+              Plano {dados?.plano?.nome}
             </div>
 
             <div
@@ -760,7 +745,7 @@ export function AdminAssinatura() {
                   data-pencil-name="Valor Próxima renovação"
                   className="text-[15px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
                 >
-                  {formatCurrency(dados?.plano?.valor_mensal || 49.99)}/mês
+                  {formatCurrency(dados?.plano?.valor_mensal ?? 0)}/mês
                 </div>
                 <div
                   data-pencil-name="Label Próxima renovação"
@@ -779,7 +764,7 @@ export function AdminAssinatura() {
                   data-pencil-name="Valor Fim do trial"
                   className="text-[15px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
                 >
-                  {proximaData.formatada}
+                  {proximaData?.formatada || 'Data indisponível'}
                 </div>
                 <div
                   data-pencil-name="Label Fim do trial"
@@ -798,7 +783,7 @@ export function AdminAssinatura() {
                   data-pencil-name="Valor Plano contratado"
                   className="text-[15px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
                 >
-                  {dados?.plano?.nome || 'Basic'}
+                  {dados?.plano?.nome}
                 </div>
                 <div
                   data-pencil-name="Label Plano contratado"
@@ -905,7 +890,7 @@ export function AdminAssinatura() {
                 data-pencil-name="Selo Uso Premium"
                 className="text-[12px]/[normal] box-border text-[#2563EB] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
               >
-                {dados?.plano?.nome || 'Basic'}
+                {dados?.plano?.nome}
               </div>
             </div>
 
@@ -1104,13 +1089,13 @@ export function AdminAssinatura() {
                   data-pencil-name="Dia Cobrança"
                   className="text-[21px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-center whitespace-nowrap leading-none"
                 >
-                  {proximaData.dia}
+                  {proximaData?.dia || '—'}
                 </div>
                 <div
                   data-pencil-name="Mês Cobrança"
                   className="text-[9px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-center whitespace-nowrap leading-none mt-0.5"
                 >
-                  {proximaData.mes}
+                  {proximaData?.mes || '—'}
                 </div>
               </div>
               <div
@@ -1127,7 +1112,7 @@ export function AdminAssinatura() {
                   data-pencil-name="Sub Cobrança Destaque"
                   className="text-[12px]/[normal] box-border text-[#D5DDD2] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap truncate"
                 >
-                  {formatCurrency(valorFaturaAtual)} · liberação automática após pagamento
+                  {valorFaturaAtual !== undefined ? `${formatCurrency(valorFaturaAtual)} em aberto` : 'Nenhuma fatura em aberto'}
                 </div>
               </div>
               <ArrowRight size={18} className="text-[#C9FF3B] shrink-0" />
@@ -1158,7 +1143,7 @@ export function AdminAssinatura() {
                   data-pencil-name="Texto Bullet Pós Trial Assinando até 11/10, nada é interrompido."
                   className="text-[11px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap truncate"
                 >
-                  Assinando até {proximaData.formatada}, nada é interrompido.
+                  {proximaData ? `Assinando até ${proximaData.formatada}, nada é interrompido.` : 'Consulte as faturas para verificar o próximo vencimento.'}
                 </div>
               </div>
 
@@ -1258,27 +1243,29 @@ export function AdminAssinatura() {
                   data-pencil-name="Status Fatura Atual Compacta"
                   className="text-[11px]/[normal] box-border text-[#C9FF3B] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
                 >
-                  {faturaPendente ? (faturaPendente.status === 'Paga' ? 'Paga' : 'Em aberto') : 'Em aberto'}
+                  {faturaPendente ? (faturaPendente.status === 'Atrasada' ? 'Atrasada' : 'Em aberto') : 'Sem pendências'}
                 </div>
               </div>
               <div
                 data-pencil-name="Valor Fatura Atual Compacta"
                 className="text-[30px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap leading-none mt-1"
               >
-                {formatCurrency(valorFaturaAtual)}
+                {valorFaturaAtual !== undefined ? formatCurrency(valorFaturaAtual) : '—'}
               </div>
               <div
                 data-pencil-name="Vencimento Fatura Atual Compacta"
                 className="text-[12px]/[normal] box-border text-[#D5DDD2] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
               >
-                Vence em {proximaData.formatada} · Plano {dados?.plano?.nome || 'Basic'}
+                {faturaPendente
+                  ? `Vencimento: ${formatarDataBR(faturaPendente.data_vencimento)} · Plano ${faturaPendente.plano_nome}`
+                  : 'Nenhuma fatura em aberto'}
               </div>
 
               {/* Botão de Pagamento na Fatura Atual */}
               <button
                 type="button"
-                onClick={handleAdiantarMensalidade}
-                disabled={adiantandoMensalidade}
+                onClick={() => faturaPendente ? handlePagarPix(faturaPendente) : handleAdiantarMensalidade()}
+                disabled={adiantandoMensalidade || gerandoPix}
                 className="mt-3 w-full h-[36px] bg-[#C9FF3B] hover:bg-[#b8f028] text-[#071915] font-bold text-xs rounded-[10px] flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow active:scale-95"
               >
                 <Zap size={14} className="fill-[#071915]" />
@@ -1314,35 +1301,7 @@ export function AdminAssinatura() {
               {/* Lista de Faturas Recentes */}
               <div className="w-full flex flex-col gap-1 overflow-y-auto max-h-[160px]">
                 {faturas.length === 0 ? (
-                  /* Fallback idêntico ao Penpot quando está em período de trial inicial */
-                  <div
-                    data-pencil-name="Linha Histórico Compacto Setembro/2026"
-                    className="box-border w-full h-[35.5px] shrink-0 flex flex-row gap-[12px] py-[8px] justify-between items-center border-b border-[#F0EBE4]"
-                  >
-                    <div
-                      data-pencil-name="Mês Histórico Compacto Setembro/2026"
-                      className="text-[12px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left"
-                    >
-                      {new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
-                    </div>
-                    <div
-                      data-pencil-name="Valor Histórico Compacto Setembro/2026"
-                      className="text-[12px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-normal text-left"
-                    >
-                      R$ 0,00
-                    </div>
-                    <div
-                      data-pencil-name="Pill Histórico Compacto Setembro/2026"
-                      className="box-border w-fit shrink-0 h-[22px] flex flex-row gap-0 px-[8px] justify-center items-center bg-[#EAF8EF] rounded-[12px]"
-                    >
-                      <div
-                        data-pencil-name="Texto Pill Histórico Compacto Setembro/2026"
-                        className="text-[10px]/[normal] box-border text-[#138A4B] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
-                      >
-                        Trial ativo
-                      </div>
-                    </div>
-                  </div>
+                  <p className="py-4 text-sm text-[#6F766F]">Nenhuma fatura emitida.</p>
                 ) : (
                   faturas.slice(0, 4).map((fat) => {
                     const isPaga = fat.status === 'Paga';
@@ -1353,7 +1312,7 @@ export function AdminAssinatura() {
                         key={fat.id}
                         className="box-border w-full min-h-[35.5px] shrink-0 flex flex-row gap-[12px] py-[6px] justify-between items-center border-b border-[#F0EBE4] hover:bg-[#F1EDE6]/50 px-1 rounded-md transition-colors"
                       >
-                        <div className="text-[12px]/[normal] text-[#071915] font-bold truncate max-w-[160px]">
+                        <div title={fat.competencia} className="text-[12px]/[normal] text-[#071915] font-bold truncate max-w-[160px]">
                           {fat.competencia || fat.descricao || formatarDataBR(fat.data_vencimento)}
                         </div>
                         <div className="text-[12px]/[normal] text-[#071915] font-medium whitespace-nowrap">
@@ -1418,7 +1377,7 @@ export function AdminAssinatura() {
           >
           <div
             data-pencil-name="Modal Pix Assinatura"
-            className="box-border w-full max-w-[460px] bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[24px] p-7 shadow-2xl flex flex-col gap-4 text-center animate-scale-in"
+            className="box-border w-full max-w-[520px] bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[24px] p-6 shadow-2xl flex flex-col gap-4 text-center animate-scale-in"
           >
             {/* Header Modal Pix */}
             <div className="flex items-center justify-between w-full border-b border-[#F0EBE4] pb-3">
@@ -1610,16 +1569,16 @@ export function AdminAssinatura() {
           >
             <div
               data-pencil-name="Modal Trocar Plano"
-              className="box-border w-full max-w-[960px] my-auto bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[28px] overflow-hidden shadow-2xl flex flex-col gap-[14px] justify-start items-start animate-scale-in max-h-[94vh]"
+              className={`box-border w-full ${confirmacaoPlano ? 'max-w-[520px]' : 'max-w-[880px]'} my-auto bg-[#FFFFFF] rounded-[24px] overflow-hidden shadow-2xl flex flex-col gap-3 justify-start items-start animate-scale-in max-h-[85vh] transition-[max-width] duration-200`}
             >
               {/* Hero Modal Planos */}
               <div
                 data-pencil-name="Hero Modal Planos"
-                className="box-border w-full min-h-[142px] shrink-0 flex flex-row gap-4 p-[24px_30px] justify-between items-center bg-[#071915]"
+                className={confirmacaoPlano ? 'hidden' : 'box-border w-full shrink-0 flex flex-row gap-4 p-[20px_28px] justify-between items-center bg-[#071915]'}
               >
                 <div
                   data-pencil-name="Texto Hero Modal Planos"
-                  className="box-border flex-1 h-fit flex flex-col gap-[10px] justify-start items-start"
+                  className="box-border flex-1 min-w-0 h-fit flex flex-col gap-2 justify-start items-start"
                 >
                   <div
                     data-pencil-name="Badge Upgrade Modal"
@@ -1630,12 +1589,12 @@ export function AdminAssinatura() {
                       data-pencil-name="Texto Badge Upgrade Modal"
                       className="text-[11px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left whitespace-nowrap"
                     >
-                      UPGRADE COM ATIVAÇÃO IMEDIATA
+                      ATIVAÇÃO APÓS PAGAMENTO
                     </div>
                   </div>
                   <div
                     data-pencil-name="Título Hero Modal Planos"
-                    className="text-[24px] sm:text-[28px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
+                    className="text-[20px] sm:text-[22px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left"
                   >
                     Escolha o plano ideal para sua arena
                   </div>
@@ -1643,7 +1602,7 @@ export function AdminAssinatura() {
                     data-pencil-name="Sub Hero Modal Planos"
                     className="text-[13px]/[normal] box-border w-full text-[#D5DDD2] font-[Inter,system-ui,sans-serif] font-normal text-left"
                   >
-                    Mais quadras, mais usuários e relatórios avançados. O upgrade é aplicado na hora e o valor proporcional aparece no checkout.
+                    Compare os planos e seus limites. A mudança entra em vigor somente após a confirmação do pagamento.
                   </div>
                 </div>
                 <button
@@ -1659,7 +1618,7 @@ export function AdminAssinatura() {
               {/* Controles Modal Planos */}
               <div
                 data-pencil-name="Controles Modal Planos"
-                className="box-border w-full min-h-[48px] shrink-0 flex flex-row gap-2 px-[30px] justify-between items-center"
+                className={confirmacaoPlano ? 'hidden' : 'box-border w-full min-h-[44px] shrink-0 flex flex-row gap-2 px-[28px] justify-between items-center'}
               >
                 <div
                   data-pencil-name="Texto Escolha Periodicidade"
@@ -1716,7 +1675,7 @@ export function AdminAssinatura() {
                         data-pencil-name="Texto Desconto Toggle Anual"
                         className="text-[10px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
                       >
-                        -20%
+                        12 meses
                       </div>
                     </div>
                   </button>
@@ -1726,11 +1685,16 @@ export function AdminAssinatura() {
               {/* Planos Refinados */}
               <div
                 data-pencil-name="Planos Refinados"
-                className="box-border w-full flex-1 min-h-[480px] shrink-0 flex flex-col md:flex-row gap-[18px] px-[30px] pb-3 justify-start items-stretch overflow-y-auto"
+                className={confirmacaoPlano ? 'hidden' : 'box-border w-full flex-1 min-h-0 grid grid-cols-1 md:grid-cols-none md:grid-flow-col md:auto-cols-[minmax(0,1fr)] gap-4 px-[28px] pb-3 items-stretch overflow-y-auto'}
               >
                 {loadingPlanos ? (
                   <div className="w-full py-20 text-center text-xs text-[#6F766F] font-medium">
                     Carregando planos disponíveis...
+                  </div>
+                ) : erroPlanos ? (
+                  <div role="alert" className="w-full py-12 text-center">
+                    <p>{erroPlanos}</p>
+                    <button type="button" onClick={abrirModalPlanos} className="mt-4 px-5 py-3 rounded-xl bg-[#071915] text-white">Tentar novamente</button>
                   </div>
                 ) : (
                   [...planosDisponiveis]
@@ -1740,7 +1704,7 @@ export function AdminAssinatura() {
                       return priceA - priceB;
                     })
                     .map((p) => {
-                  const isCurrent = dados?.plano?.id === p.id;
+                  const isCurrent = dados?.plano?.id === p.id && (dados.ciclo_cobranca || 'mensal') === cicloSelecionado;
                   const isEnterprise = p.valor_mensal === 0 || p.nome.toLowerCase().includes('enterprise');
                   const isPro = p.nome.toLowerCase().includes('pro');
                   const valor = cicloSelecionado === 'anual' ? p.valor_anual : p.valor_mensal;
@@ -1776,8 +1740,8 @@ export function AdminAssinatura() {
                   // Features list per Penpot design
                   const features = isEnterprise
                     ? [
-                        'Quadras ilimitadas',
-                        'Usuários ilimitados',
+                        `Até ${p.max_quadras} quadras`,
+                        `Até ${p.max_usuarios} usuários`,
                         'SLA e suporte VIP',
                         'Relatórios personalizados',
                         'Onboarding dedicado',
@@ -1801,7 +1765,7 @@ export function AdminAssinatura() {
                     <div
                       key={p.id}
                       data-pencil-name={`Plano Refinado ${p.nome}`}
-                      className={`box-border flex-1 h-full flex flex-col gap-[12px] p-[18px] justify-between items-start rounded-[22px] transition-all ${
+                      className={`box-border min-w-0 h-full flex flex-col gap-[12px] p-4 justify-between items-start rounded-[22px] transition-all ${
                         isPro && !isCurrent
                           ? 'bg-[#F3F8FF] outline outline-2 outline-[#2563EB] -outline-offset-1 shadow-md'
                           : 'bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1'
@@ -1809,12 +1773,12 @@ export function AdminAssinatura() {
                     >
                       <div className="w-full flex flex-col gap-[12px]">
                         {/* Topo Plano */}
-                        <div className="box-border w-full h-fit shrink-0 flex flex-row gap-0 justify-between items-center">
-                          <div className="box-border w-fit shrink-0 h-fit flex flex-col gap-[4px] justify-start items-start">
-                            <div className="text-[21px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap">
+                        <div className="box-border w-full h-fit shrink-0 flex flex-row gap-2 justify-between items-start">
+                          <div className="box-border min-w-0 flex-1 h-fit flex flex-col gap-[4px] justify-start items-start">
+                            <div className="text-[20px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left break-words">
                               {p.nome}
                             </div>
-                            <div className="text-[11px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap">
+                            <div className="text-[11px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left">
                               {tagline}
                             </div>
                           </div>
@@ -1825,7 +1789,7 @@ export function AdminAssinatura() {
                         <div className="box-border w-full h-fit shrink-0 flex flex-col gap-[5px] justify-start items-start">
                           {isEnterprise ? (
                             <>
-                              <div className="text-[25px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap">
+                              <div className="text-[24px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left">
                                 Sob consulta
                               </div>
                               <div className="text-[12px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap">
@@ -1835,7 +1799,7 @@ export function AdminAssinatura() {
                           ) : (
                             <>
                               <div className="box-border w-fit h-fit shrink-0 flex flex-row gap-[6px] justify-start items-end">
-                                <div className="text-[30px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap">
+                                <div className="text-[26px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap">
                                   {formatCurrency(valor)}
                                 </div>
                                 <div className="text-[13px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap pb-1">
@@ -1866,7 +1830,7 @@ export function AdminAssinatura() {
                               className="box-border w-full h-fit shrink-0 flex flex-row gap-[8px] justify-start items-center"
                             >
                               <Check size={14} className="text-[#16A34A] shrink-0" />
-                              <div className="text-[12px]/[normal] box-border text-[#394236] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap">
+                              <div className="text-[12px]/[normal] box-border min-w-0 text-[#394236] font-[Inter,system-ui,sans-serif] font-bold text-left">
                                 {feature}
                               </div>
                             </div>
@@ -1901,8 +1865,8 @@ export function AdminAssinatura() {
                           <button
                             type="button"
                             data-pencil-name={`Botão Refinado ${p.nome}`}
-                            disabled={solicitandoUpgradeId !== null}
-                            onClick={() => handleSolicitarUpgrade(p.id, cicloSelecionado)}
+                            disabled={solicitandoUpgradeId !== null || valor <= 0}
+                            onClick={() => setConfirmacaoPlano({ plano: p, ciclo: cicloSelecionado, totalCentavos: Math.round(valor * 100) * (cicloSelecionado === 'anual' ? 12 : 1) })}
                             className={`box-border w-full h-[40px] shrink-0 flex flex-row gap-0 justify-center items-center rounded-[12px] cursor-pointer transition-colors shadow-sm disabled:opacity-50 border-0 ${
                               isPro
                                 ? 'bg-[#2563EB] hover:bg-[#1d4ed8] text-[#FFFFFF]'
@@ -1910,7 +1874,7 @@ export function AdminAssinatura() {
                             }`}
                           >
                             <div className="text-[13px]/[normal] box-border font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap">
-                              {solicitandoUpgradeId === p.id ? 'Processando...' : 'Fazer upgrade'}
+                              {valor <= 0 ? 'Ciclo indisponível' : 'Selecionar plano'}
                             </div>
                           </button>
                         )}
@@ -1921,15 +1885,44 @@ export function AdminAssinatura() {
               )}
             </div>
 
+            {confirmacaoPlano && (
+              <section aria-label="Confirmar troca de plano" className="w-full px-6 pt-6 pb-3 flex flex-col gap-4 overflow-y-auto text-[#071915]">
+                <div className="flex items-center justify-between pb-3 border-b border-[#F0EBE4]">
+                  <h3 className="text-base font-bold">Confirmar troca de plano</h3>
+                  <button
+                    type="button"
+                    aria-label="Fechar"
+                    onClick={() => setModalPlanosOpen(false)}
+                    className="w-8 h-8 rounded-full flex items-center justify-center bg-[#F7F2EA] hover:bg-[#EBE4D8] text-[#6F766F] transition-colors border-0 cursor-pointer"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                <div className="p-4 rounded-xl bg-[#FBFAF7] border border-[#F0EBE4] flex flex-col gap-1.5 text-xs">
+                  <p className="text-[#6F766F]">Plano atual: {dados?.plano.nome} ({dados?.ciclo_cobranca || 'mensal'}).</p>
+                  <p className="font-semibold">Plano escolhido: {confirmacaoPlano.plano.nome} · Ciclo {confirmacaoPlano.ciclo}.</p>
+                  <p className="pt-2 mt-1 border-t border-[#F0EBE4] text-lg font-bold">Total: {formatCurrency(confirmacaoPlano.totalCentavos / 100)}</p>
+                </div>
+                <div className="flex flex-col gap-1.5 text-[11px] text-[#6F766F] leading-relaxed">
+                  <p>Cobrança integral de {confirmacaoPlano.ciclo === 'anual' ? '12 meses' : '1 mês'}. A vigência e os novos limites começam após a confirmação do pagamento.</p>
+                  <p>O novo ciclo substitui o período anterior, sem desconto proporcional ou crédito automático pelo período já pago.</p>
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <button type="button" disabled={solicitandoUpgradeId !== null} onClick={() => setConfirmacaoPlano(null)} className="px-4 py-2 rounded-xl bg-[#FFFFFF] border border-[#DED6CA] text-xs font-semibold text-[#071915] hover:bg-[#F7F2EA] transition-colors disabled:opacity-50">Voltar</button>
+                  <button type="button" disabled={solicitandoUpgradeId !== null} onClick={handleSolicitarUpgrade} className="px-4 py-2 rounded-xl bg-[#071915] text-white text-xs font-bold hover:bg-[#122822] transition-colors disabled:opacity-50">{solicitandoUpgradeId !== null ? 'Processando...' : 'Confirmar e gerar Pix'}</button>
+                </div>
+              </section>
+            )}
+
             {/* Footer Modal Planos Refinado */}
             <div
               data-pencil-name="Footer Modal Planos Refinado"
-              className="box-border w-full h-[49.5px] shrink-0 flex flex-row gap-[10px] px-[30px] justify-start items-center bg-[#FBFAF7] border-t border-[#F0EBE4]"
+              className="box-border w-full min-h-[46px] py-3 shrink-0 flex flex-row gap-[10px] px-[28px] justify-start items-center bg-[#FBFAF7] border-t border-[#F0EBE4]"
             >
               <ShieldCheck size={16} className="text-[#138A4B] shrink-0" />
               <div
                 data-pencil-name="Texto Footer Modal Planos"
-                className="text-[12px]/[normal] box-border text-[#536174] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
+                className="text-[12px]/[normal] box-border text-[#536174] font-[Inter,system-ui,sans-serif] font-normal text-left"
               >
                 Sem fidelidade. O upgrade é liberado após confirmação do Pix ou pagamento aprovado.
               </div>
@@ -1953,7 +1946,7 @@ export function AdminAssinatura() {
           >
           <div
             data-pencil-name="Modal Todas as Faturas"
-            className="box-border w-full max-w-[720px] bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[26px] p-6 shadow-2xl flex flex-col gap-4 animate-scale-in max-h-[85vh] overflow-hidden"
+            className="box-border w-full max-w-[720px] bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[24px] p-6 shadow-2xl flex flex-col gap-4 animate-scale-in max-h-[85vh] overflow-hidden"
           >
             <div className="flex items-center justify-between pb-3 border-b border-[#F0EBE4]">
               <div>
@@ -2055,7 +2048,7 @@ export function AdminAssinatura() {
           >
           <div
             data-pencil-name="Modal Recibo"
-            className="box-border w-full max-w-[560px] bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[26px] p-6 shadow-2xl flex flex-col gap-4 animate-scale-in"
+            className="box-border w-full max-w-[520px] bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[24px] p-6 shadow-2xl flex flex-col gap-4 animate-scale-in"
           >
             <div className="flex items-center justify-between pb-3 border-b border-[#F0EBE4]">
               <div className="flex items-center gap-2">
@@ -2107,11 +2100,14 @@ export function AdminAssinatura() {
                   </div>
                   <div>
                     <span className="text-[#6F766F] text-[11px] block">Método</span>
-                    <strong className="text-xs">{reciboSelecionado.fatura.metodo_pagamento || 'Pix'}</strong>
+                    <strong className="text-xs">{reciboSelecionado.fatura.metodo_pagamento || 'Não informado'}</strong>
                   </div>
                 </div>
 
                 {/* Arena e Emissor */}
+                <p className="text-xs text-[#6F766F]">
+                  Período: {formatarDataBR(reciboSelecionado.fatura.data_vencimento)} a {formatarDataBR(reciboSelecionado.fatura.periodo_fim)}
+                </p>
                 <div className="p-3 bg-[#FAF8F5] rounded-xl border border-[#F0EBE4] flex flex-col gap-1 text-[11px]">
                   <div>
                     <span className="text-[#6F766F]">Sacado: </span>
@@ -2119,11 +2115,11 @@ export function AdminAssinatura() {
                   </div>
                   <div>
                     <span className="text-[#6F766F]">Emissor: </span>
-                    <span>{reciboSelecionado.emissor.empresa} ({reciboSelecionado.emissor.sistema})</span>
+                    <span>{reciboSelecionado.emissor.empresa || 'Não informado'}</span>
                   </div>
                   <div>
                     <span className="text-[#6F766F]">CNPJ: </span>
-                    <span>{reciboSelecionado.emissor.cnpj}</span>
+                    <span>{reciboSelecionado.emissor.cnpj || 'Não informado'}</span>
                   </div>
                 </div>
 

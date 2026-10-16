@@ -1,3 +1,4 @@
+import { DatePicker } from '../components/ui/date-picker';
 import { useCallback } from 'react';
 import type { SaaSArena, SaaSPlan } from '../types/api';
 import { MasterPageHeader as PageHeader } from '../components/MasterPageHeader';
@@ -32,9 +33,7 @@ export function MasterArenas({ onNavigate }: Readonly<Props>) {
     email: '',
     telefone: '',
     endereco: '',
-    plano_id: '',
-    dia_vencimento: '10',
-    trial_dias: '14'
+    plano_id: ''
   });
 
   const [deleteTarget, setDeleteTarget] = useState<SaaSArena | null>(null);
@@ -80,15 +79,17 @@ export function MasterArenas({ onNavigate }: Readonly<Props>) {
         body: JSON.stringify(newArena)
       });
       if (res.ok) {
+        const cadastro = await res.json();
+        if (cadastro.email_enviado === false) {
+          alert('Arena cadastrada, mas o convite não foi enviado. O responsável pode solicitar um novo link em “Esqueci minha senha” na tela de acesso. Não é necessário cadastrar novamente.');
+        }
         setCreateOpen(false);
         setNewArena({
           nome: '',
           email: '',
           telefone: '',
           endereco: '',
-          plano_id: planosSaaS[0] ? String(planosSaaS[0].id) : '1',
-          dia_vencimento: '10',
-          trial_dias: '14'
+          plano_id: planosSaaS[0] ? String(planosSaaS[0].id) : '1'
         });
         fetchArenas();
       } else {
@@ -138,7 +139,7 @@ export function MasterArenas({ onNavigate }: Readonly<Props>) {
           <button className="master-date-filter" onClick={() => setShowFilters(s => !s)} aria-expanded={showFilters}>Data de cadastro <ChevronDown size={12} /></button>
           <button className="master-clear-filter" onClick={() => { setSearch(''); setStatusFilter('all'); setTrialFilter('all'); setPlanFilter('all'); setDateFrom(''); setDateTo(''); setPage(1); }}><RotateCcw size={13} /> Limpar</button>
         </div>
-        {showFilters && <div className="master-date-range"><Field label="Criada de"><Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} /></Field><Field label="Criada até"><Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} /></Field></div>}
+        {showFilters && <div className="master-date-range"><Field label="Criada de"><DatePicker className="input" value={dateFrom} onValueChange={value => { setDateFrom(value); setPage(1); }} /></Field><Field label="Criada até"><DatePicker className="input" value={dateTo} onValueChange={value => { setDateTo(value); setPage(1); }} /></Field></div>}
       </section>
 
       {/* Table */}
@@ -232,6 +233,7 @@ export function MasterArenas({ onNavigate }: Readonly<Props>) {
             </Select>
           </Field>
           <p>O administrador receberá um convite por e-mail para ativar a conta e definir sua senha.</p>
+          <p>O período de teste segue as configurações globais. A assinatura começa ao final do teste, com um ciclo completo e renovação no mesmo dia do mês.</p>
         </div>
       </Modal>
 

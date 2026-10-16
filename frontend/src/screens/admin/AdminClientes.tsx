@@ -1,8 +1,9 @@
+import { ToastLayer } from "../../components/ToastLayer";
+import { ArenaPortalButton } from '../../components/ArenaPortalButton';
 import { useCallback, useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { errorMessage } from '../../utils/errorMessage';
 import { apiFetch as fetch } from '../../utils/apiFetch';
-import { safeStorage } from '../../utils/safeStorage';
 import { getStoredUser } from '../../utils/session';
 import type { Announcement } from '../../types/api';
 import {
@@ -11,7 +12,6 @@ import {
   UserPlus,
   Archive,
   Plus,
-  Globe,
   Bell,
   Search,
   ChevronDown,
@@ -915,7 +915,6 @@ export function AdminClientes() {
   const [showFiltroCanalMenu, setShowFiltroCanalMenu] = useState(false);
 
   // Informações de Arena e Usuário
-  const [arenaSlug, setArenaSlug] = useState(() => safeStorage.getItem('arena_slug') || 'felp-arena');
   const user = getStoredUser();
   const userName = user?.nome || 'fefe';
 
@@ -989,15 +988,7 @@ export function AdminClientes() {
 
   // Carregar Notificações e dados da Arena
   useEffect(() => {
-    fetch('/api/arenas/minha', { headers: {} })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data && data.slug) {
-          setArenaSlug(data.slug);
-          safeStorage.setItem('arena_slug', data.slug);
-        }
-      })
-      .catch(() => {});
+
 
     fetch('/api/auth/comunicados/ativos', { headers: {} })
       .then((r) => r.json())
@@ -1209,7 +1200,7 @@ export function AdminClientes() {
     <div className="admin-clientes-page w-full flex flex-col min-w-0 font-[Inter,system-ui,sans-serif]">
       {/* Toast Alert */}
       {toast && (
-        <div
+        <ToastLayer><div
           style={{ zIndex: 999999 }}
           className={`fixed bottom-5 right-5 px-4 py-3 rounded-xl text-white text-xs font-semibold shadow-2xl flex items-center gap-2.5 animate-slideUp border ${
             toast.type === 'success'
@@ -1218,7 +1209,7 @@ export function AdminClientes() {
           }`}
         >
           <span>{toast.message}</span>
-        </div>
+        </div></ToastLayer>
       )}
 
       {/* Área Principal Clientes (Fiel ao mockup do Penpot) */}
@@ -1291,22 +1282,7 @@ export function AdminClientes() {
               className="box-border w-fit shrink-0 h-fit flex flex-row gap-[10px] justify-start items-center"
             >
               {/* Portal do Cliente Pill */}
-              <a
-                data-pencil-name="Portal do Cliente Clientes"
-                href={`/portal/${arenaSlug}`}
-                target="_blank"
-                rel="noreferrer"
-                className="box-border w-fit shrink-0 h-[34px] flex flex-row gap-[7px] px-[12px] justify-start items-center bg-[#ECFFF4] hover:bg-[#d8fae4] rounded-[17px] cursor-pointer transition-colors text-decoration-none"
-                title="Acessar Portal do Atleta / Cliente"
-              >
-                <Globe size={14} className="text-[#008A5A]" />
-                <div
-                  data-pencil-name="Texto Portal Clientes"
-                  className="text-[12px]/[normal] box-border text-[#007A50] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
-                >
-                  Portal do Cliente
-                </div>
-              </a>
+              <ArenaPortalButton />
 
               {/* Usuário logado */}
               <div

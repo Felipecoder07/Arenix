@@ -20,7 +20,8 @@ beforeEach(async () => {
 });
 afterEach(() => vi.unstubAllEnvs());
 afterAll(fixture.close);
-function respond(body,ok=true) { provider.mockResolvedValueOnce({ok,json:async()=>body}); }
+function respond(body,ok=true) { provider.mockImplementationOnce(async (_url, options) => ({ok,
+  json:async()=>body === pix ? require('./helpers/pixProvider.cjs')(options) : body })); }
 function respondStatus(status,body={}) { provider.mockResolvedValueOnce({ok:false,status,json:async()=>body}); }
 const pix = {id:991,point_of_interaction:{transaction_data:{qr_code_base64:'dGVzdA==',qr_code:'fixture-pix'}}};
 async function charge(session,extra={}) {
@@ -72,7 +73,7 @@ it.each([actors.admin,actors.manager,actors.receptionist,actors.owner])('permits
 it('provider rejection creates no financial credit',async()=>{
   const session=await login(actors.owner);
   respond({message:'Fixture rejection'},false);
-  expect((await charge(session)).status).toBe(500);
+  expect((await charge(session)).status).toBe(502);
   expect(await db.getAsync('SELECT COUNT(*) AS count FROM TransacoesGateway')).toEqual({count:0});
   await unpaid();
 });
@@ -267,7 +268,8 @@ it('OAuth exchange binds arena and user, hides tokens and rejects replay',async(
   const {createOAuthState}=require('../src/utils/oauthState');
   const state=await createOAuthState(1,actors.admin);
   expect((await auth(request(app).post(base+'/oauth/exchange'),other).send({state,code:'fixture-code'})).status).toBe(403);
-  respond({access_token:'FIXTURE-OAUTH-TOKEN',public_key:'FIXTURE-PUBLIC'});
+  respond({access_token:'FIXTURE-OAUTH-TOKEN',public_key:'FIXTURE-PUBLIC',user_id:123});
+  respond({id:123});
   const response=await auth(request(app).post(base+'/oauth/exchange'),admin).send({state,code:'fixture-code'});
   expect(response.status).toBe(200);
   expect(response.body.gateway_connected).toBe(true);
@@ -275,12 +277,13 @@ it('OAuth exchange binds arena and user, hides tokens and rejects replay',async(
   expect((await auth(request(app).post(base+'/oauth/exchange'),admin).send({state,code:'other-code'})).status).toBe(400);
   const nextState=await createOAuthState(1,actors.admin);
   expect((await auth(request(app).post(base+'/oauth/exchange'),admin).send({state:nextState,code:'fixture-code'})).status).toBe(400);
-  expect(provider).toHaveBeenCalledTimes(1);
+  expect(provider).toHaveBeenCalledTimes(2);
 });
 it('public OAuth callback accepts a valid state once',async()=>{
   await db.runAsync("INSERT OR REPLACE INTO ConfiguracoesSaaS(chave,valor) VALUES('mp_client_id','FIXTURE-CLIENT')");
   const state=await require('../src/utils/oauthState').createOAuthState(1,actors.admin);
-  respond({access_token:'FIXTURE-CALLBACK-TOKEN',public_key:'FIXTURE-PUBLIC'});
+  respond({access_token:'FIXTURE-CALLBACK-TOKEN',public_key:'FIXTURE-PUBLIC',user_id:123});
+  respond({id:123});
   const first=await request(app).get(base+'/oauth/callback').query({state,code:'callback-code'});
   expect(first.status).toBe(302);
   expect(first.headers.location).toContain('oauth=success');
@@ -288,5 +291,5 @@ it('public OAuth callback accepts a valid state once',async()=>{
   const replay=await request(app).get(base+'/oauth/callback').query({state,code:'new-code'});
   expect(replay.status).toBe(302);
   expect(replay.headers.location).toContain('oauth=error');
-  expect(provider).toHaveBeenCalledTimes(1);
+  expect(provider).toHaveBeenCalledTimes(2);
 });

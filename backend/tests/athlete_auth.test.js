@@ -158,9 +158,7 @@ describe('Módulo de Autenticação e Cadastro do Atleta por Tenant', () => {
     let nextPaymentId = 900;
     vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
       if (url === 'https://api.mercadopago.com/v1/payments' && options.method === 'POST') {
-        return { ok: true, json: async () => ({ id: ++nextPaymentId, point_of_interaction: { transaction_data: {
-          qr_code: 'fixture-pix', qr_code_base64: ''
-        } } }) };
+        return { ok: true, json: async () => require('./helpers/pixProvider.cjs')(options, { id: ++nextPaymentId }) };
       }
       if (String(url).startsWith('https://api.mercadopago.com/v1/payments/')) {
         return { ok: true, json: async () => ({ id: Number(String(url).split('/').at(-1)), status: 'pending', transaction_amount: 80, currency_id: 'BRL', collector_id: '123' }) };

@@ -2,11 +2,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const sqlite = require('sqlite3');
-const folder = path.resolve(__dirname, '../../.local-security/homologacao');
+const folder = require('./homologacao_instance.cjs').resolveInstance();
 async function main() {
-  const config = JSON.parse(fs.readFileSync(path.join(folder, 'instance/config.json')));
-  assert.ok(config.MERCADO_PAGO_ACCESS_TOKEN.startsWith('TEST-'));
-  const db = new sqlite.Database(path.join(folder, 'instance/backend/data/courtmanager.sqlite'), sqlite.OPEN_READONLY);
+  const config = JSON.parse(fs.readFileSync(path.join(folder, 'config.json')));
+  const manifest = require('./homologacao_instance.cjs').verifySnapshot(folder);
+  const guardedFetch = require('./homologacao_network.cjs').installNetworkGuard(config, folder, manifest.digest);
+  const db = new sqlite.Database(path.join(folder, 'backend/data/courtmanager.sqlite'), sqlite.OPEN_READONLY);
   const all = sql => new Promise((resolve, reject) => db.all(sql, (error, rows) => error ? reject(error) : resolve(rows)));
   let rows, counts, integrity, foreignKeys;
   try {
@@ -18,7 +19,7 @@ async function main() {
   assert.equal(rows.length, 1);
   const row = rows[0];
   assert.match(row.gateway_ref, /^\d+$/);
-  const response = await fetch('https://api.mercadopago.com/v1/payments/' + row.gateway_ref, {
+  const response = await guardedFetch('https://api.mercadopago.com/v1/payments/' + row.gateway_ref, {
     headers: { Authorization: `Bearer ${config.MERCADO_PAGO_ACCESS_TOKEN}` }, redirect: 'error', signal: AbortSignal.timeout(20000),
   });
   assert.equal(response.status, 200);

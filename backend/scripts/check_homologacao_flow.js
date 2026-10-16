@@ -2,12 +2,16 @@ const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '../..');
-const folder = path.join(root, '.local-security/homologacao');
-const config = JSON.parse(fs.readFileSync(path.join(folder, 'instance/config.json')));
-const login = JSON.parse(fs.readFileSync(path.join(folder, 'instance/login.json')));
-const base = 'http://127.0.0.1:3100';
+const folder = require('./homologacao_instance.cjs').resolveInstance();
+const config = JSON.parse(fs.readFileSync(path.join(folder, 'config.json')));
+if (process.argv.includes('--pix')) require('./homologacao_instance.cjs').testBuyerEmail(config);
+const login = JSON.parse(fs.readFileSync(path.join(folder, 'login.json')));
+const base = 'http://127.0.0.1:' + config.PORT;
+const reservationArg = process.argv.find(value => value.startsWith('--reservation='));
+const reservationId = reservationArg ? Number(reservationArg.slice('--reservation='.length)) : 1;
+assert.ok(Number.isSafeInteger(reservationId) && reservationId > 0);
 async function main() {
-  const report = { at: new Date().toISOString(), results: {}, externalHomologationApproved: false };
+  const report = { at: new Date().toISOString(), reservationId, results: {}, externalHomologationApproved: false };
   const health = await fetch(base + '/api/health');
   assert.equal(health.status, 200);
   const session = await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: login.email, senha: login.password }) });
@@ -21,7 +25,7 @@ async function main() {
   report.results.manualTestCredentialConnectionHttpStatus = connect.status;
   // This is the manual credential route, not proof of OAuth authorization.
   if (connect.ok && process.argv.includes('--pix')) {
-    const payment = await fetch(base + '/api/pagamentos/gateway/cobranca', { method: 'POST', headers, body: JSON.stringify({ reserva_id: 1, metodo: 'Pix' }) });
+    const payment = await fetch(base + '/api/pagamentos/gateway/cobranca', { method: 'POST', headers, body: JSON.stringify({ reserva_id: reservationId, metodo: 'Pix' }) });
     report.results.pixCreationHttpStatus = payment.status;
     const body = await payment.json();
     report.results.pixQrReturned = Boolean(body.copia_cola && body.gateway_ref && !body.is_estatico);

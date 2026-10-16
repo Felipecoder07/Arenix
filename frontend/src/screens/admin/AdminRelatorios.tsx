@@ -1,3 +1,5 @@
+import { ToastLayer } from "../../components/ToastLayer";
+import { DatePicker } from '../../components/ui/date-picker';
 import { useEventCallback } from '../../hooks/useEventCallback';
 import { errorMessage } from '../../utils/errorMessage';
 import { apiFetch as fetch } from '../../utils/apiFetch';
@@ -23,6 +25,10 @@ const REPORT_TABS = [
   { id: 'top-clientes', label: 'Top Clientes', icon: Users },
 ];
 
+const REPORT_CACHE_TTL_MS = 2 * 60 * 1000;
+type ReportFilters = { inicio: string; fim: string; quadra: string };
+const reportCacheKey = (tab: string, page: number, f: ReportFilters) => `${tab}|${page}|${f.inicio}|${f.fim}|${f.quadra}`;
+
 interface Quadra {
   id: number;
   nome: string;
@@ -32,7 +38,19 @@ interface Quadra {
 export function AdminRelatorios() {
   const outlet = useOutletContext<{ onToggleSidebar: () => void } | undefined>();
   const requestRef = useRef<AbortController | null>(null);
-  useEffect(() => () => requestRef.current?.abort(), []);
+  const prefetchRef = useRef<AbortController | null>(null);
+  const cacheRef = useRef(new Map<string, { data: ReportData; at: number }>());
+  useEffect(() => () => { requestRef.current?.abort(); prefetchRef.current?.abort(); }, []);
+
+  const getCached = (key: string) => {
+    const hit = cacheRef.current.get(key);
+    if (!hit) return null;
+    if (Date.now() - hit.at > REPORT_CACHE_TTL_MS) {
+      cacheRef.current.delete(key);
+      return null;
+    }
+    return hit.data;
+  };
 
   // Dates initialization
   const getTodayStr = () => {
@@ -87,14 +105,54 @@ export function AdminRelatorios() {
     fetchQuadras();
   }, []);
 
+  // Pré-carrega a página 1 das outras abas em segundo plano (uma por vez) para a troca ser instantânea.
+  const prefetchOutrasAbas = (currentTab: string, filters: ReportFilters) => {
+    prefetchRef.current?.abort();
+    const controller = new AbortController();
+    prefetchRef.current = controller;
+    (async () => {
+      for (const { id } of REPORT_TABS) {
+        if (controller.signal.aborted) return;
+        if (id === currentTab) continue;
+        const key = reportCacheKey(id, 1, filters);
+        if (getCached(key)) continue;
+        const params = new URLSearchParams({ data_inicio: filters.inicio, data_fim: filters.fim, pagina: '1', limite: '50' });
+        if (filters.quadra) params.set('quadra_id', filters.quadra);
+        try {
+          const res = await fetch(`/api/relatorios/${id}?${params}`, { headers: {}, signal: controller.signal });
+          if (!res.ok) continue;
+          const data = await res.json();
+          if (!controller.signal.aborted) cacheRef.current.set(key, { data, at: Date.now() });
+        } catch {
+          if (controller.signal.aborted) return;
+        }
+      }
+    })();
+  };
+
   // Handle Generate Report
-  const gerarRelatorio = useEventCallback(async (currentTab: string = relAtivo, targetPage: number = currentPage, filters: { inicio: string; fim: string; quadra: string } = { inicio: dataInicio, fim: dataFim, quadra: String(filterQuadraId) }) => {
+  const gerarRelatorio = useEventCallback(async (currentTab: string = relAtivo, targetPage: number = currentPage, filters: ReportFilters = { inicio: dataInicio, fim: dataFim, quadra: String(filterQuadraId) }, force = false) => {
     if (!filters.inicio || !filters.fim) {
       showToast('Selecione o período.', 'error');
       return;
     }
     if (filters.inicio > filters.fim) {
       showToast('A data inicial deve ser anterior à data final.', 'error');
+      return;
+    }
+
+    const key = reportCacheKey(currentTab, targetPage, filters);
+    if (force) {
+      cacheRef.current.clear();
+      prefetchRef.current?.abort();
+    }
+    const cached = force ? null : getCached(key);
+    if (cached) {
+      requestRef.current?.abort();
+      setErrorMsg(null);
+      setDadosAtuais(cached);
+      setApplied({ ...filters, tab: currentTab });
+      setLoading(false);
       return;
     }
 
@@ -118,8 +176,10 @@ export function AdminRelatorios() {
       if (!res.ok) throw new Error(data.error || 'Erro ao gerar relatório');
 
       if (request.signal.aborted) return;
+      cacheRef.current.set(key, { data, at: Date.now() });
       setDadosAtuais(data);
       setApplied({ ...filters, tab: currentTab });
+      if (targetPage === 1) prefetchOutrasAbas(currentTab, filters);
     } catch (e) {
       if (!request.signal.aborted) setErrorMsg(errorMessage(e) || 'Erro de conexão.');
     } finally {
@@ -861,7 +921,7 @@ export function AdminRelatorios() {
   const renderContent = () => {
     if (loading) {
       return (
-        <div className="p-8 text-center text-muted">
+        <div className="p-8 text-center text-muted" style={{ minHeight: 320 }}>
           <div className="spinner" />
           Carregando dados...
         </div>
@@ -914,9 +974,12 @@ export function AdminRelatorios() {
   const selectTab = (tab: string) => {
     if (tab === relAtivo) return;
     requestRef.current?.abort();
-    setDadosAtuais(null);
+    // Com cache, a nova aba já renderiza com dados no mesmo frame; sem cache, mostra o carregamento
+    // direto (evita piscar o estado vazio antes do efeito disparar a requisição).
+    const cached = getCached(reportCacheKey(tab, 1, { inicio: dataInicio, fim: dataFim, quadra: String(filterQuadraId) }));
+    setDadosAtuais(cached);
     setErrorMsg(null);
-    setLoading(false);
+    setLoading(!cached);
     setRelAtivo(tab);
     const url = new URL(window.location.href);
     url.searchParams.set('aba', tab);
@@ -931,7 +994,7 @@ export function AdminRelatorios() {
         actions={showExportBtn && <button className="report-export" onClick={exportarCSV} disabled={loading || exporting || !dadosAtuais} title="Exportar todos os registros do relatório em CSV"><Download size={15} />{exporting ? 'Exportando...' : 'Exportar relatório'}</button>}
       />
 
-      {toast && <div role="status" className={`report-toast ${toast.type}`}>{toast.message}</div>}
+      {toast && <ToastLayer><div role="status" className={`report-toast ${toast.type}`}>{toast.message}</div></ToastLayer>}
 
       <div className="report-tabs" role="tablist" aria-label="Tipos de relatório">
         {REPORT_TABS.map(({ id, label, icon: Icon }, index) => <button
@@ -952,9 +1015,9 @@ export function AdminRelatorios() {
         ><Icon size={15} aria-hidden="true" />{label}</button>)}
       </div>
 
-      <form className="report-filters" onSubmit={event => { event.preventDefault(); setCurrentPage(1); gerarRelatorio(relAtivo, 1); }}>
-        <label htmlFor="rel-inicio">De<input required type="date" id="rel-inicio" value={dataInicio} onChange={e => setDataInicio(e.target.value)} /></label>
-        <label htmlFor="rel-fim">Até<input required type="date" id="rel-fim" value={dataFim} min={dataInicio} onChange={e => setDataFim(e.target.value)} /></label>
+      <form className="report-filters" onSubmit={event => { event.preventDefault(); setCurrentPage(1); gerarRelatorio(relAtivo, 1, undefined, true); }}>
+        <label htmlFor="rel-inicio">De<DatePicker required  id="rel-inicio" value={dataInicio} onValueChange={value => setDataInicio(value)} /></label>
+        <label htmlFor="rel-fim">Até<DatePicker required  id="rel-fim" value={dataFim} min={dataInicio} onValueChange={value => setDataFim(value)} /></label>
         <label htmlFor="rel-quadra">Quadra<select id="rel-quadra" value={filterQuadraId} onChange={e => setFilterQuadraId(e.target.value)}>
           <option value="">Todas as quadras</option>
           {quadras.map(q => <option key={q.id} value={q.id}>{q.nome}</option>)}

@@ -12,3 +12,6 @@ build/
 artifacts/homologacao/
 backend/data/
 .local-security/
+*.bgr
+artifacts/video-promo/frames/
+*.mp4

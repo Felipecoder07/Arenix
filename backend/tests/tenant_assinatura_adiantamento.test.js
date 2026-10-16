@@ -74,20 +74,16 @@ describe('Testes de Integração — Adiantamento de Mensalidades SaaS e Blindag
     expect(faturas.length).toBe(1);
   });
 
-  it('3. Blindagem de Upgrade: Solicitar troca de plano com fatura antecipada pendente deve atualizar a fatura para o novo plano', async () => {
+  it('3. Blindagem de Upgrade: preserva a fatura antecipada e seu Pix até a regularização', async () => {
     const planoPro = await db.getAsync("SELECT id FROM PlanosSaaS WHERE nome = 'Pro'");
+    const original = await db.getAsync('SELECT * FROM FaturasSaaS WHERE tenant_id = ? AND status = "Pendente"', [arenaId]);
 
     const res = await auth(request(app).post('/api/tenant/assinatura/solicitar-upgrade'), adminSession)
       .send({ plano_id: planoPro.id });
 
-    expect(res.status).toBe(200);
-    expect(res.body.valor).toBe(79.99);
-    expect(res.body.plano_nome).toBe('Pro');
-
-    // A fatura pendente agora deve ter valor 7999 e plano_id 2
-    const fatura = await db.getAsync('SELECT id, valor, plano_id FROM FaturasSaaS WHERE tenant_id = ? AND status = "Pendente"', [arenaId]);
-    expect(fatura.valor).toBe(7999);
-    expect(fatura.plano_id).toBe(planoPro.id);
+    expect(res.status).toBe(409);
+    const fatura = await db.getAsync('SELECT * FROM FaturasSaaS WHERE id = ?', [original.id]);
+    expect(fatura).toEqual(original);
   });
 
   it('4. Simulação de Pagamento — Ao liquidar a fatura antecipada, deve marcar como Paga', async () => {

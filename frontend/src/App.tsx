@@ -26,7 +26,6 @@ import { AdminClientes } from './screens/admin/AdminClientes';
 import { AdminPagamentos } from './screens/admin/AdminPagamentos';
 import { AdminRelatorios } from './screens/admin/AdminRelatorios';
 import { AdminAssinatura } from './screens/admin/AdminAssinatura';
-import { AdminConfiguracoes } from './screens/admin/AdminConfiguracoes';
 import { AdminAuditoria } from './screens/admin/AdminAuditoria';
 import { AdminConfiguracoesQuadras } from './screens/admin/AdminConfiguracoesQuadras';
 import { safeStorage } from './utils/safeStorage';

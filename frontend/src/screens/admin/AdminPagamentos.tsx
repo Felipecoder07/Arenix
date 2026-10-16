@@ -1,8 +1,13 @@
+import { ToastLayer } from "../../components/ToastLayer";
+import { DatePicker } from '../../components/ui/date-picker';
+import { useArenaPortal } from '../../hooks/useArenaPortal';
+import { useRefundQuote } from '../../hooks/useRefundQuote';
+import { usePixRecovery } from '../../hooks/usePixRecovery';
+import { RefundNotice } from '../../components/RefundNotice';
 import { useEventCallback } from '../../hooks/useEventCallback';
 import { useCallback, useState, useEffect } from 'react';
 import { errorMessage } from '../../utils/errorMessage';
 import { apiFetch as fetch } from '../../utils/apiFetch';
-import { safeStorage } from '../../utils/safeStorage';
 import { getStoredUser } from '../../utils/session';
 import type { Announcement } from '../../types/api';
 import '../../assets/css/pagamentos.css';
@@ -111,71 +116,12 @@ const formatData = (dateStr: string) => {
   return dateStr;
 };
 
-interface AdminPagamentosKPIsProps {
-  dataFiltro: string;
-  kpis: KPIResumo | null;
-}
-
-const AdminPagamentosKPIs: React.FC<AdminPagamentosKPIsProps> = ({ dataFiltro, kpis }) => {
-  if (dataFiltro && kpis?.resumoFiltrado) {
-    return (
-      <section className="kpi-row mb-6" aria-label="Resumo financeiro">
-        <div className="kpi-card" style={{ borderLeft: '4px solid #16a34a' }}>
-          <div className="kpi-label">Recebido em {formatData(dataFiltro)}</div>
-          <div className="kpi-value">{formatCurrency(kpis.resumoFiltrado.recebido)}</div>
-          <div className="kpi-sub positive">{kpis.resumoFiltrado.qtdPagamentos} pagamento(s)</div>
-        </div>
-        <div className="kpi-card" style={{ borderLeft: '4px solid #f59e0b' }}>
-          <div className="kpi-label">Pendente em {formatData(dataFiltro)}</div>
-          <div className="kpi-value">{formatCurrency(kpis.resumoFiltrado.pendente)}</div>
-          <div className="kpi-sub warning">{kpis.resumoFiltrado.qtdPendente} reserva(s)</div>
-        </div>
-        <div className="kpi-card" style={{ borderLeft: '4px solid #2563eb' }}>
-          <div className="kpi-label">Faturado no Dia</div>
-          <div className="kpi-value">{formatCurrency(kpis.resumoFiltrado.faturamentoTotal)}</div>
-          <div className="kpi-sub" style={{ color: '#2563eb' }}>{kpis.resumoFiltrado.totalReservas} reserva(s) agendadas</div>
-        </div>
-        <div className="kpi-card" style={{ borderLeft: '4px solid #dc2626' }}>
-          <div className="kpi-label">Inadimplência Geral</div>
-          <div className="kpi-value" style={{ color: 'var(--danger)' }}>{formatCurrency(kpis?.totalInadimplencia || 0)}</div>
-          <div className="kpi-sub warning">{kpis?.qtdInadimplentes || 0} reserva(s) vencidas</div>
-        </div>
-      </section>
-    );
-  }
-
-  return (
-    <section className="kpi-row mb-6" aria-label="Resumo financeiro">
-      <div className="kpi-card" style={{ borderLeft: '4px solid #16a34a' }}>
-        <div className="kpi-label">Recebido Hoje</div>
-        <div className="kpi-value">{formatCurrency(kpis?.recebidoHoje || 0)}</div>
-        <div className="kpi-sub positive">{kpis?.qtdPagamentosHoje || 0} pagamento(s)</div>
-      </div>
-      <div className="kpi-card" style={{ borderLeft: '4px solid #f59e0b' }}>
-        <div className="kpi-label">Pendente Hoje</div>
-        <div className="kpi-value">{formatCurrency(kpis?.pendenteHoje || 0)}</div>
-        <div className="kpi-sub warning">{kpis?.qtdPendenteHoje || 0} reserva(s)</div>
-      </div>
-      <div className="kpi-card" style={{ borderLeft: '4px solid #2563eb' }}>
-        <div className="kpi-label">Recebido no Mês</div>
-        <div className="kpi-value">{formatCurrency(kpis?.recebidoMes || 0)}</div>
-        <div className="kpi-sub positive">mês atual</div>
-      </div>
-      <div className="kpi-card" style={{ borderLeft: '4px solid #dc2626' }}>
-        <div className="kpi-label">Inadimplência</div>
-        <div className="kpi-value" style={{ color: 'var(--danger)' }}>{formatCurrency(kpis?.totalInadimplencia || 0)}</div>
-        <div className="kpi-sub warning">{kpis?.qtdInadimplentes || 0} reserva(s) vencidas</div>
-      </div>
-    </section>
-  );
-};
-
 export function AdminPagamentos() {
+  const pixRecovery = usePixRecovery();
   const outletContext = useOutletContext<{ onToggleSidebar?: () => void }>() || {};
   const onToggleSidebar = outletContext.onToggleSidebar;
 
-  const [arenaSlug, setArenaSlug] = useState(() => safeStorage.getItem('arena_slug') || 'felp-arena');
-  const [arenaName, setArenaName] = useState(() => safeStorage.getItem('arena_nome') || 'Arena Central');
+  const { arenaName, clientPortalUrl } = useArenaPortal();
   const [showPortalMenu, setShowPortalMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<Announcement[]>([]);
@@ -184,31 +130,20 @@ export function AdminPagamentos() {
   const user = getStoredUser();
   const userName = user?.nome || 'fefe';
 
-  const isLocal =
-    typeof window !== 'undefined' &&
-    (window.location.hostname === 'localhost' ||
-      window.location.hostname === '127.0.0.1' ||
-      window.location.hostname.startsWith('192.168.') ||
-      window.location.hostname.startsWith('10.') ||
-      window.location.hostname.startsWith('172.') ||
-      window.location.port === '5173' ||
-      window.location.port === '5176');
-
-  const clientPortalUrl = isLocal
-    ? `${window.location.protocol}//${window.location.hostname}:5176/arena/${arenaSlug}`
-    : `${window.location.protocol}//${window.location.hostname}/arena/${arenaSlug}`;
-
   const handleCopy = () => {
+    if (!clientPortalUrl) return;
     navigator.clipboard.writeText(clientPortalUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
   };
 
   const handleOpen = () => {
+    if (!clientPortalUrl) return;
     window.open(clientPortalUrl, '_blank');
   };
 
   const handleWhatsApp = () => {
+    if (!clientPortalUrl) return;
     const ball = String.fromCodePoint(0x1f3d0); // 🏐
     const hand = String.fromCodePoint(0x1f449); // 👉
     const messageText = `${ball} Agende sua quadra na ${arenaName} de forma rápida e online. Escolha o melhor horário e reserve agora:
@@ -250,6 +185,9 @@ ${hand} ${clientPortalUrl}`;
   const [pagamentoEstornoId, setPagamentoEstornoId] = useState<number | null>(null);
   const [estpValor, setEstpValor] = useState('');
   const [estpMotivo, setEstpMotivo] = useState('');
+  const refund = useRefundQuote(activeModal === 'estornar-pagamento' ? reservaAtual?.id ?? null : null);
+  const [refundBusy, setRefundBusy] = useState(false);
+  const [refundResult, setRefundResult] = useState('');
 
   // Toast / Status messages
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -340,7 +278,8 @@ ${hand} ${clientPortalUrl}`;
         headers: {}
       });
       if (res.ok) {
-        const data = await res.json();
+        const rows: Pagamento[] = await res.json();
+        const data = rows.map(payment => ({ ...payment, valor: payment.valor / 100 }));
         setPagamentosReserva(data);
         
         // Se for estorno, seleciona automaticamente o último pagamento positivo válido
@@ -447,6 +386,7 @@ ${hand} ${clientPortalUrl}`;
     setEstpMotivo('');
     setPagamentosReserva([]);
     setPagamentoEstornoId(null);
+    setRefundResult('');
     setActiveModal('estornar-pagamento');
     carregarHistoricoPagamentos(reserva.id);
   };
@@ -476,7 +416,10 @@ ${hand} ${clientPortalUrl}`;
           })
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || `Erro ao gerar cobrança ${metodo}.`);
+        if (!res.ok) {
+          if (metodo === 'Pix') pixRecovery.show(data, `/api/pagamentos/gateway/pix/${reservaAtual.id}`);
+          throw new Error(data.error || `Erro ao gerar cobrança ${metodo}.`);
+        }
 
         setGatewayRef(data.gateway_ref);
         if (metodo === 'Pix') {
@@ -521,19 +464,24 @@ ${hand} ${clientPortalUrl}`;
 
   // Confirmar Estorno
   const handleConfirmarEstorno = async () => {
-    if (!pagamentoEstornoId || !estpValor || !estpMotivo) {
+    if (refundBusy || refund.loading || refund.error || !refund.quote) return;
+    if ((!refund.quote.online && (!pagamentoEstornoId || !estpValor)) || !estpMotivo.trim()) {
       showToast('A justificativa e o valor são obrigatórios.', 'error');
       return;
     }
 
+    setRefundResult('');
+    setRefundBusy(true);
     try {
       const res = await fetch('/api/pagamentos/estorno', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',},
         body: JSON.stringify({
-          pagamento_id: pagamentoEstornoId,
-          valor: parseCurrencyToFloat(estpValor),
+          pagamento_id: refund.quote.online ? undefined : pagamentoEstornoId,
+          reserva_id: reservaAtual?.id,
+          valor: refund.quote.online ? refund.quote.valor_centavos / 100 : parseCurrencyToFloat(estpValor),
+          confirmacao: refund.quote.confirmacao,
           motivo: estpMotivo.trim()
         })
       });
@@ -541,7 +489,11 @@ ${hand} ${clientPortalUrl}`;
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || 'Erro ao estornar pagamento');
 
-      showToast('Estorno realizado com sucesso!', 'success');
+      if (d.pending) {
+        setRefundResult(d.message);
+        return;
+      }
+      showToast(d.message || 'Estorno registrado.', d.pending ? 'error' : 'success');
       setActiveModal(null);
       setReservaAtual(null);
       setPagamentoEstornoId(null);
@@ -550,6 +502,8 @@ ${hand} ${clientPortalUrl}`;
       carregarReservas();
     } catch (err) {
       showToast(errorMessage(err), 'error');
+    } finally {
+      setRefundBusy(false);
     }
   };
 
@@ -623,9 +577,10 @@ ${hand} ${clientPortalUrl}`;
   const countTodos = kpis?.counts?.todos ?? kpis?.countsGlobais?.todos ?? 0;
   return (
     <div className="admin-pagamentos-page w-full flex flex-col min-w-0">
+      {pixRecovery.notice}
       {/* Toast Alert */}
       {toast && (
-        <div
+        <ToastLayer><div
           style={{ zIndex: 999999 }}
           className={`fixed bottom-5 right-5 px-4 py-3 rounded-xl text-white text-xs font-semibold shadow-2xl flex items-center gap-2.5 animate-slideUp border ${
             toast.type === 'success'
@@ -634,7 +589,7 @@ ${hand} ${clientPortalUrl}`;
           }`}
         >
           <span>{toast.message}</span>
-        </div>
+        </div></ToastLayer>
       )}
 
       {/* Área Principal Pagamentos (Fiel ao mockup do Penpot) */}
@@ -1113,16 +1068,12 @@ ${hand} ${clientPortalUrl}`;
                 data-pencil-name="Filtro Melhorado dd/mm/aaaa"
                 className="box-border w-fit shrink-0 h-[40px] flex flex-row gap-0 px-[12px] justify-start items-center bg-[#FFFFFF] outline outline-1 outline-[#E2D9CC] -outline-offset-1 rounded-[12px] cursor-pointer hover:bg-[#F9F7F3] transition-colors relative"
               >
-                <input
-                  type="date"
+                <DatePicker
+                  
                   value={dataFiltro}
-                  onChange={(e) => setDataFiltro(e.target.value)}
+                  onValueChange={(value) => setDataFiltro(value)}
                   className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
-                  onClick={(e) => {
-                    try {
-                      e.currentTarget.showPicker?.();
-                    } catch {}
-                  }}
+                  
                 />
                 <div
                   data-pencil-name="Texto Filtro Melhorado dd/mm/aaaa"
@@ -1436,7 +1387,7 @@ ${hand} ${clientPortalUrl}`;
                         </div>
                       </div>
                       <div className="box-border w-[76px] shrink-0 flex items-center justify-start">
-                        {r.status_pagamento === 'Pago' ? (
+                        {r.status_pagamento === 'Pago' || r.status_pagamento.includes('Estorno') ? (
                           <button
                             type="button"
                             onClick={() => abrirEstorno(r)}
@@ -1698,9 +1649,8 @@ ${hand} ${clientPortalUrl}`;
               <button className="modal-close" onClick={() => setActiveModal(null)}>✕</button>
             </div>
             <div className="modal-body">
-              <p style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: 'var(--s-4)' }}>
-                Confirma o estorno? Esta ação irá abater do caixa e gerar um log de auditoria.
-              </p>
+              <RefundNotice {...refund} />
+              {refundResult && <p role="status">{refundResult}</p>}
 
               <div style={{ background: 'var(--cream-surface)', border: '1px solid var(--border-passive)', borderRadius: 'var(--r-md)', padding: 'var(--s-3) var(--s-4)', marginBottom: 'var(--s-4)', fontSize: '13px' }}>
                 Reserva #{reservaAtual.id} de <strong>{reservaAtual.cliente_nome}</strong> <br />
@@ -1708,7 +1658,7 @@ ${hand} ${clientPortalUrl}`;
               </div>
 
               {/* Pagamentos disponíveis para estorno */}
-              {loadingHistorico ? (
+              {refund.quote?.online ? null : loadingHistorico ? (
                 <p style={{ fontSize: '13px', color: 'var(--muted)' }}>Carregando pagamentos...</p>
               ) : pagamentosReserva.filter(p => p.valor > 0).length === 0 ? (
                 <p style={{ fontSize: '13px', color: 'var(--muted)' }}>Nenhum pagamento encontrado para estorno.</p>
@@ -1749,7 +1699,8 @@ ${hand} ${clientPortalUrl}`;
                   type="text" 
                   id="estp-valor" 
                   placeholder="Ex: 15,00" 
-                  value={estpValor}
+                  readOnly={Boolean(refund.quote?.online)}
+                  value={refund.quote?.online ? formatFloatToCurrencyInput(refund.quote.valor_centavos / 100) : estpValor}
                   onChange={(e) => setEstpValor(formatCurrencyInput(e.target.value))}
                   required 
                 />
@@ -1774,9 +1725,10 @@ ${hand} ${clientPortalUrl}`;
                 className="btn-primary" 
                 type="button" 
                 style={{ background: 'var(--danger)' }}
+                disabled={refundBusy || refund.loading || Boolean(refund.error) || !refund.quote || (refund.quote.online && refund.quote.valor_centavos <= 0)}
                 onClick={handleConfirmarEstorno}
               >
-                Confirmar Estorno
+                {refundBusy ? 'Processando...' : 'Confirmar Estorno'}
               </button>
             </div>
           </div>

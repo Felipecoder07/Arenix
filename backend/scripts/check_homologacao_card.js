@@ -4,16 +4,16 @@ const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const sqlite = require('sqlite3');
-const folder = path.resolve(__dirname, '../../.local-security/homologacao');
+const folder = require('./homologacao_instance.cjs').resolveInstance();
 const scenario = process.argv[2];
 assert.ok(['APRO', 'OTHE'].includes(scenario), 'Choose APRO or OTHE.');
 // Fresh, independent scopes: earlier failed attempts left cancelled fixtures.
 const reservationId = scenario === 'APRO' ? 20009 : 20010;
 const reservationGroup = 'homologacao-card-' + scenario + '-' + reservationId;
 async function main() {
-  const config = JSON.parse(fs.readFileSync(path.join(folder, 'instance/config.json')));
+  const config = JSON.parse(fs.readFileSync(path.join(folder, 'config.json')));
   assert.ok(config.MERCADO_PAGO_ACCESS_TOKEN.startsWith('TEST-'));
-  const db = new sqlite.Database(path.join(folder, 'instance/backend/data/courtmanager.sqlite'), sqlite.OPEN_READWRITE);
+  const db = new sqlite.Database(path.join(folder, 'backend/data/courtmanager.sqlite'), sqlite.OPEN_READWRITE);
   const all = (sql, params = []) => new Promise((resolve, reject) => db.all(sql, params, (error, rows) => error ? reject(error) : resolve(rows)));
   try {
     assert.equal((await all('SELECT id FROM PaymentIntents WHERE reserva_id=?', [reservationId])).length, 0, 'Existing attempt preserved: do not create another charge.');
@@ -30,8 +30,8 @@ async function main() {
   });
   const card = await tokenResponse.json();
   assert.ok(tokenResponse.ok && card.id, 'Test card tokenization did not succeed: HTTP ' + tokenResponse.status);
-  const login = JSON.parse(fs.readFileSync(path.join(folder, 'instance/login.json')));
-  const base = 'http://127.0.0.1:3100';
+  const login = JSON.parse(fs.readFileSync(path.join(folder, 'login.json')));
+  const base = 'http://127.0.0.1:' + config.PORT;
   const session = await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: login.email, senha: login.password }) });
   assert.equal(session.status, 200);
   const cookies = session.headers.getSetCookie().map(value => value.split(';')[0]);

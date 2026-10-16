@@ -33,7 +33,7 @@ const getArenas = async (req, res) => {
     res.json(arenas.map(arena => ({
       ...arena,
       em_trial: arena.status === 1 && Boolean(arena.trial_expira_em) &&
-        arena.trial_expira_em.slice(0, 10) >= require('../utils/dateUtils').getTodayString(arena.fuso_horario || 'America/Sao_Paulo')
+        arena.trial_expira_em.slice(0, 10) > require('../utils/dateUtils').getTodayString()
     })));
   } catch (err) {
     res.status(500).json({ error: 'Erro ao buscar arenas.' });
@@ -172,56 +172,25 @@ const getMetrics = async (req, res) => {
 };
 
 const createArena = async (req, res) => {
-  const { nome, email, telefone, endereco, plano_id, dia_vencimento, trial_dias } = req.body;
+  const { nome, email, telefone, endereco, plano_id, dia_vencimento } = req.body;
 
   if (!nome || !email) {
     return res.status(400).json({ error: 'Nome da arena e e-mail do responsável são obrigatórios.' });
   }
 
   try {
-    const planoIdFinal = Number.parseInt(plano_id, 10) || 1;
-    const diasTrialFinal = trial_dias !== undefined ? Number.parseInt(trial_dias, 10) : 14;
-    const trialExpiraEm = diasTrialFinal > 0
-      ? new Date(Date.now() + diasTrialFinal * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-      : null;
-
-    let diaVencimentoFinal = Number.parseInt(dia_vencimento, 10);
-    if (!diaVencimentoFinal || isNaN(diaVencimentoFinal)) {
-      if (trialExpiraEm) {
-        diaVencimentoFinal = Number.parseInt(trialExpiraEm.split('-')[2], 10);
-      } else {
-        diaVencimentoFinal = new Date().getUTCDate();
-      }
-    }
-
-    const cleanSlug = (nome || '')
-      .toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-    const finalSlug = cleanSlug || `arena-${Date.now()}`;
-
-    const resArena = await db.runAsync(`
-      INSERT INTO Arenas (nome, slug, telefone, endereco, plano_id, dia_vencimento, trial_expira_em, status, ciclo_cobranca)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'mensal')
-    `, [nome.trim(), finalSlug, telefone || null, endereco || null, planoIdFinal, diaVencimentoFinal, trialExpiraEm]);
-
-    const tenantId = resArena.lastID;
-
-    const bcrypt = require('bcrypt');
-    const senhaHash = await bcrypt.hash(randomSecret(), 12);
-    const invited = await db.runAsync(`
-      INSERT INTO Usuarios (nome, email, senha_hash, perfil, tenant_id, activation_pending)
-      VALUES (?, ?, ?, 'Administrador', ?, 1)
-    `, [`Admin ${nome}`, email.trim().toLowerCase(), senhaHash, tenantId]);
-
-    const activation = await require('../services/recoveryService').createChallenge(invited.lastID, 'activation');
-    await require('../services/emailService').sendEmail(email.trim().toLowerCase(), 'Ative seu acesso', 'Defina sua senha (validade: 1 hora): '+require('../utils/security').frontendUrl()+'/redefinir-senha?token='+activation);
-    logAuditEvent(req.user.id, 'SaaS: Arena Criada', `Arena '${nome}' (ID: ${tenantId}) cadastrada com plano ID: ${planoIdFinal}`, req.ip);
-
-    res.status(201).json({ message: 'Arena cadastrada com sucesso.', id: tenantId });
+    const service = require('../services/arenaRegistrationService');
+    const cadastro = await service.cadastrarArena({
+      nome, adminNome: 'Admin ' + nome, email, telefone, endereco,
+      planoId: plano_id === undefined ? 1 : plano_id, diaVencimento: dia_vencimento,
+      senhaHash: await bcrypt.hash(randomSecret(), 12), convite: true
+    });
+    const emailEnviado = await service.enviarConvite(cadastro);
+    logAuditEvent(req.user.id, 'SaaS: Arena Criada', 'Arena ID: ' + cadastro.tenantId, req.ip);
+    res.status(201).json({ message: 'Arena cadastrada com sucesso.', id: cadastro.tenantId, email_enviado: emailEnviado });
   } catch (err) {
     logger.error('Erro ao criar arena pelo Master:', err);
+    if (err.status) return res.status(err.status).json({ error: require('../utils/security').publicError(err) });
     if (err.message && err.message.includes('UNIQUE')) {
       return res.status(400).json({ error: 'E-mail do responsável já cadastrado no sistema.' });
     }
@@ -249,7 +218,7 @@ const toggleArenaStatus = async (req, res) => {
     const isValid = await bcrypt.compare(senha, master.senha_hash);
     if (!isValid) return res.status(401).json({ error: 'Senha incorreta. Ação negada.' });
 
-    await db.runAsync(`UPDATE Arenas SET status = ? WHERE id = ?`, [status, id]);
+    await db.runAsync(`UPDATE Arenas SET status = ?, motivo_bloqueio = ? WHERE id = ?`, [status, Number(status) === 0 ? 'manual' : null, id]);
     logAuditEvent(req.user.id, 'SaaS: Status Alterado', `Arena ID: ${id}, Novo Status: ${status === 1 ? 'Ativa' : 'Bloqueada'}`, req.ip);
     res.json({ message: 'Status da arena atualizado com sucesso.' });
   } catch (err) {
@@ -329,20 +298,34 @@ const updateArena = async (req, res) => {
   if (!nome) return res.status(400).json({ error: 'Nome da arena é obrigatório.' });
 
   try {
-    let query = 'UPDATE Arenas SET nome = ?, email = ?, telefone = ?, endereco = ? WHERE id = ? AND status != -1';
-    let params = [nome, email || null, telefone || null, endereco || null, id];
+    const calendar = require('../services/saasCalendarService');
+    if (dia_vencimento !== undefined) calendar.validarDia(dia_vencimento);
+    await db.transaction(async () => {
+      const arena = await db.getAsync('SELECT * FROM Arenas WHERE id = ? AND status != -1', [id]);
+      if (!arena) throw require('../utils/security').httpError(404, 'Arena não encontrada.');
+      if (dia_vencimento !== undefined && Number(dia_vencimento) !== arena.dia_vencimento) {
+        const faturas = await calendar.congelarPeriodos(arena);
+        if (!faturas.length) throw require('../utils/security').httpError(409, 'Aguarde a primeira fatura para alterar o aniversário da assinatura.');
+      }
+      let query = 'UPDATE Arenas SET nome = ?, email = ?, telefone = ?, endereco = ? WHERE id = ? AND status != -1';
+      let params = [nome, email || null, telefone || null, endereco || null, id];
 
-    if (dia_vencimento) {
-      query = 'UPDATE Arenas SET nome = ?, email = ?, telefone = ?, endereco = ?, dia_vencimento = ? WHERE id = ? AND status != -1';
-      params = [nome, email || null, telefone || null, endereco || null, dia_vencimento, id];
-    }
+      if (dia_vencimento) {
+        query = 'UPDATE Arenas SET nome = ?, email = ?, telefone = ?, endereco = ?, dia_vencimento = ? WHERE id = ? AND status != -1';
+        params = [nome, email || null, telefone || null, endereco || null, dia_vencimento, id];
+      }
 
-    await db.runAsync(query, params);
+      await db.runAsync(query, params);
+      if (req.body.plano_id !== undefined) {
+        await require('../services/arenaPlanService').alterarPlano(id, req.body.plano_id);
+      }
+    });
     
     logAuditEvent(req.user.id, 'SaaS: Arena Editada', `Arena ID: ${id}, Novo Nome: ${nome}`, req.ip);
 
     res.json({ message: 'Arena atualizada com sucesso.' });
   } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: require('../utils/security').publicError(err) });
     res.status(500).json({ error: 'Erro ao atualizar arena.' });
   }
 };
@@ -385,36 +368,12 @@ const getPlanosSaaS = async (req, res) => {
 };
 
 const updateArenaPlan = async (req, res) => {
-  const { id } = req.params;
-  const { plano_id } = req.body;
-
-  if (!plano_id) return res.status(400).json({ error: 'Plano não fornecido.' });
-
   try {
-    const novoPlano = await db.getAsync('SELECT max_quadras, max_usuarios, nome FROM PlanosSaaS WHERE id = ?', [plano_id]);
-    if (!novoPlano) return res.status(404).json({ error: 'Plano não encontrado.' });
-
-    const quadrasAtuais = await db.getAsync('SELECT COUNT(*) as total FROM Quadras WHERE tenant_id = ?', [id]);
-    const usuariosAtuais = await db.getAsync("SELECT COUNT(*) as total FROM Usuarios WHERE tenant_id = ? AND perfil != 'Cliente'", [id]);
-
-    if (quadrasAtuais.total > novoPlano.max_quadras) {
-      return res.status(400).json({ 
-        error: `A arena possui ${quadrasAtuais.total} quadras, o que excede o limite do plano ${novoPlano.nome} (${novoPlano.max_quadras}). Remova as quadras excedentes antes de fazer o downgrade.`
-      });
-    }
-
-    if (usuariosAtuais.total > novoPlano.max_usuarios) {
-      return res.status(400).json({ 
-        error: `A arena possui ${usuariosAtuais.total} usuários cadastrados, o que excede o limite do plano ${novoPlano.nome} (${novoPlano.max_usuarios}). Remova os usuários excedentes antes de fazer o downgrade.`
-      });
-    }
-
-    await db.runAsync('UPDATE Arenas SET plano_id = ? WHERE id = ?', [plano_id, id]);
-    logAuditEvent(req.user.id, 'SaaS: Plano Alterado', `Arena ID: ${id}, Novo Plano ID: ${plano_id}`, req.ip);
-    
+    await db.transaction(() => require('../services/arenaPlanService').alterarPlano(req.params.id, req.body.plano_id));
+    logAuditEvent(req.user.id, 'SaaS: Plano Alterado', 'Arena ID: ' + req.params.id, req.ip);
     res.json({ message: 'Plano da arena atualizado com sucesso.' });
   } catch (err) {
-    res.status(500).json({ error: 'Erro ao alterar plano.' });
+    res.status(err.status || 500).json({ error: require('../utils/security').publicError(err, 'Erro ao alterar plano.') });
   }
 };
 
@@ -437,30 +396,11 @@ const getFaturasSaaS = async (req, res) => {
 const payFaturaSaaS = async (req, res) => {
   const { id } = req.params; // ID da fatura
   const superAdminId = req.user.id;
-  const today = new Date().toISOString().split('T')[0];
-
   try {
-    const fatura = await db.getAsync('SELECT tenant_id, status FROM FaturasSaaS WHERE id = ?', [id]);
-    if (!fatura) return res.status(404).json({ error: 'Fatura não encontrada.' });
-    if (fatura.status === 'Paga') return res.status(400).json({ error: 'Fatura já está paga.' });
+    const resultado = await require('../services/saasSettlementService').registrarPagamentoManual(id, superAdminId);
+    const arenaReativada = resultado.arena_desbloqueada;
+    logAuditEvent(superAdminId, 'SaaS: Fatura Paga', 'Fatura #' + id + ' marcada como paga manualmente', req.ip);
 
-    await db.runAsync(`
-      UPDATE FaturasSaaS 
-      SET status = 'Paga', data_pagamento = ?, registrado_por = ?, metodo_pagamento = 'Manual'
-      WHERE id = ?
-    `, [today, superAdminId, id]);
-
-    logAuditEvent(superAdminId, 'SaaS: Fatura Paga', `Fatura #${id} marcada como paga manualmente (Arena ID: ${fatura.tenant_id})`, req.ip);
-
-    // Auto-desbloqueio da arena se ela estivesse suspensa por falta de pagamento
-    const arena = await db.getAsync('SELECT status, nome FROM Arenas WHERE id = ?', [fatura.tenant_id]);
-    let arenaReativada = false;
-    if (arena && arena.status === 0) {
-      await db.runAsync('UPDATE Arenas SET status = 1 WHERE id = ?', [fatura.tenant_id]);
-      arenaReativada = true;
-      logAuditEvent(superAdminId, 'SaaS: Arena Desbloqueada Automática', `Arena '${arena.nome}' (ID: ${fatura.tenant_id}) reativada após quitação da Fatura #${id}`, req.ip);
-    }
-    
     res.json({ 
       message: arenaReativada 
         ? 'Pagamento registrado com sucesso. A arena foi reativada automaticamente!' 
@@ -468,7 +408,7 @@ const payFaturaSaaS = async (req, res) => {
     });
   } catch (err) {
     logger.error('[payFaturaSaaS Error]', err);
-    res.status(500).json({ error: 'Erro ao registrar pagamento.' });
+    res.status(err.status || 500).json({ error: require('../utils/security').publicError(err, 'Erro ao registrar pagamento.') });
   }
 };
 
@@ -544,7 +484,7 @@ const handleSaaSWebhook=async(req,res)=>{
   if(!response.ok) return res.sendStatus(503);
   const payment=await response.json();
   if(payment.status==='approved') await saasBillingService.liquidarFaturaSaaS(id,payment);
-  if(['refunded','charged_back'].includes(payment.status)) await db.runAsync("UPDATE FaturasSaaS SET status='Atrasada',data_pagamento=NULL WHERE gateway_ref=?",[id]);
+  if(['refunded','charged_back'].includes(payment.status)) await require('../services/saasSettlementService').registrarEstorno(id, payment);
   res.sendStatus(200);
  }catch(e){res.sendStatus(e.status||503);}
 };
@@ -750,7 +690,8 @@ const resetUsuarioPassword=async(req,res)=>{
   const code=await require('../services/recoveryService').createChallenge(user.id,user.activation_pending ? 'activation' : 'password');
   const url=require('../utils/security').frontendUrl()+'/redefinir-senha?token='+code;
   await require('../services/sessionService').revokeUser(user.id);
-  await require('../services/emailService').sendEmail(user.email,'Redefinir senha','Defina sua senha (validade: 1 hora): '+url);
+  const enviado = await require('../services/emailService').sendEmail(user.email,'Redefinir senha','Defina sua senha (validade: 1 hora): '+url);
+  if (!enviado) return res.status(503).json({error:'Falha no envio do link. Tente novamente.'});
   res.json({message:'Link individual de redefinicao enviado ao e-mail cadastrado.'});
  }catch(e){res.status(500).json({error:'Falha ao enviar recuperacao.'});}
 };
@@ -764,7 +705,7 @@ const getUsuarioAcessos = async (req, res) => {
       WHERE usuario_id = ?
       ORDER BY criado_em DESC
       LIMIT 10
-    `);
+    `, [id]);
     res.json(logs);
   } catch (err) {
     logger.error(err);
@@ -775,7 +716,9 @@ const getUsuarioAcessos = async (req, res) => {
 const getComunicadosSaaS = async (req, res) => {
   try {
     const query = `
-      SELECT c.id, c.mensagem as message, c.destino as audience, c.canal as channel, c.criado_em as createdAt, c.expira_em as expiresAt, c.ativo,
+      SELECT c.id, c.mensagem as message, c.destino as audience, c.canal as channel, c.criado_em as createdAt, c.expira_em as expiresAt, c.ativo, c.agendado_em as scheduledAt, c.estado as state,
+             (SELECT COUNT(*) FROM ComunicadoEntregas e WHERE e.comunicado_id=c.id AND e.estado='falhou') as failedDeliveries,
+             (SELECT COUNT(*) FROM ComunicadoEntregas e WHERE e.comunicado_id=c.id AND e.estado='enviando') as uncertainDeliveries,
              CASE WHEN c.destino = 'all' THEN 'Todas as arenas' ELSE a.nome END as audienceLabel
       FROM ComunicadosSaaS c
       LEFT JOIN Arenas a ON c.destino = a.id
@@ -791,65 +734,14 @@ const getComunicadosSaaS = async (req, res) => {
 };
 
 const createComunicadoSaaS = async (req, res) => {
-  const { message, audience, channel, expiresAt } = req.body;
-  if (!message || !audience || !channel) {
-    return res.status(400).json({ error: 'Preencha todos os campos obrigatórios.' });
-  }
   try {
-    const expDate = expiresAt || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-    await db.runAsync(
-      'INSERT INTO ComunicadosSaaS (mensagem, destino, canal, expira_em) VALUES (?, ?, ?, ?)',
-      [message, audience, channel, expDate]
-    );
-
-    logAuditEvent(req.user.id, 'SaaS: Novo Comunicado', `Destino: ${audience}, Canal: ${channel}, Msg: ${message.substring(0, 50)}`, req.ip);
-
-    // Dispara comunicados por e-mail em background se canal for 'email'
-    if (channel === 'email') {
-      (async () => {
-        try {
-          let users = [];
-          if (audience === 'all') {
-            users = await db.allAsync(`
-              SELECT email, nome FROM Usuarios 
-              WHERE perfil IN ('Administrador', 'Gerente') AND email IS NOT NULL AND email != ''
-            `);
-          } else {
-            users = await db.allAsync(`
-              SELECT email, nome FROM Usuarios 
-              WHERE perfil IN ('Administrador', 'Gerente') AND tenant_id = ? AND email IS NOT NULL AND email != ''
-            `, [audience]);
-          }
-
-          if (users.length > 0) {
-            const { sendEmail } = require('../services/emailService');
-            for (const u of users) {
-              const subject = 'Comunicado Oficial - Arenix CourtManager';
-              const html = `
-                <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; line-height: 1.6;">
-                  <h2 style="color: #2D3748; border-bottom: 2px solid #E2E8F0; padding-bottom: 10px;">Olá, ${u.nome}! 📢</h2>
-                  <p>Você recebeu uma nova notificação oficial da administração do <strong>Arenix CourtManager</strong>:</p>
-                  <div style="background-color: #F7FAFC; border-left: 4px solid #4A5568; padding: 15px; border-radius: 4px; margin: 20px 0; font-style: italic; font-size: 1.1em; color: #2D3748;">
-                    "${message}"
-                  </div>
-                  <p style="font-size: 0.9em; color: #718096;">Por favor, acesse o seu painel de gerenciamento para acompanhar o status completo ou obter mais detalhes do sistema.</p>
-                  <hr style="border: 0; border-top: 1px solid #E2E8F0; margin: 20px 0;" />
-                  <p style="font-size: 0.8em; color: #A0AEC0;">Esta é uma mensagem administrativa automatizada enviada em nome da gerência de TI Arenix.</p>
-                </div>
-              `;
-              await sendEmail(u.email, subject, html);
-            }
-          }
-        } catch (e) {
-          logger.error('[SMTP] Erro ao disparar e-mails de comunicado:', e.message);
-        }
-      })();
-    }
-
-    res.json({ message: 'Comunicado criado com sucesso!' });
+    const service = require('../services/comunicadoService');
+    const result = await service.criar(req.body);
+    logAuditEvent(req.user.id, 'SaaS: Novo Comunicado', 'Comunicado ID: ' + result.id, req.ip);
+    if (!result.agendado) service.processar().catch(error => logger.error('[Comunicados]', error));
+    res.json({ ...result, message: result.agendado ? 'Comunicado agendado.' : 'Comunicado recebido para envio.' });
   } catch (err) {
-    logger.error(err);
-    res.status(500).json({ error: 'Erro ao criar comunicado.' });
+    res.status(err.status || 500).json({ error: require('../utils/security').publicError(err, 'Erro ao criar comunicado.') });
   }
 };
 
@@ -892,6 +784,7 @@ const syncEnvFile = (keyValues) => {
 
 const getConfiguracoesSaaS = async (req, res) => {
   try {
+    const politica = await require('../services/saasCalendarService').lerPolitica();
     const configs = await db.allAsync('SELECT chave, valor FROM ConfiguracoesSaaS');
     const reasonsRows = await db.allAsync('SELECT motivo FROM MotivosCancelamento WHERE tenant_id IS NULL OR tenant_id = 0 ORDER BY id');
 
@@ -906,8 +799,10 @@ const getConfiguracoesSaaS = async (req, res) => {
     const dbWebhookSecret = await require('../services/credentialService').readCredential('mp_webhook_secret');
 
     res.json({
-      dias_trial: configMap['dias_trial'] || '14',
-      trial_ativo: configMap['trial_ativo'] !== undefined ? configMap['trial_ativo'] : '1',
+      dias_trial: String(politica.diasTrial),
+      trial_ativo: politica.trialAtivo ? '1' : '0',
+      dias_tolerancia_bloqueio: politica.diasTolerancia,
+      data_faturamento: require('../utils/dateUtils').getTodayString(),
       manutencao_ativa: configMap['manutencao_ativa'] || '0',
       manutencao_mensagem: configMap['manutencao_mensagem'] || '',
       mp_client_id: dbClientId,
@@ -929,11 +824,18 @@ async function updateGeneralConfigs(body) {
     await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['trial_ativo', trial_ativo === '1' || trial_ativo === true ? '1' : '0']);
   }
   if (dias_trial !== undefined) {
-    const trialNum = Number.parseInt(dias_trial, 10);
-    if (Number.isNaN(trialNum) || trialNum < 0) {
-      throw require('../utils/security').httpError(400, 'O período de trial não pode ser um valor negativo.');
+    const trialNum = Number(dias_trial);
+    if (!/^\d+$/.test(String(dias_trial)) || !Number.isInteger(trialNum) || trialNum < 0 || trialNum > 365) {
+      throw require('../utils/security').httpError(400, 'O período de trial deve ser um inteiro entre 0 e 365 dias.');
     }
     await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['dias_trial', String(trialNum)]);
+  }
+  if (body.dias_tolerancia_bloqueio !== undefined) {
+    const value = body.dias_tolerancia_bloqueio;
+    if (!/^\d+$/.test(String(value)) || Number(value) > 365) {
+      throw require('../utils/security').httpError(400, 'A tolerância deve ser um inteiro entre 0 e 365 dias.');
+    }
+    await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS (chave, valor) VALUES (?, ?)', ['dias_tolerancia_bloqueio', String(Number(value))]);
   }
   if (dias_abandono_cadastro !== undefined) {
     const diasNum = Math.max(1, Number.parseInt(dias_abandono_cadastro, 10) || 7);

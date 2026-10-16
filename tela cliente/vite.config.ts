@@ -29,6 +29,9 @@ export default defineConfig({
   },
   test: {
     globals: true,
+    // Avoid competing DOM workers and allow the same headroom as the admin suite.
+    fileParallelism: false,
+    testTimeout: 15000,
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
   },

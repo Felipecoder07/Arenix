@@ -6,7 +6,11 @@ async function fetchProvider(url,options={}) {
   if(active>=20) throw httpError(503,'Integração ocupada. Tente novamente.');
   active++;
   try { return await globalThis.fetch(url,{...options,signal:AbortSignal.timeout(15000)}); }
-  catch { throw httpError(502, 'Não foi possível consultar o provedor de pagamentos.'); }
+  catch (error) {
+    const { paymentError } = require('./paymentProviderError');
+    throw paymentError(['TimeoutError', 'AbortError'].includes(error?.name)
+      ? 'PIX_PROVIDER_TIMEOUT' : 'PIX_PROVIDER_UNAVAILABLE');
+  }
   finally { active--; }
 }
 module.exports={fetch:fetchProvider};

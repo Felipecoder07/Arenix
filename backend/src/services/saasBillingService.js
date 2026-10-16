@@ -69,8 +69,20 @@ const gerarPixFaturaSaaS = async (faturaId) => {
   if (fatura.status === 'Paga') {
     throw new Error(`Fatura #${faturaId} já está paga.`);
   }
+  if (!['Pendente', 'Atrasada'].includes(fatura.status)) throw httpError(409, 'Fatura indisponível para pagamento.');
+  if (fatura.gateway_ref && fatura.gateway_estornado_ref === fatura.gateway_ref) {
+    throw httpError(409, 'Este Pix foi estornado. Solicite a regularização da fatura ao suporte.');
+  }
   const valorCentavos = faturaValorCentavos(fatura.valor);
   const valorReais = valorCentavos / 100;
+
+  // Online QR reuse must honor the recorded attempt, amount and receiving account.
+  const token = await getMasterAccessToken();
+  if (token) return require('./saasPixService').issue(fatura, token);
+  if (!simulationAllowed()) throw require('../utils/paymentProviderError').paymentError('PIX_PROVIDER_REJECTED');
+  if (fatura.gateway_ref && !String(fatura.gateway_ref).startsWith('SIM_SAAS_')) {
+    throw require('../utils/paymentProviderError').paymentError('PIX_RECONCILIATION_PENDING');
+  }
 
   // 2. Reutilizar Pix existente se ainda válido (não expirado)
   if (fatura.gateway_ref && fatura.qr_expira_em) {
@@ -91,7 +103,6 @@ const gerarPixFaturaSaaS = async (faturaId) => {
   }
 
   // 3. Obter Access Token do Master
-  const token = await getMasterAccessToken();
   const expiraEm = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
   const expiraEmISO = expiraEm.toISOString();
 
@@ -129,72 +140,8 @@ const gerarPixFaturaSaaS = async (faturaId) => {
     };
   }
 
-  // 4. Gerar novo QR Code Pix via API do Mercado Pago
-  if (!token) throw new Error('Gateway SaaS nao configurado.');
-  const idempotencyKey = 'saas-invoice-' + fatura.id + '-' + Math.round(fatura.valor * 100);
-
-  const response = await fetch('https://api.mercadopago.com/v1/payments', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'X-Idempotency-Key': idempotencyKey,
-    },
-    body: JSON.stringify({
-      transaction_amount: Number.parseFloat(valorReais.toFixed(2)),
-      description: `Mensalidade SaaS Arenix — ${fatura.arena_nome} (Fatura #${fatura.id})`,
-      payment_method_id: 'pix',
-      date_of_expiration: expiraEmISO,
-      payer: {
-        email: fatura.arena_email || 'arena@arenix.com.br',
-        first_name: fatura.arena_nome.split(' ')[0],
-        last_name: fatura.arena_nome.split(' ').slice(1).join(' ') || 'Arena',
-      },
-      metadata: {
-        fatura_saas_id: fatura.id,
-        tenant_id: fatura.tenant_id,
-        origem: 'saas_billing',
-      },
-    }),
-  });
-
-  if (!response.ok) {
-    const errData = await response.json();
-    const detalhe = 'O provedor não autorizou a cobrança.';
-    throw new Error(`Mercado Pago: ${detalhe}`);
-  }
-
-  const mpData = await response.json();
-  // Keep the existing idempotency key so retries cannot create a second charge.
-  // If the provider returns a previous, wrong-unit payment for that key, stop
-  // and reconcile it instead of storing its reference as this invoice's payment.
-  if (!mpData.id || mpData.currency_id !== 'BRL' || cents(mpData.transaction_amount) !== valorCentavos) {
-    throw httpError(409, 'O provedor retornou uma cobrança divergente. Reconcilie a tentativa antes de cobrar novamente.');
-  }
-  const gatewayRef = String(mpData.id);
-  const copiaCola = mpData.point_of_interaction?.transaction_data?.qr_code || '';
-  const qrCodeBase64 = mpData.point_of_interaction?.transaction_data?.qr_code_base64 || '';
-
-  // 5. Persistir os dados do Pix na fatura (para reutilização e polling)
-  await db.runAsync(`
-    UPDATE FaturasSaaS
-    SET gateway_ref     = ?,
-        copia_cola      = ?,
-        qr_expira_em    = ?,
-        metodo_pagamento = 'Pix Online'
-    WHERE id = ?
-  `, [gatewayRef, copiaCola, expiraEmISO, faturaId]);
-
-  logAuditEvent(0, 'SaaS Billing: Pix Gerado',
-    `Pix de R$${valorReais.toFixed(2)} gerado para Fatura #${faturaId} (Arena: ${fatura.arena_nome})`, '127.0.0.1');
-
-  return {
-    qr_code: qrCodeBase64 ? `data:image/png;base64,${qrCodeBase64}` : null,
-    copia_cola: copiaCola,
-    gateway_ref: gatewayRef,
-    expira_em: expiraEmISO,
-    reutilizado: false,
-  };
+  if (!token) throw require('../utils/paymentProviderError').paymentError('PIX_PROVIDER_REJECTED');
+  return require('./saasPixService').issue(fatura, token);
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -223,6 +170,11 @@ const liquidarFaturaSaaS = async (gatewayRef, payment) => db.transaction(async (
     return { sucesso: false, mensagem: `Fatura com gateway_ref ${safeRef} não encontrada.` };
   }
 
+  // A delayed approval cannot undo a reversal of this same provider payment.
+  if (String(fatura.gateway_estornado_ref) === String(gatewayRef)) {
+    throw httpError(409, 'Este pagamento já foi estornado. Reconcilie a fatura antes de regularizá-la.');
+  }
+
   // IDEMPOTÊNCIA: já processado → não faz nada
   if (fatura.status === 'Paga') {
     logger.log(`[SaaS Billing] Fatura #${fatura.id} já estava paga. Webhook ignorado (idempotente).`);
@@ -232,7 +184,13 @@ const liquidarFaturaSaaS = async (gatewayRef, payment) => db.transaction(async (
   const valorCentavos = faturaValorCentavos(fatura.valor);
   if (!payment && !simulationAllowed()) throw httpError(403,'Confirmacao do provedor obrigatoria.');
   if(payment && (String(payment.id)!==String(gatewayRef) || payment.status!=='approved' || payment.currency_id!=='BRL' || cents(payment.transaction_amount)!==valorCentavos)) throw httpError(400,'Pagamento divergente da fatura.');
-  const hoje = new Date().toISOString().split('T')[0];
+  if (payment) {
+    const token = await getMasterAccessToken();
+    if (!token || String(payment.collector_id) !== await require('./saasPixService').masterReceiver(token)) {
+      throw httpError(400, 'Recebedor divergente da fatura.');
+    }
+  }
+  const hoje = require('../utils/dateUtils').getTodayString();
 
   // Marcar fatura como Paga
   await db.runAsync(`
@@ -241,25 +199,9 @@ const liquidarFaturaSaaS = async (gatewayRef, payment) => db.transaction(async (
     WHERE id = ?
   `, [hoje, fatura.id]);
 
-  let arenaDesbloqueada = false;
-
-  // Auto-desbloqueio: se arena estava suspensa por inadimplência → reativar
-  const overdue=await db.getAsync("SELECT COUNT(*) AS total FROM FaturasSaaS WHERE tenant_id=? AND id!=? AND status!='Paga' AND data_vencimento<?",[fatura.tenant_id,fatura.id,hoje]);
-  if (fatura.arena_status === 0 && !overdue.total) {
-    await db.runAsync('UPDATE Arenas SET status = 1 WHERE id = ?', [fatura.tenant_id]);
-    arenaDesbloqueada = true;
-    logger.log(`[SaaS Billing] Arena '${fatura.arena_nome}' (ID: ${fatura.tenant_id}) reativada após pagamento da Fatura #${fatura.id}.`);
-  }
-
-  // Auto-upgrade de plano e ciclo: se a fatura paga for de um novo plano/ciclo contratado → atualizar arena
-  const arenaAtual = await db.getAsync('SELECT plano_id, ciclo_cobranca, status, nome FROM Arenas WHERE id = ?', [fatura.tenant_id]);
-  let planoAtualizado = false;
+  const { arena_desbloqueada: arenaDesbloqueada, plano_atualizado: planoAtualizado } =
+    await require('./saasSettlementService').aplicarPagamento(fatura);
   const novoCiclo = fatura.ciclo || 'mensal';
-  if (arenaAtual && (Number(arenaAtual.plano_id) !== Number(fatura.plano_id) || (arenaAtual.ciclo_cobranca || 'mensal') !== novoCiclo)) {
-    await db.runAsync('UPDATE Arenas SET plano_id = ?, ciclo_cobranca = ? WHERE id = ?', [fatura.plano_id, novoCiclo, fatura.tenant_id]);
-    planoAtualizado = true;
-    logger.log(`[SaaS Billing] Arena '${fatura.arena_nome}' (ID: ${fatura.tenant_id}) atualizada para o Plano ID ${fatura.plano_id} (Ciclo: ${novoCiclo}) após pagamento da Fatura #${fatura.id}.`);
-  }
 
   logAuditEvent(0, 'SaaS Billing: Fatura Liquidada',
     `Fatura #${fatura.id} paga via Pix Online (ref: ${gatewayRef}). Arena ${arenaDesbloqueada ? 'REATIVADA' : 'já ativa'}.${planoAtualizado ? ` Plano atualizado para ID ${fatura.plano_id} (${novoCiclo}).` : ''}`,
@@ -356,9 +298,9 @@ const enviarAvisosVencimento = async () => {
       FROM FaturasSaaS f
       JOIN Arenas a ON f.tenant_id = a.id
       WHERE f.status IN ('Pendente', 'Atrasada')
-        AND date(f.data_vencimento) >= date('now')
-        AND date(f.data_vencimento) <= date('now', '+3 days')
-    `);
+        AND date(f.data_vencimento) >= date(?)
+        AND date(f.data_vencimento) <= date(?, '+3 days')
+    `, [require('../utils/dateUtils').getTodayString(), require('../utils/dateUtils').getTodayString()]);
 
     let enviadosCount = 0;
 

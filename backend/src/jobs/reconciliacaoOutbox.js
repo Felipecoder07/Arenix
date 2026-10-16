@@ -118,6 +118,20 @@ async function resolverPagamentosPendentes({ now = Date.now(), olderThanMs = DEF
     }
   }
 
+  const saasAttempts = await db.allAsync(`SELECT invoice_id,tenant_id,id,created FROM SaasPixAttempts
+    WHERE state IN ('creating','pending','unknown') AND updated<=?
+      AND (next_reconcile IS NULL OR next_reconcile<=?) ORDER BY updated LIMIT ?`, [threshold, now, BATCH_SIZE]);
+  for (const attempt of saasAttempts) {
+    try {
+      await require('../services/saasPixService').consult(attempt.invoice_id);
+      const current = await db.getAsync('SELECT state FROM SaasPixAttempts WHERE id=?', [attempt.id]);
+      if (current && ['creating','pending','unknown'].includes(current.state) && now - attempt.created >= 86400000) {
+        await enqueueReview(`reconcile:saas:${attempt.id}`, 'saas_payment_reconciliation_required', {
+          tenant_id: attempt.tenant_id, invoice_id: attempt.invoice_id, state: current.state,
+        });
+      }
+    } catch { result.errors++; }
+  }
   return result;
 }
 

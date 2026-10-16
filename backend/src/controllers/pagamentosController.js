@@ -40,11 +40,28 @@ const aplicarDesconto=safe(async(req,res)=>{
 });
 const registrarEstorno=safe(async(req,res)=>{
  if(req.user.perfil!=='Administrador') throw httpError(403,'Perfil nao autorizado.');
+ const reservation = await db.getAsync('SELECT r.id FROM Reservas r WHERE r.tenant_id=? AND r.id=COALESCE(?,(SELECT reserva_id FROM Pagamentos WHERE id=?))',[req.user.tenant_id,req.body.reserva_id,req.body.pagamento_id]);
+ if(!reservation) throw httpError(404,'Pagamento nao encontrado.');
+ if(req.body.pagamento_id) {
+  const payment = await db.getAsync('SELECT id FROM Pagamentos WHERE id=? AND reserva_id=? AND valor>0',[req.body.pagamento_id,reservation.id]);
+  if(!payment) throw httpError(404,'Pagamento nao encontrado.');
+ }
+ const quote = await require('../services/refundService').preview(reservation.id,req.user.tenant_id);
+ if(quote.online) {
+  if(typeof req.body.motivo!=='string'||!req.body.motivo.trim()||req.body.motivo.length>100) throw httpError(400,'Informe a justificativa do estorno (ate 100 caracteres).');
+  if(!quote.valor_centavos) throw httpError(409,'Nao ha pagamento online confirmado com saldo para devolver.');
+  if(req.body.confirmacao!==quote.confirmacao || cents(req.body.valor)!==quote.valor_centavos) throw httpError(409,'Confira novamente o valor integral do pagamento online e os horarios envolvidos.');
+  const outcome = await require('../services/gatewayService').estornarPagamentoPix(reservation.id,req.user.tenant_id,{targets:quote.targets});
+  if(outcome.reason==='no_gateway_token') throw httpError(409,'Reconecte a conta Mercado Pago da arena para devolver este pagamento.');
+  if(outcome.reason==='balance_changed') throw httpError(409,'O saldo mudou. Atualize os dados do estorno.');
+  logAuditEvent(req.user.id,outcome.success?'Estorno online confirmado':'Estorno online pendente',JSON.stringify({reserva_id:reservation.id,valor:quote.valor_centavos,motivo:req.body.motivo.trim()}),req.ip);
+  return res.status(outcome.success?200:202).json({pending:!outcome.success,message:outcome.success?'Devolucao confirmada pelo Mercado Pago.':'Devolucao pendente de confirmacao do Mercado Pago. O saldo sera atualizado apos a confirmacao.'});
+ }
  const result=await db.transaction(async()=>{
   const r=await db.getAsync('SELECT r.* FROM Reservas r WHERE r.tenant_id=? AND r.id=COALESCE(?,(SELECT reserva_id FROM Pagamentos WHERE id=?))',[req.user.tenant_id,req.body.reserva_id,req.body.pagamento_id]);
   if(!r) throw httpError(404,'Pagamento nao encontrado.');
   // Online refunds must use the provider and its persisted allocation; never create a manual receipt.
-  const online=await db.getAsync("SELECT id FROM TransacoesGateway WHERE reserva_id IN (SELECT id FROM Reservas WHERE id=? OR (grupo_id=? AND tenant_id=?))",[r.id,r.grupo_id,r.tenant_id]);
+  const online=await db.getAsync("SELECT id FROM TransacoesGateway WHERE status NOT IN ('Estornado','Chargeback','Cancelado','Rejeitado','Expirado') AND reserva_id IN (SELECT id FROM Reservas WHERE id=? OR (grupo_id=? AND tenant_id=?))",[r.id,r.grupo_id,r.tenant_id]);
   if(online) throw httpError(409,'Pagamento online: use o cancelamento com devolucao pelo provedor.');
   const paid=await db.getAsync('SELECT COALESCE(SUM(valor),0) AS total FROM Pagamentos WHERE reserva_id=?',[r.id]);
   const amount=req.body.valor===undefined?paid.total:cents(req.body.valor);
@@ -52,6 +69,7 @@ const registrarEstorno=safe(async(req,res)=>{
   await db.runAsync('INSERT INTO Pagamentos(reserva_id,valor,metodo,registrado_por) VALUES(?,?,?,?)',[r.id,-amount,'Estorno',req.user.id]);
   return recompute(r.id);
  });
+ logAuditEvent(req.user.id,'Estorno manual',JSON.stringify({reserva_id:reservation.id,motivo:typeof req.body.motivo==='string'?req.body.motivo.slice(0,100):''}),req.ip);
  res.json({message:'Estorno manual registrado.',saldo_devedor:result.saldoDevedor,status_pagamento:result.novoStatus});
 });
 

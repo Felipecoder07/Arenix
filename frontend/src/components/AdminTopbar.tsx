@@ -1,10 +1,10 @@
+import { useArenaPortal } from '../hooks/useArenaPortal';
 import type { Announcement } from '../types/api';
 import { apiFetch as fetch } from '../utils/apiFetch';
 import { useState, useEffect } from 'react';
 import { Menu, Bell, X, Globe, Copy, ExternalLink, Share2, Check } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { ADMIN_NAV_ITEMS as NAV_ITEMS } from './navigation';
-import { safeStorage } from '../utils/safeStorage';
 import { getStoredUser } from '../utils/session';
 
 interface AdminTopbarProps {
@@ -17,8 +17,7 @@ export function AdminTopbar({ onToggleSidebar, customTitle, actions }: Readonly<
   const location = useLocation();
   const item = NAV_ITEMS.find((n) => n.path === location.pathname);
 
-  const [arenaName, setArenaName] = useState(() => safeStorage.getItem('arena_nome') || 'Arena Central');
-  const [arenaSlug, setArenaSlug] = useState(() => safeStorage.getItem('arena_slug') || 'felp-arena');
+  const { arenaName, clientPortalUrl } = useArenaPortal();
   const [notifications, setNotifications] = useState<Announcement[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [showPortalMenu, setShowPortalMenu] = useState(false);
@@ -26,30 +25,6 @@ export function AdminTopbar({ onToggleSidebar, customTitle, actions }: Readonly<
 
   const user = getStoredUser();
   const userName = user?.nome || 'fefe';
-
-  useEffect(() => {
-    const handleChanged = () => {
-      setArenaName(safeStorage.getItem('arena_nome') || 'Arena Central');
-      setArenaSlug(safeStorage.getItem('arena_slug') || 'felp-arena');
-    };
-    window.addEventListener('arena_nome_changed', handleChanged);
-
-    fetch('/api/arenas/minha', { headers: {} })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data && data.slug) {
-          setArenaSlug(data.slug);
-          safeStorage.setItem('arena_slug', data.slug);
-        }
-        if (data && data.nome) {
-          setArenaName(data.nome);
-          safeStorage.setItem('arena_nome', data.nome);
-        }
-      })
-      .catch(() => {});
-
-    return () => window.removeEventListener('arena_nome_changed', handleChanged);
-  }, []);
 
   const fetchNotifications = async () => {
     try {
@@ -69,31 +44,20 @@ export function AdminTopbar({ onToggleSidebar, customTitle, actions }: Readonly<
     return () => clearInterval(interval);
   }, []);
 
-  const isLocal =
-    typeof window !== 'undefined' &&
-    (window.location.hostname === 'localhost' ||
-      window.location.hostname === '127.0.0.1' ||
-      window.location.hostname.startsWith('192.168.') ||
-      window.location.hostname.startsWith('10.') ||
-      window.location.hostname.startsWith('172.') ||
-      window.location.port === '5173' ||
-      window.location.port === '5176');
-
-  const clientPortalUrl = isLocal
-    ? `${window.location.protocol}//${window.location.hostname}:5176/arena/${arenaSlug}`
-    : `${window.location.protocol}//${window.location.hostname}/arena/${arenaSlug}`;
-
   const handleCopy = () => {
+    if (!clientPortalUrl) return;
     navigator.clipboard.writeText(clientPortalUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
   };
 
   const handleOpen = () => {
+    if (!clientPortalUrl) return;
     window.open(clientPortalUrl, '_blank');
   };
 
   const handleWhatsApp = () => {
+    if (!clientPortalUrl) return;
     const ball = String.fromCodePoint(0x1f3d0); // 🏐
     const hand = String.fromCodePoint(0x1f449); // 👉
     const messageText = `${ball} Agende sua quadra na ${arenaName} de forma rápida e online. Escolha o melhor horário e reserve agora:\n\n${hand} ${clientPortalUrl}`;

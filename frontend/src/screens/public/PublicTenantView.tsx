@@ -1,3 +1,4 @@
+import { ToastLayer } from "../../components/ToastLayer";
 import { useCallback } from 'react';
 import { apiFetch as fetch } from '../../utils/apiFetch';
 import React, { useState, useEffect } from 'react';
@@ -276,9 +277,9 @@ export function PublicTenantView() {
 
       {/* Toast Notification */}
       {toast && (
-        <div style={{ position: 'fixed', top: '16px', right: '16px', zIndex: 9999, backgroundColor: 'var(--charcoal)', color: '#fff', padding: '12px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 500, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+        <ToastLayer><div style={{ position: 'fixed', top: '16px', right: '16px', zIndex: 9999, backgroundColor: 'var(--charcoal)', color: '#fff', padding: '12px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 500, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
           {toast}
-        </div>
+        </div></ToastLayer>
       )}
 
       {/* ─── 1. BANNER E HEADER DA ARENA ─── */}

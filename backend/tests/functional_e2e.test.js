@@ -68,7 +68,7 @@ it('gestor entra pela tela, consulta clientes e sai com revogacao efetiva', asyn
   await page.getByRole('button', { name: 'Entrar', exact: true }).click();
   await page.waitForURL('**/admin/dashboard');
   await page.getByRole('link', { name: 'Clientes', exact: true }).click();
-  await page.getByText('Owner', { exact: true }).waitFor();
+  await page.getByText('Owner', { exact: true }).first().waitFor();
   expect(await page.getByText('Foreign', { exact: true }).count()).toBe(0);
   const cookie = (await context.cookies()).find(item => item.name === 'cm_session');
   expect(cookie.httpOnly).toBe(true);
@@ -120,9 +120,7 @@ async function enablePendingPixGateway() {
   await db.runAsync("UPDATE Arenas SET gateway_access_token='FIXTURE-ARENA-TOKEN', gateway_user_id='123' WHERE id=1");
   vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
     if (url === 'https://api.mercadopago.com/v1/payments' && options.method === 'POST') {
-      return { ok: true, json: async () => ({ id: 991, point_of_interaction: { transaction_data: {
-        qr_code: 'fixture-pix', qr_code_base64: ''
-      } } }) };
+      return { ok: true, json: async () => require('./helpers/pixProvider.cjs')(options) };
     }
     if (url === 'https://api.mercadopago.com/v1/payments/991') {
       return { ok: true, json: async () => ({ id: 991, status: 'pending', transaction_amount: 100, currency_id: 'BRL', collector_id: '123' }) };
@@ -210,9 +208,7 @@ it.each(['aprovacao', 'desistencia'])('checkout com provedor simulado: %s', asyn
   const provider = vi.fn(async (url, options = {}) => {
     if (url === 'https://api.mercadopago.com/v1/payments' && options.method === 'POST') {
       expect(JSON.parse(options.body).transaction_amount).toBe(100);
-      return { ok: true, json: async () => ({ id: 991, point_of_interaction: { transaction_data: {
-        qr_code: 'fixture-pix', qr_code_base64: ''
-      } } }) };
+      return { ok: true, json: async () => require('./helpers/pixProvider.cjs')(options) };
     }
     if (url === 'https://api.mercadopago.com/v1/payments/991') {
       return { ok: true, json: async () => ({ id: 991, status: approved ? 'approved' : 'pending', transaction_amount: 100, currency_id: 'BRL', collector_id: '123' }) };

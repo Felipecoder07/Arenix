@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AdminConfiguracoesQuadras } from '../src/screens/admin/AdminConfiguracoesQuadras';
 
@@ -80,11 +80,10 @@ describe('aba de notificações', () => {
   });
 
   it('mostra erro e permite tentar novamente sem exibir preferências presumidas', async () => {
-    let attempts = 0;
+    let unavailable = true;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       if (String(input) === '/api/arenas/minha') {
-        attempts++;
-        return attempts === 1
+        return unavailable
           ? { ok: false, json: async () => ({}) }
           : { ok: true, json: async () => ({ notif_reserva_email: 0, notif_cancelamento_email: 0, notif_pagamento_email: 0, alerta_pagamento_minutos: 45 }) };
       }
@@ -99,6 +98,7 @@ describe('aba de notificações', () => {
     expect(screen.queryByRole('button', { name: /Salvar notificações/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/automações ativas/)).not.toBeInTheDocument();
 
+    unavailable = false;
     fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
     expect(await screen.findByText('0 automações ativas')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Salvar notificações/i })).toBeEnabled();
@@ -138,7 +138,8 @@ describe('aba de notificações', () => {
     expect(screen.getByText('3 automações ativas')).toBeInTheDocument();
 
     // Canais
-    expect(screen.getByText('E-mail')).toBeInTheDocument();
+    const panel = within(document.querySelector('[data-pencil-name="Painel Configurações Notificações"]') as HTMLElement);
+    expect(panel.getByText('E-mail')).toBeInTheDocument();
     expect(screen.getByText('WhatsApp')).toBeInTheDocument();
     expect(screen.getByText('Dashboard')).toBeInTheDocument();
 

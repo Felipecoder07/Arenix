@@ -341,7 +341,7 @@ export function Checkout() {
       style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
     >
       {/* PAINEL ESCURO (ESQUERDA) */}
-      <div className="w-full lg:w-[48%] xl:w-[46%] bg-[#171512] relative overflow-hidden flex flex-col justify-between p-8 sm:p-10 lg:p-12 xl:p-14 min-h-[640px] lg:min-h-screen">
+      <div className="w-full lg:w-[48%] xl:w-[46%] bg-[#171512] relative overflow-hidden lg:overflow-y-auto flex flex-col justify-between p-8 sm:p-10 lg:px-10 lg:py-[clamp(20px,4vh,48px)] xl:px-12 min-h-[640px] lg:min-h-0 lg:h-screen lg:sticky lg:top-0 lg:self-start shrink-0">
         {/* Glow Verde */}
         <div
           className="absolute -right-20 top-20 w-[420px] h-[360px] rounded-full pointer-events-none"
@@ -371,12 +371,15 @@ export function Checkout() {
         </div>
 
         {/* Conteúdo Central: Headline e Benefícios */}
-        <div className="relative z-10 flex flex-col gap-6 my-auto py-8 max-w-[620px]">
-          <h1 className="text-[38px] sm:text-[46px] lg:text-[54px] leading-[1.05] text-white font-normal tracking-[-2px]">
+        <div className="relative z-10 flex flex-col my-auto py-4 max-w-[620px]" style={{ gap: 'clamp(12px, 2.6vh, 24px)' }}>
+          <h1
+            className="leading-[1.05] text-white font-normal tracking-[-2px]"
+            style={{ fontSize: 'clamp(32px, min(6vh, 4vw), 54px)' }}
+          >
             Sua arena, organizada de verdade.
           </h1>
 
-          <div className="flex flex-col gap-4 pt-1">
+          <div className="flex flex-col pt-1" style={{ gap: 'clamp(10px, 2vh, 16px)' }}>
             {[
               'Grade de reservas visual, sem conflitos de horário',
               'Controle financeiro completo — pago, parcial e pendente',
@@ -395,7 +398,7 @@ export function Checkout() {
         </div>
 
         {/* Depoimento Rodapé */}
-        <div className="relative z-10 pt-5 border-t border-white/10 flex flex-col gap-3.5 max-w-[620px]">
+        <div className="relative z-10 border-t border-white/10 flex flex-col gap-3 max-w-[620px]" style={{ paddingTop: 'clamp(12px, 2.4vh, 20px)' }}>
           <p className="text-[15px] leading-[23px] text-[#C9C5BA] italic">
             “Antes eu controlava tudo no WhatsApp e numa planilha. Com o CourtManager, em 30 minutos já tinha tudo configurado e as reservas começaram a entrar sozinhas.”
           </p>

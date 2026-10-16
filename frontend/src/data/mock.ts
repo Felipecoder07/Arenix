@@ -243,6 +243,10 @@ export function formatBRL(v: number) {
 }
 export function formatDate(iso?: string) {
   if (!iso) return '—';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    const [year, month, day] = iso.split('-');
+    return `${day}/${month}/${year}`;
+  }
   return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 export function formatDateTime(iso?: string) {

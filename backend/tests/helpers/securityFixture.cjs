@@ -51,11 +51,15 @@ let passwordHash;
 async function seed() {
   passwordHash ||= await bcrypt.hash(PASSWORD, 4);
   await db.runAsync('PRAGMA foreign_keys=OFF');
+  await db.runAsync('DELETE FROM SaasPixAttempts');
+  await db.runAsync('DELETE FROM SaasPixLegacyInvoices');
   for (const table of ['BookingContacts', 'BookingCancellations', 'SessionMfa', 'MfaRecovery', 'MfaEnrollment', 'PaymentAllocations', 'GatewayCredits', 'RefundIntents', 'SecurityOutbox', 'PaymentIntents', 'AuthSessions', 'RecoveryChallenges', 'ExternalIdentities', 'ClientMemberships', 'GuestAccess', 'OAuthStates', 'OAuthCodesUsados', 'TransacoesGateway', 'Pagamentos', 'Reservas', 'Bloqueios', 'Quadras', 'Clientes', 'SessoesAtivas', 'Usuarios', 'Arenas']) {
     await db.runAsync('DELETE FROM ' + table);
   }
   await db.runAsync('PRAGMA foreign_keys=ON');
   await db.runAsync("INSERT OR REPLACE INTO ConfiguracoesSaaS(chave,valor) VALUES('manutencao_ativa','0'),('mp_webhook_secret',?),('mp_master_access_token','FIXTURE-MASTER-SECRET'),('mp_client_secret','FIXTURE-CLIENT-SECRET')", [WEBHOOK_SECRET]);
+  await db.runAsync("INSERT OR REPLACE INTO ConfiguracoesSaaS(chave,valor) VALUES('mp_master_identity',?)",
+    [JSON.stringify({ id: '123', fingerprint: require('../../src/utils/security').hash('FIXTURE-MASTER-SECRET') })]);
   await db.runAsync("INSERT INTO Arenas(id,nome,slug,status,chave_pix) VALUES(1,'Arena A','arena-a',1,'pix-a@example.test'),(2,'Arena B','arena-b',1,'pix-b@example.test')");
   await db.runAsync("INSERT INTO Clientes(id,tenant_id,nome,email,telefone,cpf) VALUES(1,1,'Owner','owner@example.test','11900000001','11111111111'),(2,1,'Third','third@example.test','11900000002','22222222222'),(3,2,'Foreign','foreign@example.test','11900000003','33333333333')");
   const users = [[1,'Administrador',1,null],[2,'Cliente',1,1],[3,'Cliente',1,2],[4,'Administrador',2,null],[5,'SuperAdmin',null,null],[6,'Gerente',1,null],[7,'Recepcionista',1,null],[8,'Cliente',2,3],[9,'Gerente',2,null],[10,'Recepcionista',2,null]];

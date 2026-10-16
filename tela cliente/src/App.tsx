@@ -1,4 +1,5 @@
 import { apiFetch as fetch, logout } from './utils/apiFetch';
+import { usePixRecovery } from './hooks/usePixRecovery';
 import { useEffect, useMemo, useState } from 'react';
 import type { Court, Slot, ReservationInput, ArenaInfo } from './types';
 import ArenaHeader from './components/ArenaHeader';
@@ -165,6 +166,7 @@ function resolveCoverUrl(rawCover?: string): string {
 }
 
 export default function App() {
+  const pixRecovery = usePixRecovery();
   const [slug] = useState<string>(getSlugFromPath);
   const [arena, setArena] = useState<ArenaInfo | null>(null);
   const [courts, setCourts] = useState<Court[]>([]);
@@ -667,7 +669,9 @@ export default function App() {
       if (res.ok) {
         if (resJson.payment_pending_review) {
           setDrawerOpen(false);
-          alert(`Reserva #${resJson.reserva_id} registrada. A cobrança Pix está em verificação. Consulte o status antes de tentar novamente.`);
+          setSelectedSlots([]);
+          setRefreshCount(c => c + 1);
+          pixRecovery.show(resJson.payment_error || {}, `${BACKEND_URL}/api/public/tenant/${slug}/reserva-pix/${resJson.reserva_id}`);
           return;
         }
         if (dataInput.paymentMethod === 'card' && dataInput.cardData) {
@@ -758,7 +762,7 @@ export default function App() {
       const res = await fetch(`${BACKEND_URL}/api/public/tenant/${slug}/reserva-pix/${reservaId}`);
       const data = await res.json();
       if (data.payment_pending_review) {
-        alert(`A cobrança Pix da reserva #${reservaId} está em verificação. Consulte o status antes de tentar novamente.`);
+        pixRecovery.show(data.payment_error || {}, `${BACKEND_URL}/api/public/tenant/${slug}/reserva-pix/${reservaId}`);
         return;
       }
       if (data.payment_not_configured) {
@@ -838,6 +842,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-cream max-w-md mx-auto relative">
+      {pixRecovery.notice}
       <ArenaHeader
         arena={arena}
         athlete={athlete}

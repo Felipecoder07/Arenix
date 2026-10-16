@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { enterpriseContactUrl } from '../../utils/commercialContact';
 import '../../assets/css/landing-balls.css';
@@ -34,7 +34,7 @@ interface PricingPlan {
 }
 
 const FEATURES: FeatureCard[] = [
-  { label: 'AGENDA', title: 'Reservas e agenda', description: 'Organize horários, crie reservas e acompanhe a ocupação de cada quadra.', badge: 'Reservas 24 horas', highlight: true },
+  { label: 'AGENDA', title: 'Reservas e agenda', description: 'Organize horários, crie reservas e acompanhe a ocupação de cada quadra.', badge: 'Reservas 24 horas' },
   { label: 'FINANCEIRO', title: 'Pagamentos', description: 'Registre recebimentos, valores pendentes e diferentes formas de pagamento.', badge: 'Pix, cartão e dinheiro' },
   { label: 'RELACIONAMENTO', title: 'Clientes', description: 'Centralize dados dos clientes e consulte o histórico de cada jogador.', badge: 'Histórico centralizado' },
   { label: 'DADOS', title: 'Relatórios', description: 'Acompanhe faturamento, ocupação e os principais indicadores da arena.', badge: 'Indicadores da operação' },
@@ -54,7 +54,12 @@ const STATS = [
   { value: '12h', label: 'economizadas por semana' },
   { value: '4.9/5', label: 'avaliação de quem utiliza' },
 ];
-const NAV_LINKS = ['Produto', 'Recursos', 'Preços', 'Clubes'];
+const NAV_LINKS = [
+  { label: 'Produto', id: 'produto' },
+  { label: 'Recursos', id: 'recursos' },
+  { label: 'Preços', id: 'precos' },
+  { label: 'Clubes', id: 'clubes' },
+];
 
 // Mini preview da interface
 function DashboardPreview() {
@@ -220,6 +225,54 @@ function DashboardPreview() {
   );
 }
 
+const FEATURE_ICONS: Record<string, ReactNode> = {
+  // Calendário
+  AGENDA: (
+    <>
+      <rect x="3" y="4.5" width="18" height="16.5" rx="3" />
+      <path d="M3 10h18M8 2.5v4M16 2.5v4M8 14.5h2M14 14.5h2M8 17.5h2" />
+    </>
+  ),
+  // Carteira / dinheiro
+  FINANCEIRO: (
+    <>
+      <path d="M19 7V6a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6" />
+      <circle cx="16.5" cy="14" r="1.2" />
+    </>
+  ),
+  // Pessoas
+  RELACIONAMENTO: (
+    <>
+      <circle cx="9" cy="8" r="3.5" />
+      <path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6" />
+      <path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.4c2.2.7 3.5 2.6 3.5 5.6" />
+    </>
+  ),
+  // Gráfico de barras
+  DADOS: (
+    <>
+      <path d="M3 21h18" />
+      <rect x="5" y="11" width="3.5" height="7" rx="1" />
+      <rect x="10.5" y="5" width="3.5" height="13" rx="1" />
+      <rect x="16" y="8.5" width="3.5" height="9.5" rx="1" />
+    </>
+  ),
+  // Cartão de assinatura / coroa
+  PLANO: (
+    <>
+      <path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5L3 8z" />
+      <path d="M5.5 21h13" />
+    </>
+  ),
+  // Escudo com check
+  CONTROLE: (
+    <>
+      <path d="M12 3l8 3v6c0 4.5-3.2 8-8 9.5C7.2 20 4 16.5 4 12V6l8-3z" />
+      <path d="M8.5 12l2.5 2.5 4.5-5" />
+    </>
+  ),
+};
+
 function FeatureCardComp({ f }: { f: FeatureCard }) {
   if (f.highlight) {
     return (
@@ -240,18 +293,38 @@ function FeatureCardComp({ f }: { f: FeatureCard }) {
     );
   }
   return (
-    <div style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', gap: 14, padding: '28px 24px', background: '#11221A', outline: '1px solid #1E362A', borderRadius: 20, boxShadow: '0px 10px 24px rgba(0,0,0,0.22)' }}>
+    <div className="feature-card" tabIndex={0}>
+      <style>{`
+        .feature-card { flex: 1; height: 100%; display: flex; flex-direction: column; gap: 14px; padding: 28px 24px; background: #11221A; outline: 1px solid #1E362A; border-radius: 20px; box-shadow: 0px 10px 24px rgba(0,0,0,0.22); transition: background-color .25s ease, outline-color .25s ease, box-shadow .25s ease; }
+        .feature-card .fc-icon { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: #1C3528; border-radius: 12px; transition: background-color .25s ease; }
+        .feature-card .fc-icon svg { width: 22px; height: 22px; fill: none; stroke: #C8F04B; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: stroke .25s ease; }
+        .feature-card .fc-label { font-size: 10px; color: #6A8073; font-weight: 800; letter-spacing: 1.5px; font-family: Inter, sans-serif; transition: color .25s ease; }
+        .feature-card .fc-title { font-size: 24px; line-height: 28px; color: #F2F6F0; font-weight: 700; font-family: 'Space Grotesk', sans-serif; margin: 0; transition: color .25s ease; }
+        .feature-card .fc-desc { font-size: 14px; line-height: 22px; color: #97A99E; font-family: Inter, sans-serif; margin: 0; flex: 1; transition: color .25s ease; }
+        .feature-card .fc-badge { display: flex; align-items: center; gap: 7px; padding: 6px 12px; background: #193125; border-radius: 9999px; width: fit-content; transition: background-color .25s ease; }
+        .feature-card .fc-dot { width: 6px; height: 6px; border-radius: 50%; background: #C8F04B; transition: background-color .25s ease; }
+        .feature-card .fc-badge-text { font-size: 11px; color: #C8F04B; font-weight: 700; font-family: Inter, sans-serif; white-space: nowrap; transition: color .25s ease; }
+        .feature-card:hover, .feature-card:focus-visible { background: #C8F04B; outline: 1px solid #C8F04B; box-shadow: 0px 10px 24px rgba(0,0,0,0.18); }
+        .feature-card:focus-visible { outline: 2px solid #F2F6F0; outline-offset: 3px; }
+        .feature-card:hover .fc-icon, .feature-card:focus-visible .fc-icon { background: #071915; }
+        .feature-card:hover .fc-label, .feature-card:focus-visible .fc-label { color: #2A3C17; }
+        .feature-card:hover .fc-title, .feature-card:focus-visible .fc-title { color: #071915; }
+        .feature-card:hover .fc-desc, .feature-card:focus-visible .fc-desc { color: #243417; }
+        .feature-card:hover .fc-badge, .feature-card:focus-visible .fc-badge { background: #071915; }
+        .feature-card:hover .fc-badge-text, .feature-card:focus-visible .fc-badge-text { color: white; }
+        @media (prefers-reduced-motion: reduce) { .feature-card, .feature-card * { transition: none !important; } }
+      `}</style>
       <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#1C3528', borderRadius: 12 }}>
-          <div style={{ width: 18, height: 18, border: '2px solid #C8F04B', borderRadius: 4 }} />
+        <div className="fc-icon">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">{FEATURE_ICONS[f.label]}</svg>
         </div>
-        <span style={{ fontSize: 10, color: '#6A8073', fontWeight: 800, letterSpacing: '1.5px', fontFamily: 'Inter, sans-serif' }}>{f.label}</span>
+        <span className="fc-label">{f.label}</span>
       </div>
-      <h3 style={{ fontSize: 24, lineHeight: '28px', color: '#F2F6F0', fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", margin: 0 }}>{f.title}</h3>
-      <p style={{ fontSize: 14, lineHeight: '22px', color: '#97A99E', fontFamily: 'Inter, sans-serif', margin: 0, flex: 1 }}>{f.description}</p>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 12px', background: '#193125', borderRadius: 9999, width: 'fit-content' }}>
-        <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#C8F04B' }} />
-        <span style={{ fontSize: 11, color: '#C8F04B', fontWeight: 700, fontFamily: 'Inter, sans-serif', whiteSpace: 'nowrap' }}>{f.badge}</span>
+      <h3 className="fc-title">{f.title}</h3>
+      <p className="fc-desc">{f.description}</p>
+      <div className="fc-badge">
+        <div className="fc-dot" />
+        <span className="fc-badge-text">{f.badge}</span>
       </div>
     </div>
   );
@@ -266,53 +339,44 @@ function PricingCard({ plan, annual, onAction }: { plan: PricingPlan; annual: bo
     return `R$ ${v.toFixed(2).replace('.', ',')}`;
   };
   return (
-    <div
-      style={{
-        flex: 1,
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 16,
-        padding: '34px 28px',
-        borderRadius: 20,
-        background: hi ? '#162A1F' : '#111F18',
-        outline: hi ? '2px solid #C8F04B' : '1px solid #1E3327',
-        boxShadow: hi ? '0px 16px 36px rgba(0,0,0,0.45)' : '0px 8px 24px rgba(0,0,0,0.2)'
-      }}
-    >
+    <div className="pricing-card" tabIndex={0}>
+      <style>{`
+        .pricing-card { position: relative; flex: 1; height: 100%; display: flex; flex-direction: column; gap: 16px; padding: 34px 28px; border-radius: 20px; background: #111F18; outline: 1px solid #1E3327; box-shadow: 0px 8px 24px rgba(0,0,0,0.2); transition: background-color .25s ease, outline-color .25s ease, box-shadow .25s ease; }
+        .pricing-card--hi { background: #162A1F; outline: 2px solid #C8F04B; box-shadow: 0px 16px 36px rgba(0,0,0,0.45); }
+        .pricing-card .pc-pill { padding: 5px 12px; background: #C8F04B; border-radius: 9999px; width: fit-content; position: absolute; top: 16px; right: 16px; transition: background-color .25s ease; }
+        .pricing-card .pc-pill span { font-size: 9px; color: #0E1512; font-weight: 800; font-family: Inter, sans-serif; letter-spacing: 0.5px; transition: color .25s ease; }
+        .pricing-card .pc-name { font-size: 14px; color: #8E9F94; font-weight: 700; font-family: Inter, sans-serif; transition: color .25s ease; }
+        .pricing-card--hi .pc-name { color: #C8F04B; }
+        .pricing-card .pc-price { color: #F2F6F0; font-weight: 700; font-family: 'Space Grotesk', sans-serif; line-height: 1; transition: color .25s ease; }
+        .pricing-card .pc-period { font-size: 13px; color: #8E9F94; font-family: Inter, sans-serif; transition: color .25s ease; }
+        .pricing-card .pc-feat { font-size: 13px; color: #A0B2A7; font-family: Inter, sans-serif; white-space: nowrap; transition: color .25s ease; }
+        .pricing-card svg path { transition: fill .25s ease; }
+        .pricing-card .pc-btn { width: 100%; height: 48px; border-radius: 12px; background: #1B2E24; color: #F2F6F0; font-size: 14px; font-weight: 800; font-family: Inter, sans-serif; border: 1px solid #284434; cursor: pointer; transition: all .25s ease; }
+        .pricing-card--hi .pc-btn { background: #C8F04B; color: #0E1512; border: none; }
+        .pricing-card:hover, .pricing-card:focus-visible { background: #162A1F; outline: 2px solid #C8F04B; box-shadow: 0px 16px 36px rgba(0,0,0,0.45); }
+        .pricing-card:focus-visible { outline-offset: 3px; box-shadow: 0px 16px 36px rgba(0,0,0,0.45), 0 0 0 6px rgba(200,240,75,0.25); }
+        .pricing-card:hover .pc-name, .pricing-card:focus-visible .pc-name { color: #C8F04B; }
+        .pricing-card:hover .pc-btn, .pricing-card:focus-visible .pc-btn { background: #C8F04B; color: #0E1512; border: none; }
+        @media (prefers-reduced-motion: reduce) { .pricing-card, .pricing-card * { transition: none !important; } }
+      `}</style>
       {hi && (
-        <div style={{ padding: '5px 12px', background: '#C8F04B', borderRadius: 9999, width: 'fit-content', marginBottom: 2 }}>
-          <span style={{ fontSize: 9, color: '#0E1512', fontWeight: 800, fontFamily: 'Inter, sans-serif', letterSpacing: '0.5px' }}>MAIS POPULAR</span>
+        <div className="pc-pill">
+          <span>MAIS POPULAR</span>
         </div>
       )}
-      <span style={{ fontSize: 14, color: hi ? '#C8F04B' : '#8E9F94', fontWeight: 700, fontFamily: 'Inter, sans-serif' }}>{plan.name}</span>
-      <span style={{ fontSize: plan.price === 'Sob consulta' ? 36 : 42, color: '#F2F6F0', fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", lineHeight: 1 }}>{price()}</span>
-      <span style={{ fontSize: 13, color: '#8E9F94', fontFamily: 'Inter, sans-serif' }}>{annual && plan.price !== 'Sob consulta' ? plan.period + ' (anual)' : plan.period}</span>
+      <span className="pc-name">{plan.name}</span>
+      <span className="pc-price" style={{ fontSize: plan.price === 'Sob consulta' ? 36 : 42 }}>{price()}</span>
+      <span className="pc-period">{annual && plan.price !== 'Sob consulta' ? plan.period + ' (anual)' : plan.period}</span>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
         {plan.features.map((feat) => (
           <div key={feat} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <IconCheck />
-            <span style={{ fontSize: 13, color: '#A0B2A7', fontFamily: 'Inter, sans-serif', whiteSpace: 'nowrap' }}>{feat}</span>
+            <span className="pc-feat">{feat}</span>
           </div>
         ))}
       </div>
       <div style={{ flex: 1 }} />
-      <button
-        onClick={onAction}
-        style={{
-          width: '100%',
-          height: 48,
-          borderRadius: 12,
-          background: hi ? '#C8F04B' : '#1B2E24',
-          color: hi ? '#0E1512' : '#F2F6F0',
-          fontSize: 14,
-          fontWeight: 800,
-          fontFamily: 'Inter, sans-serif',
-          border: hi ? 'none' : '1px solid #284434',
-          cursor: 'pointer',
-          transition: 'all 0.15s ease'
-        }}
-      >
+      <button className="pc-btn" onClick={onAction}>
         {plan.ctaText}
       </button>
     </div>
@@ -336,7 +400,15 @@ export function LandingPage() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 36 }}>
             {NAV_LINKS.map((l) => (
-              <span key={l} style={{ fontSize: 15, color: '#8E9F94', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'Inter, sans-serif' }}>{l}</span>
+              <a
+                key={l.label}
+                href={`#${l.id}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  document.getElementById(l.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+                style={{ fontSize: 15, color: '#8E9F94', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'Inter, sans-serif', textDecoration: 'none' }}
+              >{l.label}</a>
             ))}
             <button onClick={() => navigate('/login')} style={{ padding: '10px 18px', background: 'transparent', color: '#8E9F94', fontSize: 14, fontWeight: 500, borderRadius: 9999, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'Inter, sans-serif' }}>
               Entrar
@@ -349,7 +421,7 @@ export function LandingPage() {
       </nav>
 
       {/* Hero */}
-      <section style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px 32px 76px', backgroundImage: 'radial-gradient(ellipse 65% 55% at 50% -10%, #1A3828 0%, #0B130F 100%)', position: 'relative', zIndex: 10 }}>
+      <section id="produto" style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px 32px 76px', backgroundImage: 'radial-gradient(ellipse 65% 55% at 50% -10%, #1A3828 0%, #0B130F 100%)', position: 'relative', zIndex: 10 }}>
         {/* Futebol: metade visível na lateral do hero. */}
         <img
           className="landing-ball landing-ball--soccer"
@@ -383,7 +455,7 @@ export function LandingPage() {
       </section>
 
       {/* Social Proof */}
-      <section style={{ width: '100%', display: 'flex', justifyContent: 'center', padding: '44px 32px', borderTop: '1px solid #1A2E22', borderBottom: '1px solid #1A2E22', position: 'relative', zIndex: 12, background: '#0B130F' }}>
+      <section id="clubes" style={{ width: '100%', display: 'flex', justifyContent: 'center', padding: '44px 32px', borderTop: '1px solid #1A2E22', borderBottom: '1px solid #1A2E22', position: 'relative', zIndex: 12, background: '#0B130F' }}>
         <div style={{ width: '100%', maxWidth: 1200, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 }}>
           <span style={{ fontSize: 13, color: '#7E9185', fontFamily: 'Inter, sans-serif' }}>A escolha de quem leva o esporte a sério</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 54, flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -395,7 +467,7 @@ export function LandingPage() {
       </section>
 
       {/* Features */}
-      <section style={{ width: '100%', display: 'flex', justifyContent: 'center', padding: '96px 32px 108px', background: '#0B130F', position: 'relative', zIndex: 13 }}>
+      <section id="recursos" style={{ width: '100%', display: 'flex', justifyContent: 'center', padding: '96px 32px 108px', background: '#0B130F', position: 'relative', zIndex: 13 }}>
         {/* Vôlei: sobrepõe a divisão entre clubes e recursos. */}
         <img
           className="landing-ball landing-ball--volleyball"
@@ -437,7 +509,7 @@ export function LandingPage() {
       </section>
 
       {/* Pricing — com bola de basquete sangrando e sobrepondo a faixa verde de estatísticas */}
-      <section style={{ width: '100%', display: 'flex', justifyContent: 'center', padding: '96px 32px 104px', background: '#0B130F', position: 'relative', zIndex: 15 }}>
+      <section id="precos" style={{ width: '100%', display: 'flex', justifyContent: 'center', padding: '96px 32px 104px', background: '#0B130F', position: 'relative', zIndex: 15 }}>
         {/* Basquete: pequena sobreposição na faixa verde, antes dos planos. */}
         <img
           className="landing-ball landing-ball--basketball"

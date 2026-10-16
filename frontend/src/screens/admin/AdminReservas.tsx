@@ -1,7 +1,12 @@
-import { useCallback, useState, useEffect, useMemo } from 'react';
+import { ToastLayer } from "../../components/ToastLayer";
+import { DatePicker } from '../../components/ui/date-picker';
+import { useArenaPortal } from '../../hooks/useArenaPortal';
+import { useRefundQuote } from '../../hooks/useRefundQuote';
+import { usePixRecovery } from '../../hooks/usePixRecovery';
+import { RefundNotice } from '../../components/RefundNotice';
+import { useCallback, useState, useEffect, useMemo, useRef } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import {
-  UserPlus,
   CreditCard,
   ChevronLeft,
   ChevronRight,
@@ -28,7 +33,6 @@ import {
   CalendarClock,
   Unlock,
   Trash2,
-  AlertCircle,
 } from 'lucide-react';
 import { blockSlots, timeMinutes, minutesTime } from '../../utils/blockSlots';
 import { errorMessage } from '../../utils/errorMessage';
@@ -267,11 +271,11 @@ export const AdminGradeSlot: React.FC<AdminGradeSlotProps> = ({
 };
 
 export function AdminReservas() {
+  const pixRecovery = usePixRecovery();
   const outletContext = useOutletContext<{ onToggleSidebar?: () => void }>() || {};
   const onToggleSidebar = outletContext.onToggleSidebar;
 
-  const [arenaSlug, setArenaSlug] = useState(() => safeStorage.getItem('arena_slug') || 'felp-arena');
-  const [arenaName, setArenaName] = useState(() => safeStorage.getItem('arena_nome') || 'Arena Central');
+  const { arenaName, clientPortalUrl } = useArenaPortal();
   const gradeInterval = safeStorage.getItem('grade_interval') === '30' ? 30 : 60;
   const [showPortalMenu, setShowPortalMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -281,31 +285,20 @@ export function AdminReservas() {
   const user = getStoredUser();
   const userName = user?.nome || 'fefe';
 
-  const isLocal =
-    typeof window !== 'undefined' &&
-    (window.location.hostname === 'localhost' ||
-      window.location.hostname === '127.0.0.1' ||
-      window.location.hostname.startsWith('192.168.') ||
-      window.location.hostname.startsWith('10.') ||
-      window.location.hostname.startsWith('172.') ||
-      window.location.port === '5173' ||
-      window.location.port === '5176');
-
-  const clientPortalUrl = isLocal
-    ? `${window.location.protocol}//${window.location.hostname}:5176/arena/${arenaSlug}`
-    : `${window.location.protocol}//${window.location.hostname}/arena/${arenaSlug}`;
-
   const handleCopy = () => {
+    if (!clientPortalUrl) return;
     navigator.clipboard.writeText(clientPortalUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
   };
 
   const handleOpen = () => {
+    if (!clientPortalUrl) return;
     window.open(clientPortalUrl, '_blank');
   };
 
   const handleWhatsApp = () => {
+    if (!clientPortalUrl) return;
     const ball = String.fromCodePoint(0x1f3d0); // 🏐
     const hand = String.fromCodePoint(0x1f449); // 👉
     const messageText = `${ball} Agende sua quadra na ${arenaName} de forma rápida e online. Escolha o melhor horário e reserve agora:\n\n${hand} ${clientPortalUrl}`;
@@ -343,6 +336,13 @@ export function AdminReservas() {
   // Dados da Grade e Auxiliares
   const [grade, setGrade] = useState<GradeData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [gradeError, setGradeError] = useState('');
+  const gradeRequest = useRef(0);
+  const [agendaNow, setAgendaNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setAgendaNow(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [quadras, setQuadras] = useState<Quadra[]>([]);
 
@@ -438,6 +438,9 @@ export function AdminReservas() {
 
   const [estValor, setEstValor] = useState('');
   const [estMotivo, setEstMotivo] = useState('');
+  const refund = useRefundQuote(activeModal === 'estornar-pagamento' ? selectedReserva?.id ?? null : null);
+  const [refundBusy, setRefundBusy] = useState(false);
+  const [refundResult, setRefundResult] = useState('');
 
   const [bqQuadraId, setBqQuadraId] = useState<number | null>(null);
   const [bqData, setBqData] = useState(selectedDate);
@@ -463,7 +466,9 @@ export function AdminReservas() {
   };
 
   const fetchGrade = useCallback(async () => {
+    const requestId = ++gradeRequest.current;
     setLoading(true);
+    setGradeError('');
     let start = selectedDate;
     let end = selectedDate;
 
@@ -477,14 +482,17 @@ export function AdminReservas() {
       const res = await fetch(`/api/reservas/grade?data_inicio=${start}&data_fim=${end}`, {
         headers: {},
       });
-      if (res.ok) {
-        const json = await res.json();
-        setGrade(json);
-      }
+      if (!res.ok) throw new Error('Falha ao carregar agenda.');
+      const json = await res.json();
+      if (requestId === gradeRequest.current) setGrade(json);
     } catch (err) {
       console.error('Erro ao buscar grade:', err);
+      if (requestId === gradeRequest.current) {
+        setGrade(null);
+        setGradeError('Não foi possível carregar a agenda. Tente novamente.');
+      }
     } finally {
-      setLoading(false);
+      if (requestId === gradeRequest.current) setLoading(false);
     }
   }, [selectedDate, scope]);
 
@@ -879,6 +887,7 @@ export function AdminReservas() {
 
           const cobrancaJson = await cobrancaRes.json();
           if (!cobrancaRes.ok) {
+            pixRecovery.show(cobrancaJson, `/api/pagamentos/gateway/pix/${reservaCriadaId}`);
             throw new Error(cobrancaJson.error || 'Erro ao gerar QR Code do Pix.');
           }
 
@@ -991,7 +1000,7 @@ export function AdminReservas() {
       const dataJson = await res.json();
       if (!res.ok) throw new Error(dataJson.error || 'Erro ao cancelar reserva');
 
-      showToast('Reserva cancelada com sucesso!', 'success');
+      showToast(dataJson.message || 'Reserva cancelada.', dataJson.pending ? 'error' : 'success');
       setActiveModal(null);
       setSelectedReserva(null);
       fetchGrade();
@@ -1021,7 +1030,10 @@ export function AdminReservas() {
         });
 
         const dataJson = await res.json();
-        if (!res.ok) throw new Error(dataJson.error || 'Erro ao gerar cobrança Pix.');
+        if (!res.ok) {
+          pixRecovery.show(dataJson, `/api/pagamentos/gateway/pix/${selectedReserva.id}`);
+          throw new Error(dataJson.error || 'Erro ao gerar cobrança Pix.');
+        }
 
         setGatewayRef(dataJson.gateway_ref);
         setQrCode(
@@ -1087,18 +1099,22 @@ export function AdminReservas() {
   };
 
   const handleConfirmarEstorno = async () => {
-    if (!selectedReserva || !estValor || !estMotivo) {
+    if (refundBusy || refund.loading || refund.error || !refund.quote) return;
+    if (!selectedReserva || (!refund.quote.online && !estValor) || !estMotivo.trim()) {
       showToast('Todos os campos do estorno são obrigatórios.', 'error');
       return;
     }
 
+    setRefundResult('');
+    setRefundBusy(true);
     try {
       const res = await fetch('/api/pagamentos/estorno', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           reserva_id: selectedReserva.id,
-          valor: parseCurrencyToFloat(estValor),
+          valor: refund.quote.online ? refund.quote.valor_centavos / 100 : parseCurrencyToFloat(estValor),
+          confirmacao: refund.quote.confirmacao,
           motivo: estMotivo,
         }),
       });
@@ -1106,12 +1122,18 @@ export function AdminReservas() {
       const dataJson = await res.json();
       if (!res.ok) throw new Error(dataJson.error || 'Erro ao realizar estorno');
 
-      showToast('Estorno realizado com sucesso!', 'success');
+      if (dataJson.pending) {
+        setRefundResult(dataJson.message);
+        return;
+      }
+      showToast(dataJson.message || 'Estorno registrado.', dataJson.pending ? 'error' : 'success');
       setActiveModal(null);
       setSelectedReserva(null);
       fetchGrade();
     } catch (e) {
       showToast(errorMessage(e), 'error');
+    } finally {
+      setRefundBusy(false);
     }
   };
 
@@ -1179,11 +1201,6 @@ export function AdminReservas() {
     setSelectedDate(d.toISOString().split('T')[0]);
   };
 
-  const setToday = () => {
-    const tzOff = new Date().getTimezoneOffset() * 60000;
-    setSelectedDate(new Date(Date.now() - tzOff).toISOString().split('T')[0]);
-  };
-
   const handleGridCellClick = (
     quadraId: number,
     dateStr: string,
@@ -1229,7 +1246,7 @@ export function AdminReservas() {
 
   // Cálculos do Resumo Operacional
   const reservasDoDia = useMemo(() => {
-    return (grade?.reservas || []).filter((r) => r.data_reserva === selectedDate);
+    return (grade?.reservas || []).filter((r) => r.data_reserva === selectedDate && r.status !== 'Cancelada');
   }, [grade, selectedDate]);
 
   const reservasHojeCount = reservasDoDia.length;
@@ -1254,50 +1271,52 @@ export function AdminReservas() {
     let occupiedSlots = 0;
 
     grade.quadras.forEach((q) => {
-      const minH = Number.parseInt((q.hora_abertura || '08:00').split(':')[0], 10);
-      const maxH = Number.parseInt((q.hora_fechamento || '22:00').split(':')[0], 10);
-      const slotsCount = Math.max(0, maxH - minH);
-      totalSlots += slotsCount;
-    });
+      const opening = timeMinutes(q.hora_abertura);
+      const closing = timeMinutes(q.hora_fechamento);
+      totalSlots += Math.max(0, closing - opening);
+      const intervals = [
+        ...reservasDoDia.filter((r) => r.quadra_id === q.id),
+        ...(grade.bloqueios || []).filter((b) => b.quadra_id === q.id && b.data_bloqueio === selectedDate),
+      ].map((item) => ({
+        start: Math.max(opening, timeMinutes(item.hora_inicio)),
+        end: Math.min(closing, timeMinutes(item.hora_fim)),
+      })).filter((item) => item.end > item.start).sort((a, b) => a.start - b.start);
 
-    reservasDoDia.forEach((r) => {
-      const hI = Number.parseInt(r.hora_inicio.split(':')[0], 10);
-      const hF = Number.parseInt(r.hora_fim.split(':')[0], 10);
-      occupiedSlots += Math.max(0, hF - hI);
-    });
-
-    const bloqueiosDoDia = (grade.bloqueios || []).filter((b) => b.data_bloqueio === selectedDate);
-    bloqueiosDoDia.forEach((b) => {
-      const hI = Number.parseInt(b.hora_inicio.split(':')[0], 10);
-      const hF = Number.parseInt(b.hora_fim.split(':')[0], 10);
-      occupiedSlots += Math.max(0, hF - hI);
+      let lastEnd = opening;
+      intervals.forEach(({ start, end }) => {
+        occupiedSlots += Math.max(0, end - Math.max(start, lastEnd));
+        lastEnd = Math.max(lastEnd, end);
+      });
     });
 
     const taxa = totalSlots > 0 ? Math.min(100, Math.round((occupiedSlots / totalSlots) * 100)) : 0;
-    const livres = Math.max(0, totalSlots - occupiedSlots);
+    const livres = Math.floor(Math.max(0, totalSlots - occupiedSlots) / gradeInterval);
     return { taxaOcupacao: taxa, horariosLivresCount: livres };
-  }, [grade, reservasDoDia, selectedDate]);
+  }, [grade, reservasDoDia, selectedDate, gradeInterval]);
 
-  // Próxima Reserva (Painel Lateral)
+  const summaryValue = (value: string | number) => loading ? '…' : gradeError ? '—' : value;
+  const summaryDetail = (value: string) => loading ? 'Carregando...' : gradeError ? 'Dados indisponíveis' : value;
+
+  const reservasPainel = useMemo(() => reservasDoDia
+    .filter(r => r.status !== 'Cancelada' && (!filterQuadraId || r.quadra_id === filterQuadraId))
+    .sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio) || a.id - b.id), [reservasDoDia, filterQuadraId]);
+
+  // Próxima reserva da data selecionada, sem reutilizar horários já passados.
   const proximaReserva = useMemo(() => {
-    const now = new Date();
-    const tzOff = now.getTimezoneOffset() * 60000;
-    const currentHourStr = new Date(Date.now() - tzOff).toISOString().split('T')[1].substring(0, 5);
-
-    return (
-      reservasDoDia
-        .filter((r) => r.hora_inicio >= currentHourStr)
-        .sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio))[0] ||
-      reservasDoDia[0] ||
-      null
-    );
-  }, [reservasDoDia]);
+    if (loading || gradeError) return null;
+    const localNow = new Date(agendaNow.getTime() - agendaNow.getTimezoneOffset() * 60000).toISOString();
+    const today = localNow.slice(0, 10);
+    if (selectedDate < today) return null;
+    return reservasPainel.find(r => r.status !== 'Cancelamento pendente' &&
+      (selectedDate > today || r.hora_inicio >= localNow.slice(11, 16))) || null;
+  }, [reservasPainel, selectedDate, agendaNow, loading, gradeError]);
 
   // Render da Grade
   const renderGrade = () => {
     if (loading) {
       return <div className="p-8 text-center text-[#4F5550] text-sm">Carregando grade de quadras...</div>;
     }
+    if (gradeError) return <div role="alert" className="p-8 text-center text-sm">{gradeError} <button type="button" onClick={fetchGrade}>Recarregar agenda</button></div>;
     if (!grade || !grade.quadras || grade.quadras.length === 0) {
       return <div className="p-8 text-center text-[#4F5550] text-sm">Nenhuma quadra cadastrada ou ativa.</div>;
     }
@@ -1466,9 +1485,10 @@ export function AdminReservas() {
 
   return (
     <div className="w-full flex flex-col gap-[18px]">
+      {pixRecovery.notice}
       {/* Toast Alert */}
       {toast && (
-        <div
+        <ToastLayer><div
           style={{ zIndex: 999999 }}
           className={`fixed bottom-5 right-5 px-4 py-3 rounded-xl text-white text-xs font-semibold shadow-2xl flex items-center gap-2.5 animate-slideUp border ${
             toast.type === 'success'
@@ -1477,7 +1497,7 @@ export function AdminReservas() {
           }`}
         >
           <span>{toast.message}</span>
-        </div>
+        </div></ToastLayer>
       )}
 
       {/* Cabeçalho Reserva Unificado (Conforme a imagem) */}
@@ -1712,21 +1732,15 @@ export function AdminReservas() {
           </button>
           <div
             className="box-border h-[42px] flex flex-row gap-[10px] px-[16px] items-center bg-[#FFFFFF] outline outline-1 outline-[#E2D9CC] -outline-offset-1 rounded-[14px] shadow-xs cursor-pointer hover:bg-[#F9F7F3] transition-colors relative"
-            onClick={() => {
-              const el = document.getElementById('main-date-picker') as HTMLInputElement | null;
-              if (el) {
-                try { el.showPicker?.(); } catch { el.click(); }
-              }
-            }}
+            
           >
-            <input
+            <DatePicker
               id="main-date-picker"
-              type="date"
+              aria-label="Data da agenda"
+              required
               value={selectedDate}
-              onClick={(e) => {
-                try { (e.currentTarget as HTMLInputElement).showPicker?.(); } catch {}
-              }}
-              onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
+              
+              onValueChange={(value) => value && setSelectedDate(value)}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             />
             <CalendarDays size={17} className="text-[#071915] pointer-events-none shrink-0" />
@@ -1799,19 +1813,19 @@ export function AdminReservas() {
       </div>
 
       {/* Resumo Operacional */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-[14px] w-full select-none">
+      <section aria-label="Resumo operacional" aria-busy={loading} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-[14px] w-full select-none">
         {/* Card 1: Reservas hoje */}
         <div className="p-[18px_20px] bg-[#FFFFFF] outline outline-1 outline-[#E9E0D4] -outline-offset-1 rounded-[20px] flex flex-col gap-[6px] shadow-xs">
           <div className="text-[12px] text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold">
-            Reservas hoje
+            {selectedDate === todayStr ? 'Reservas hoje' : 'Reservas do dia'}
           </div>
           <div className="text-[30px] text-[#071915] font-[Inter,system-ui,sans-serif] font-extrabold leading-tight">
-            {reservasHojeCount > 0 ? reservasHojeCount : 18}
+            {summaryValue(reservasHojeCount)}
           </div>
           <div className="flex items-center gap-[6px]">
             <div className="w-[7px] h-[7px] bg-[#C9FF3B] rounded-full" />
             <span className="text-[12px] text-[#6F766F] font-normal">
-              {reservasHojeCount > 0 ? `+${reservasHojeCount} na agenda` : '+4 vs ontem'}
+              {summaryDetail(`${reservasHojeCount} na agenda`)}
             </span>
           </div>
         </div>
@@ -1822,12 +1836,12 @@ export function AdminReservas() {
             Receita prevista
           </div>
           <div className="text-[30px] text-[#071915] font-[Inter,system-ui,sans-serif] font-extrabold leading-tight">
-            {receitaPrevista > 0 ? formatCurrency(receitaPrevista) : 'R$ 1.860'}
+            {summaryValue(formatCurrency(receitaPrevista))}
           </div>
           <div className="flex items-center gap-[6px]">
             <div className="w-[7px] h-[7px] bg-[#43B7FF] rounded-full" />
             <span className="text-[12px] text-[#6F766F] font-normal">
-              {percentConfirmado > 0 ? `${percentConfirmado}% confirmado` : '72% confirmado'}
+              {summaryDetail(`${percentConfirmado}% confirmado`)}
             </span>
           </div>
         </div>
@@ -1838,12 +1852,12 @@ export function AdminReservas() {
             Ocupação
           </div>
           <div className="text-[30px] text-[#071915] font-[Inter,system-ui,sans-serif] font-extrabold leading-tight">
-            {taxaOcupacao > 0 ? `${taxaOcupacao}%` : '68%'}
+            {summaryValue(`${taxaOcupacao}%`)}
           </div>
           <div className="flex items-center gap-[6px]">
             <div className="w-[7px] h-[7px] bg-[#FFB545] rounded-full" />
             <span className="text-[12px] text-[#6F766F] font-normal">
-              {horariosLivresCount > 0 ? `${horariosLivresCount} horários livres` : '3 horários livres'}
+              {summaryDetail(`${horariosLivresCount} horários livres`)}
             </span>
           </div>
         </div>
@@ -1854,12 +1868,12 @@ export function AdminReservas() {
             Pendências
           </div>
           <div className="text-[30px] text-[#071915] font-[Inter,system-ui,sans-serif] font-extrabold leading-tight">
-            {pendenciasCount > 0 ? pendenciasCount : 4}
+            {summaryValue(pendenciasCount)}
           </div>
           <div className="flex items-center gap-[6px]">
             <div className="w-[7px] h-[7px] bg-[#C8661A] rounded-full" />
             <span className="text-[12px] text-[#6F766F] font-normal">
-              cobrar sinal
+              {summaryDetail(pendenciasCount > 0 ? 'pagamentos pendentes' : 'Nenhum pagamento pendente')}
             </span>
           </div>
         </div>
@@ -1912,7 +1926,7 @@ export function AdminReservas() {
         {/* Painel Lateral de Reservas */}
         <div className="flex flex-col gap-[14px] w-full">
           {/* Próxima Reserva (Dark Pill Card) */}
-          <div className="box-border w-full min-h-[164px] shrink-0 [box-shadow:0px_14px_30px_#07191525] flex flex-col gap-[8px] p-[20px] justify-between bg-[#071915] rounded-[24px] text-white">
+          <div role="region" aria-label="Próxima reserva" className="box-border w-full min-h-[164px] shrink-0 [box-shadow:0px_14px_30px_#07191525] flex flex-col gap-[8px] p-[20px] justify-between bg-[#071915] rounded-[24px] text-white">
             <div className="flex flex-col gap-[4px]">
               <div className="text-[13px] text-[#A7B6AE] font-[Inter,system-ui,sans-serif] font-normal">
                 Próxima reserva
@@ -1920,19 +1934,19 @@ export function AdminReservas() {
               <div className="text-[28px] text-[#C9FF3B] font-[Inter,system-ui,sans-serif] font-extrabold leading-tight">
                 {proximaReserva
                   ? `${proximaReserva.hora_inicio} · ${
-                      grade?.quadras.find((q) => q.id === proximaReserva.quadra_id)?.nome || 'Quadra 1'
+                      grade?.quadras.find((q) => q.id === proximaReserva.quadra_id)?.nome || `Quadra #${proximaReserva.quadra_id}`
                     }`
-                  : '17:00 · Quadra 1'}
+                  : loading ? 'Carregando...' : gradeError ? 'Agenda indisponível' : 'Nenhuma reserva a seguir'}
               </div>
               <div className="text-[12px] text-[#A7B6AE] font-[Inter,system-ui,sans-serif] font-normal">
                 {proximaReserva
                   ? `${proximaReserva.cliente_nome} · ${proximaReserva.status_pagamento.toLowerCase()}`
-                  : 'Marina Alves · sinal pendente'}
+                  : loading ? 'Consultando reservas da arena.' : gradeError ? 'Recarregue a agenda para consultar as reservas.' : 'Não há próximos horários na data e quadra selecionadas.'}
               </div>
             </div>
 
-            <div className="flex flex-row gap-[10px] items-center pt-2">
-              <button
+            {proximaReserva && <div className="flex flex-row gap-[10px] items-center pt-2">
+              {proximaReserva.valor_pago < proximaReserva.valor_total && <button
                 type="button"
                 onClick={() => {
                   if (proximaReserva) {
@@ -1950,8 +1964,8 @@ export function AdminReservas() {
                 }}
                 className="h-[38px] px-[16px] flex items-center justify-center bg-[#C9FF3B] hover:bg-[#BCEE30] text-[#071915] rounded-[12px] font-[Inter,system-ui,sans-serif] font-extrabold text-[12px] cursor-pointer border-none transition-colors"
               >
-                Confirmar
-              </button>
+                Registrar pagamento
+              </button>}
               <button
                 type="button"
                 onClick={() => {
@@ -1964,7 +1978,7 @@ export function AdminReservas() {
               >
                 Detalhes
               </button>
-            </div>
+            </div>}
           </div>
 
           {/* Alertas Operacionais (Atenção) */}
@@ -1973,41 +1987,34 @@ export function AdminReservas() {
               Atenção
             </div>
             <div className="text-[12px] leading-[18px] text-[#7A5A1A] font-[Inter,system-ui,sans-serif] font-normal">
-              {pendenciasCount > 0
-                ? `${pendenciasCount} reservas aguardam pagamento do sinal antes do horário de bloqueio automático.`
-                : '4 reservas aguardam pagamento do sinal antes do horário de bloqueio automático.'}
+              {loading ? 'Consultando pendências...' : gradeError ? 'Pendências indisponíveis.' : pendenciasCount > 0
+                ? `${pendenciasCount} reserva(s) com pendência de pagamento na data selecionada.`
+                : 'Nenhuma pendência de pagamento na data selecionada.'}
             </div>
           </div>
 
           {/* Fila de hoje */}
           <div className="box-border w-full flex flex-col gap-[6px] p-[16px] justify-start bg-[#FFFFFF] outline outline-1 outline-[#E9E0D4] -outline-offset-1 rounded-[20px] shadow-xs">
             <div className="text-[14px] text-[#071915] font-[Inter,system-ui,sans-serif] font-bold mb-1 px-1">
-              Fila de hoje
+              Reservas da data selecionada
             </div>
 
             <div className="space-y-1 max-h-[280px] overflow-y-auto custom-scrollbar pr-0.5">
-              {(reservasDoDia.length > 0 ? reservasDoDia : [
-                { id: 901, cliente_nome: 'Bruno Lima', hora_inicio: '18:00', status_pagamento: 'Parcial', quadraNome: 'Quadra 2' },
-                { id: 902, cliente_nome: 'Pedro Rocha', hora_inicio: '19:00', status_pagamento: 'Pendente', quadraNome: 'Quadra 3' },
-                { id: 903, cliente_nome: 'Time Fixo', hora_inicio: '19:00', status_pagamento: 'Pago', quadraNome: 'Quadra 1' },
-                { id: 904, cliente_nome: 'Manutenção', hora_inicio: '21:00', status_pagamento: 'Bloqueado', quadraNome: 'Quadra 2' },
-              ]).map((r) => {
+              {loading ? <p>Carregando reservas...</p> : gradeError ? <p>Reservas indisponíveis.</p> : reservasPainel.length === 0 ? <p>Nenhuma reserva na data e quadra selecionadas.</p> : reservasPainel.map((r) => {
                 let dotBg = 'bg-[#C8661A]';
                 if (r.status_pagamento === 'Pago') dotBg = 'bg-[#138A4B]';
                 if (r.status_pagamento === 'Parcial') dotBg = 'bg-[#2E5BFF]';
                 if (r.status_pagamento === 'Bloqueado') dotBg = 'bg-[#152238]';
 
                 const quadraNome =
-                  'quadraNome' in r ? r.quadraNome : grade?.quadras.find((q) => q.id === r.quadra_id)?.nome || 'Quadra';
+                  grade?.quadras.find((q) => q.id === r.quadra_id)?.nome || `Quadra #${r.quadra_id}`;
 
                 return (
                   <div
                     key={r.id}
                     onClick={() => {
-                      if ('valor_total' in r) {
-                        setSelectedReserva(r as Reserva);
-                        setActiveModal('detalhe-reserva');
-                      }
+                      setSelectedReserva(r);
+                      setActiveModal('detalhe-reserva');
                     }}
                     className="w-full min-h-[38px] flex items-center justify-between p-2 rounded-xl hover:bg-[#F9F7F3] cursor-pointer transition-colors"
                   >
@@ -2035,7 +2042,7 @@ export function AdminReservas() {
       {activeModal === 'new-reserva' && (
         <div
           data-pencil-name="Overlay Escuro Modal"
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-[#071915]/60 backdrop-blur-xs animate-fadeIn overflow-y-auto"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-[#071915]/60 backdrop-blur-[4px] animate-fadeIn overflow-y-auto"
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-nova-reserva-title"
@@ -2406,26 +2413,17 @@ export function AdminReservas() {
                   <div
                     data-pencil-name="Select Data"
                     className="box-border w-full h-[40px] shrink-0 flex flex-row gap-[9px] px-[12px] justify-start items-center bg-[#FFFFFF] outline outline-1 outline-[#DDD4C8] -outline-offset-1 rounded-[10px] cursor-pointer"
-                    onClick={() => {
-                      const el = document.getElementById('nr-data') as HTMLInputElement | null;
-                      if (el) {
-                        try { el.showPicker?.(); } catch { el.click(); }
-                      }
-                    }}
+                    
                   >
                     <CalendarDays size={15} className="text-[#6F675F] shrink-0 pointer-events-none" />
-                    <input
-                      type="date"
+                    <DatePicker
+                      
                       id="nr-data"
                       value={nrData}
                       min={todayStr}
-                      onClick={(e) => {
-                        try {
-                          (e.currentTarget as HTMLInputElement).showPicker?.();
-                        } catch {}
-                      }}
-                      onChange={(e) => {
-                        const val = e.target.value;
+                      
+                      onValueChange={(value) => {
+                        const val = value;
                         if (val < todayStr) {
                           showToast('Não é possível selecionar datas passadas para agendamento.', 'error');
                           setNrData(todayStr);
@@ -2783,6 +2781,7 @@ export function AdminReservas() {
                   onClick={() => {
                     setEstValor(formatFloatToCurrencyInput(selectedReserva.valor_pago));
                     setEstMotivo('');
+                    setRefundResult('');
                     setActiveModal('estornar-pagamento');
                   }}
                 >
@@ -2951,11 +2950,11 @@ export function AdminReservas() {
 
               <div className="form-group">
                 <label htmlFor="pag-data">Data do pagamento *</label>
-                <input
-                  type="date"
+                <DatePicker
+                  
                   id="pag-data"
                   value={pagData}
-                  onChange={(e) => setPagData(e.target.value)}
+                  onValueChange={(value) => setPagData(value)}
                   required
                 />
               </div>
@@ -3131,16 +3130,16 @@ export function AdminReservas() {
               </button>
             </div>
             <div className="modal-body">
-              <p className="text-xs text-muted mb-4">
-                Confirma o estorno de um pagamento já registrado? Esta ação gera um log de auditoria.
-              </p>
+              <RefundNotice {...refund} />
+              {refundResult && <p role="status">{refundResult}</p>}
               <div className="form-group">
                 <label htmlFor="est-valor">Valor a estornar *</label>
                 <input
                   type="text"
                   id="est-valor"
                   placeholder="Ex: 80,00"
-                  value={estValor}
+                  readOnly={Boolean(refund.quote?.online)}
+                  value={refund.quote?.online ? formatFloatToCurrencyInput(refund.quote.valor_centavos / 100) : estValor}
                   onChange={(e) => setEstValor(formatCurrencyInput(e.target.value))}
                   required
                 />
@@ -3165,9 +3164,10 @@ export function AdminReservas() {
               <button
                 className="btn-primary"
                 style={{ background: 'var(--danger)' }}
+                disabled={refundBusy || refund.loading || Boolean(refund.error) || !refund.quote || (refund.quote.online && refund.quote.valor_centavos <= 0)}
                 onClick={handleConfirmarEstorno}
               >
-                Confirmar Estorno
+                {refundBusy ? 'Processando...' : 'Confirmar Estorno'}
               </button>
             </div>
           </div>
@@ -3178,7 +3178,7 @@ export function AdminReservas() {
       {activeModal === 'bloquear-quadra' && (
         <div
           data-pencil-name="Overlay Bloqueio"
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-[#071915]/60 backdrop-blur-xs animate-fadeIn overflow-y-auto"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-[#071915]/60 backdrop-blur-[4px] animate-fadeIn overflow-y-auto"
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-bloquear-quadra-title"
@@ -3322,26 +3322,17 @@ export function AdminReservas() {
                     <div
                       data-pencil-name="Campo Data Bloqueio"
                       className="box-border w-full h-[40px] shrink-0 flex flex-row gap-[8px] px-[10px] justify-start items-center bg-[#FFFFFF] outline outline-1 outline-[#DDD4C8] -outline-offset-1 rounded-[10px] cursor-pointer"
-                      onClick={() => {
-                        const el = document.getElementById('bq-data') as HTMLInputElement | null;
-                        if (el) {
-                          try { el.showPicker?.(); } catch { el.click(); }
-                        }
-                      }}
+                      
                     >
                       <CalendarDays size={14} className="text-[#6F675F] shrink-0 pointer-events-none" />
-                      <input
-                        type="date"
+                      <DatePicker
+                        
                         id="bq-data"
                         value={bqData}
                         min={todayStr}
-                        onClick={(e) => {
-                          try {
-                            (e.currentTarget as HTMLInputElement).showPicker?.();
-                          } catch {}
-                        }}
-                        onChange={(e) => {
-                          const val = e.target.value;
+                        
+                        onValueChange={(value) => {
+                          const val = value;
                           if (val < todayStr) {
                             showToast('Não é possível selecionar datas passadas para bloqueio.', 'error');
                             setBqData(todayStr);
@@ -3550,7 +3541,7 @@ export function AdminReservas() {
       {activeModal === 'gerenciar-bloqueio' && selectedBloqueio && (
         <div
           data-pencil-name="Overlay Bloqueio"
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-[#071915]/60 backdrop-blur-xs animate-fadeIn overflow-y-auto"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-[#071915]/60 backdrop-blur-[4px] animate-fadeIn overflow-y-auto"
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-gerenciar-bloqueio-title"

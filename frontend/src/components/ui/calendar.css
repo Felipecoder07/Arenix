@@ -1,0 +1,25 @@
+.arena-calendar {
+  --calendar-background: #fff;
+  --calendar-foreground: #071915;
+  --calendar-muted: #6f766f;
+  --calendar-border: #e6ded2;
+  background: var(--calendar-background);
+  color: var(--calendar-foreground);
+  border-color: var(--calendar-border);
+  font-family: Inter, system-ui, sans-serif;
+}
+.arena-calendar .calendar-control,
+.arena-calendar .calendar-day { border: 0; background: transparent; color: inherit; cursor: pointer; transition: background-color 150ms, color 150ms; }
+.arena-calendar .calendar-control:hover:not(:disabled),
+.arena-calendar .calendar-day:hover:not(:disabled) { background: #f1ede6; }
+.arena-calendar .calendar-control:focus-visible,
+.arena-calendar .calendar-day:focus-visible { outline: 2px solid #6f766f; outline-offset: 2px; }
+.arena-calendar .calendar-muted, .arena-calendar .calendar-outside { color: var(--calendar-muted); }
+.arena-calendar .calendar-outside { opacity: .4; }
+.arena-calendar .calendar-today { border: 1px solid var(--calendar-border); font-weight: 600; }
+.arena-calendar .calendar-soft-selected { background: #f1ede6; }
+.arena-calendar .calendar-selected,
+.arena-calendar .calendar-selected:hover:not(:disabled) { background: var(--calendar-foreground); color: #fff; opacity: 1; }
+.arena-calendar button:disabled { cursor: default; }
+.arena-calendar .calendar-tooltip { background: var(--calendar-foreground); color: #fff; }
+.arena-date-input::-webkit-calendar-picker-indicator { display: none; }

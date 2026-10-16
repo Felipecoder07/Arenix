@@ -3,6 +3,8 @@ const { fetch } = require('../utils/providerHttp');
 const db = require('../config/database');
 const { sendEmail } = require('./emailService');
 const crypto = require("node:crypto");
+const { readPaymentResponse, paymentError } = require('../utils/paymentProviderError');
+const pixPayment = require('../utils/pixPayment');
 
 const processarLiquidacao = require('./paymentLedgerService').settle;
 
@@ -50,14 +52,12 @@ const criarCobrancaPixRaw = async (reserva_id, valor, tenant_id, intentKey) => {
         qr_code: qrCodeUrl,
         copia_cola: copiaCola,
         gateway_ref: `PIX_ESTATICO_${reserva_id}`,
-        is_estatico: true
+        is_estatico: true,
+        manual_confirmation: true
       };
     }
 
-    throw new Error(
-      'Esta arena ainda não configurou uma chave Pix ou conta Mercado Pago. ' +
-      'Acesse Configurações → Pagamentos para cadastrar sua chave Pix.'
-    );
+    throw paymentError('PIX_PROVIDER_REJECTED', { definitive: true });
   }
 
   try {
@@ -72,14 +72,9 @@ const criarCobrancaPixRaw = async (reserva_id, valor, tenant_id, intentKey) => {
     const clientEmail = details ? details.email : 'cliente@arenix.com';
     const clientName  = details ? details.nome.split(' ') : ['Cliente', 'Arenix'];
 
-    const response = await fetch('https://api.mercadopago.com/v1/payments', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'X-Idempotency-Key': idempotencyKey
-      },
-      body: JSON.stringify({
+    const arena = await db.getAsync('SELECT gateway_user_id FROM Arenas WHERE id=?', [tenant_id]);
+    const receiver = arena?.gateway_user_id || await consultarContaGateway(token);
+    const payload = {
         transaction_amount: Number.parseFloat((valor / 100).toFixed(2)),
         description: `Reserva #${reserva_id} no Arenix`,
         external_reference: intentKey,
@@ -89,33 +84,34 @@ const criarCobrancaPixRaw = async (reserva_id, valor, tenant_id, intentKey) => {
           first_name: clientName[0],
           last_name: clientName.slice(1).join(' ') || 'Silva'
         }
-      })
+      };
+    const snapshot = pixPayment.requestSnapshot(payload);
+    await db.runAsync(`UPDATE PaymentIntents SET receiver_id=?,credential_fingerprint=?,request_encrypted=?,request_hash=?
+      WHERE id=? AND state='creating'`, [String(receiver), require('../utils/security').hash(token), snapshot.encrypted, snapshot.hash, intentKey]);
+    const response = await fetch('https://api.mercadopago.com/v1/payments', {
+      method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'X-Idempotency-Key': idempotencyKey },
+      body: JSON.stringify(payload),
     });
-
-    if (response.ok) {
-      const mpData = await response.json();
+      const mpData = await readPaymentResponse(response);
+      if (!pixPayment.matches(mpData, { amount: valor, receiver, reference: intentKey })) {
+        throw paymentError('PIX_PROVIDER_INVALID_RESPONSE');
+      }
       const txRef = String(mpData.id);
-
-      await db.runAsync(`
+      const pix = pixPayment.pixResponse(mpData);
+      await db.transaction(async () => {
+        await db.runAsync(`
         INSERT OR IGNORE INTO TransacoesGateway (reserva_id, gateway_ref, valor, status, metodo)
         VALUES (?, ?, ?, 'Pendente', 'Pix')
       `, [reserva_id, txRef, valor]);
-
-      return {
-        qr_code_base64: mpData.point_of_interaction.transaction_data.qr_code_base64,
-        qr_code: `data:image/png;base64,${mpData.point_of_interaction.transaction_data.qr_code_base64}`,
-        copia_cola: mpData.point_of_interaction.transaction_data.qr_code,
-        gateway_ref: txRef
-      };
-    } else {
-      const errData = await response.json();
-      const safeMsg = 'O provedor não autorizou a cobrança.';
-      logger.error(`[Mercado Pago API Error] ${safeMsg}`);
-      throw new Error(`Mercado Pago: ${safeMsg}`);
-    }
+        const tx = await db.getAsync('SELECT reserva_id,valor FROM TransacoesGateway WHERE gateway_ref=?', [txRef]);
+        if (Number(tx.reserva_id) !== Number(reserva_id) || Number(tx.valor) !== Number(valor)) throw paymentError('PIX_PROVIDER_INVALID_RESPONSE');
+        await db.runAsync(`UPDATE PaymentIntents SET gateway_ref=?,response_json=?,expires_at=?,
+          state=CASE WHEN state='creating' THEN 'pending' ELSE state END,updated=? WHERE id=?`,
+        [txRef, JSON.stringify(pix), pix.expira_em, Date.now(), intentKey]);
+      });
+      return pix;
   } catch (e) {
-    if (e.message && e.message.startsWith('Mercado Pago:')) throw e;
-    throw new Error(`Erro ao gerar cobrança Pix: ${e.message}`);
+    throw require('../utils/paymentProviderError').normalizePaymentError(e, intentKey);
   }
 };
 
@@ -253,7 +249,7 @@ const criarCobrancaMaquinetaRaw = async (reserva_id, valor, tenant_id, intentKey
   }
 };
 
-const estornarPagamentoPix=async(reserva_id,tenant_id)=>{
+const estornarPagamentoPix=async(reserva_id,tenant_id,{targets}={})=>{
  const token=await obterTokenGatewayArena(tenant_id);
  if(!token) return {success:false,reason:'no_gateway_token'};
  const {ensureSecuritySchema}=require('../config/securitySchema');await ensureSecuritySchema(db);
@@ -262,12 +258,15 @@ const estornarPagamentoPix=async(reserva_id,tenant_id)=>{
  const rows=await db.allAsync("SELECT t.* FROM TransacoesGateway t JOIN Reservas r ON r.id=t.reserva_id WHERE r.tenant_id=? AND (r.id=? OR r.grupo_id=?) AND t.status IN ('Pago','Aprovado')",[tenant_id,reserva_id,reservation.grupo_id]);
  if(!rows.length) return {success:false,reason:'no_approved_transaction'};
  for(const tx of rows){
+  const expected=targets?.find(target=>target.gateway_ref===tx.gateway_ref);
+  if(targets&&!expected) continue;
   const selected=await db.transaction(async()=>{
    const credit=await db.getAsync('SELECT * FROM GatewayCredits WHERE gateway_ref=?',[tx.gateway_ref]);
    if(!credit) return null;
    const prior=await db.getAsync("SELECT amount_cents FROM RefundIntents WHERE id=?",['provider:'+tx.gateway_ref]);
    const amount=credit.amount_cents-(prior?.amount_cents||0);
    if(amount<=0) return {done:true};
+   if(expected && (expected.amount!==amount || expected.total!==credit.amount_cents)) return {changed:true};
    const open=await db.getAsync("SELECT * FROM RefundIntents WHERE gateway_ref=? AND state IN ('pending','unknown')",[tx.gateway_ref]);
    if(open){
     if(open.state==='pending'&&Date.now()-open.created<30000)return {busy:true};
@@ -275,17 +274,20 @@ const estornarPagamentoPix=async(reserva_id,tenant_id)=>{
     return {id:open.id,amount:open.amount_cents,total:credit.amount_cents};
    }
    const id=require('../utils/security').secret();
-   await db.runAsync("INSERT INTO RefundIntents(id,gateway_ref,amount_cents,state,created) VALUES(?,?,?,'pending',?)",[id,tx.gateway_ref,amount,Date.now()]);
+   await db.runAsync("INSERT INTO RefundIntents(id,gateway_ref,amount_cents,state,response_json,created) VALUES(?,?,?,'pending',?,?)",[id,tx.gateway_ref,amount,JSON.stringify({target_total_cents:credit.amount_cents}),Date.now()]);
    return {id,amount,total:credit.amount_cents};
   });
   if(!selected||selected.busy) return {success:false,reason:'pending_reconciliation'};
+  if(selected.changed) return {success:false,reason:'balance_changed'};
   if(selected.done) continue;
   try{
-   const response=await fetch('https://api.mercadopago.com/v1/payments/'+encodeURIComponent(tx.gateway_ref)+'/refunds',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json','X-Idempotency-Key':selected.id},body:JSON.stringify({amount:selected.amount/100})});
+   const response=await fetch('https://api.mercadopago.com/v1/payments/'+encodeURIComponent(tx.gateway_ref)+'/refunds',{method:'POST',signal:AbortSignal.timeout(15000),headers:{Authorization:'Bearer '+token,'Content-Type':'application/json','X-Idempotency-Key':selected.id},body:JSON.stringify({amount:selected.amount/100})});
    const refund=await response.json();
    if(!response.ok||refund.status!=='approved'||String(refund.payment_id)!==String(tx.gateway_ref)||require('../utils/security').cents(refund.amount)!==selected.amount) throw new Error('Refund unconfirmed');
-   await require('./paymentLedgerService').reverse(tx.gateway_ref,selected.total);
-   await db.runAsync("UPDATE RefundIntents SET state='completed',response_json=? WHERE id=?",[JSON.stringify({id:refund.id,status:refund.status}),selected.id]);
+   await db.transaction(async()=>{
+    await require('./paymentLedgerService').reverse(tx.gateway_ref,selected.total);
+    await db.runAsync("UPDATE RefundIntents SET state='completed',response_json=? WHERE id=?",[JSON.stringify({id:refund.id,status:refund.status}),selected.id]);
+   });
   }catch(e){
    await db.runAsync("UPDATE RefundIntents SET state='unknown' WHERE id=?",[selected.id]);
    return {success:false,reason:'pending_reconciliation'};
@@ -325,7 +327,7 @@ async function resolverContextoWebhookMercadoPago(paymentId) {
            a.gateway_access_token, a.gateway_user_id,
            i.id AS intent_id, i.amount_cents AS intent_amount_cents,
            i.tenant_id AS intent_tenant_id, i.reserva_id AS intent_reserva_id,
-           i.state AS intent_state
+           i.state AS intent_state, i.receiver_id AS intent_receiver, i.credential_fingerprint
     FROM TransacoesGateway t
     JOIN Reservas r ON r.id = t.reserva_id
     JOIN Arenas a ON a.id = r.tenant_id
@@ -338,6 +340,8 @@ async function resolverContextoWebhookMercadoPago(paymentId) {
       Number(tx.intent_reserva_id) !== Number(tx.reserva_id)) return null;
 
   const token = require('../utils/security').decrypt(tx.gateway_access_token.trim());
+  if (tx.credential_fingerprint && tx.credential_fingerprint !== require('../utils/security').hash(token)) return null;
+  if (tx.intent_receiver && tx.gateway_user_id && String(tx.intent_receiver) !== String(tx.gateway_user_id)) return null;
   if (!tx.gateway_user_id) {
     tx.gateway_user_id = await consultarContaGateway(token);
     await db.runAsync(`
@@ -363,6 +367,8 @@ async function reconciliarPagamentoSemReferencia(intentId) {
   if (!intent?.gateway_access_token?.trim()) return { state: 'blocked' };
 
   const token = require('../utils/security').decrypt(intent.gateway_access_token.trim());
+  if (intent.credential_fingerprint && intent.credential_fingerprint !== require('../utils/security').hash(token)) return { state: 'blocked' };
+  if (intent.receiver_id && intent.gateway_user_id && String(intent.receiver_id) !== String(intent.gateway_user_id)) return { state: 'blocked' };
   if (!intent.gateway_user_id) {
     intent.gateway_user_id = await consultarContaGateway(token);
     await db.runAsync(`
@@ -392,6 +398,7 @@ async function reconciliarPagamentoSemReferencia(intentId) {
   const payment = matches[0];
   const paymentId = String(payment.id ?? '').trim();
   if (!/^\d+$/.test(paymentId)) return { state: 'blocked' };
+  if (!pixPayment.matches(payment, { amount: intent.amount_cents, receiver: intent.receiver_id || intent.gateway_user_id, reference: intent.id })) return { state: 'blocked' };
 
   await db.transaction(async () => {
     const existing = await db.getAsync('SELECT reserva_id,valor FROM TransacoesGateway WHERE gateway_ref=?', [paymentId]);
@@ -404,9 +411,11 @@ async function reconciliarPagamentoSemReferencia(intentId) {
         [intent.reserva_id, paymentId, intent.amount_cents, intent.method]
       );
     }
+    let recovered = { gateway_ref: paymentId, recovered: true };
+    try { recovered = { ...recovered, ...pixPayment.pixResponse(payment) }; } catch { /* Settlement can recover a payment without an active QR. */ }
     await db.runAsync(
-      "UPDATE PaymentIntents SET gateway_ref=?,state='pending',response_json=?,updated=? WHERE id=? AND (gateway_ref IS NULL OR TRIM(gateway_ref)='')",
-      [paymentId, JSON.stringify({ gateway_ref: paymentId, recovered: true }), Date.now(), intent.id]
+      "UPDATE PaymentIntents SET gateway_ref=?,state='pending',response_json=?,expires_at=?,updated=? WHERE id=? AND state IN ('creating','pending','unknown') AND (gateway_ref IS NULL OR TRIM(gateway_ref)='')",
+      [paymentId, JSON.stringify(recovered), recovered.expira_em || null, Date.now(), intent.id]
     );
   });
 
@@ -482,7 +491,8 @@ async function liquidarWebhookMercadoPago(paymentId, context) {
       ? 'Rejeitado'
       : mpData.status_detail === 'expired' ? 'Expirado' : 'Cancelado';
     await db.transaction(async () => {
-      await db.runAsync('UPDATE TransacoesGateway SET status=?,atualizado_em=CURRENT_TIMESTAMP WHERE gateway_ref=?', [transactionStatus, safePaymentId]);
+      if (await db.getAsync('SELECT 1 FROM GatewayCredits WHERE gateway_ref=?', [safePaymentId])) return;
+      await db.runAsync("UPDATE TransacoesGateway SET status=?,atualizado_em=CURRENT_TIMESTAMP WHERE gateway_ref=? AND status NOT IN ('Pago','Estornado','Chargeback')", [transactionStatus, safePaymentId]);
       await db.runAsync("UPDATE PaymentIntents SET state='failed',response_json=?,updated=? WHERE gateway_ref=? AND state IN ('creating','pending','unknown')", [JSON.stringify({ status: mpData.status, status_detail: mpData.status_detail || null }), Date.now(), safePaymentId]);
     });
     return { state: 'failed', provider_status: mpData.status };
@@ -517,8 +527,10 @@ async function reconciliarEstornoMercadoPago(refundIntentId) {
     if (refundResponse.status === 429 || refundResponse.status >= 500) {
       throw require('../utils/security').httpError(503, 'Reconciliação de estorno temporariamente indisponível.');
     }
-    await db.runAsync("UPDATE RefundIntents SET state='failed',response_json=? WHERE id=?", [JSON.stringify({ http_status: refundResponse.status || null }), intent.id]);
-    return { state: 'failed' };
+    // A failed retry does not prove that the original request was rejected.
+    // Keep its key reserved until the provider confirms the financial outcome.
+    await db.runAsync("UPDATE RefundIntents SET state='unknown' WHERE id=?", [intent.id]);
+    return { state: 'blocked' };
   }
 
   const refund = await refundResponse.json();
@@ -532,7 +544,9 @@ async function reconciliarEstornoMercadoPago(refundIntentId) {
     const credit = await db.getAsync('SELECT amount_cents FROM GatewayCredits WHERE gateway_ref=?', [safePaymentId]);
     const previous = await db.getAsync("SELECT response_json FROM RefundIntents WHERE id=?", ['provider:' + safePaymentId]);
     const alreadyReversed = previous ? Number(previous.response_json) : 0;
-    const desiredTotal = Math.min(Number(credit?.amount_cents || 0), alreadyReversed + amountCents);
+    // These intents request the full remaining payment. A webhook may already
+    // have applied this refund; adding its amount again would double-reverse it.
+    const desiredTotal = Number(credit?.amount_cents || 0);
     if (!credit) return { state: 'blocked' };
     if (desiredTotal > alreadyReversed) {
       await require('./paymentLedgerService').reverse(safePaymentId, desiredTotal);

@@ -229,6 +229,14 @@ const initDb = () => {
       });
     });
 
+    db.run("ALTER TABLE ComunicadosSaaS ADD COLUMN agendado_em TEXT", () => {});
+    db.run("ALTER TABLE ComunicadosSaaS ADD COLUMN estado TEXT NOT NULL DEFAULT 'publicado'", () => {});
+    db.run(`CREATE TABLE IF NOT EXISTS ComunicadoEntregas (
+      comunicado_id INTEGER NOT NULL REFERENCES ComunicadosSaaS(id),
+      email TEXT NOT NULL, estado TEXT NOT NULL DEFAULT 'pendente',
+      PRIMARY KEY (comunicado_id, email)
+    )`);
+
     // --- MÓDULO SAAS (BILLING) ---
 
     // Planos do SaaS
@@ -373,6 +381,8 @@ const initDb = () => {
     db.run("ALTER TABLE Arenas ADD COLUMN trial_expira_em DATE", (err) => { /* ignora se já existir */ });
 
     db.run("ALTER TABLE Arenas ADD COLUMN ciclo_cobranca TEXT DEFAULT 'mensal'", (err) => { /* ignora se já existir */ });
+    db.run("ALTER TABLE Arenas ADD COLUMN motivo_bloqueio TEXT", (err) => { /* ignora se já existir */ });
+    db.run("ALTER TABLE Arenas ADD COLUMN fatura_plano_pendente_id INTEGER", (err) => { /* ignora se já existir */ });
 
     // Migrações de FaturasSaaS — adiciona colunas de Pix para bancos existentes (idempotentes)
     // Nota: SQLite não suporta UNIQUE em ALTER TABLE ADD COLUMN; unicidade garantida pela lógica da aplicação.
@@ -382,6 +392,8 @@ const initDb = () => {
     db.run("ALTER TABLE FaturasSaaS ADD COLUMN metodo_pagamento TEXT", (err) => { /* ignora se já existir */ });
     db.run("ALTER TABLE FaturasSaaS ADD COLUMN ciclo TEXT DEFAULT 'mensal'", (err) => { /* ignora se já existir */ });
     db.run("ALTER TABLE FaturasSaaS ADD COLUMN descricao TEXT", (err) => { /* ignora se já existir */ });
+    db.run("ALTER TABLE FaturasSaaS ADD COLUMN periodo_fim DATE", (err) => { /* ignora se já existir */ });
+    db.run("ALTER TABLE FaturasSaaS ADD COLUMN gateway_estornado_ref TEXT", (err) => { /* ignora se já existir */ });
     
     // Tabelas para fluxo OAuth Seguro
     db.run(`

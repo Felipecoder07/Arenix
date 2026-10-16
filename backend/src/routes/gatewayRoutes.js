@@ -6,6 +6,7 @@ const express = require('express');
 const router = express.Router();
 const { verifyToken } = require('../middlewares/auth');
 const db = require('../config/database');
+const { paymentErrorBody, reference } = require('../utils/paymentProviderError');
 const { assertReservationAccess, requireGatewayManager } = require('../utils/gatewayAuthorization');
 const {
   createOAuthState,
@@ -96,7 +97,7 @@ router.post('/cobranca', verifyToken, requirePermission('gateway.reservation'), 
   } catch (error) {
     logger.error('[Gateway Routes Error]', error);
     const status = error.status || 500;
-    res.status(status).json({ error: require('../utils/security').publicError(error, 'Erro ao gerar cobrança de pagamento.') });
+    res.status(status).json(paymentErrorBody(error, 'Erro ao gerar cobrança de pagamento.'));
   }
 });
 
@@ -104,14 +105,15 @@ router.post('/cobranca', verifyToken, requirePermission('gateway.reservation'), 
 router.get('/status/:reserva_id', verifyToken, requirePermission('gateway.reservation'), async (req, res) => {
   try {
     const { reserva_id } = req.params;
-    const reserva = await db.getAsync('SELECT status, status_pagamento, cliente_id, tenant_id FROM Reservas WHERE id = ?', [reserva_id]);
+    let reserva = await db.getAsync('SELECT status, status_pagamento, cliente_id, tenant_id FROM Reservas WHERE id = ?', [reserva_id]);
 
     if (!reserva) {
       return res.status(404).json({ error: 'Reserva não encontrada.' });
     }
 
     await assertReservationAccess(req.user, reserva);
-
+    await require('../services/paymentIntentService').consultPix(reserva_id, reserva.tenant_id);
+    reserva = await db.getAsync('SELECT status,status_pagamento FROM Reservas WHERE id=?', [reserva_id]);
     res.json({
       status: reserva.status,
       status_pagamento: reserva.status_pagamento
@@ -121,6 +123,33 @@ router.get('/status/:reserva_id', verifyToken, requirePermission('gateway.reserv
     logger.error(error);
     res.status(error.status || 500).json({ error: require('../utils/security').publicError(error, 'Erro ao consultar status da transação.') });
   }
+});
+
+router.get('/pix/:reserva_id', verifyToken, requirePermission('gateway.reservation'), async (req, res) => {
+  try {
+    const id = req.params.reserva_id;
+    const reserva = await db.getAsync('SELECT * FROM Reservas WHERE id=?', [id]);
+    if (!reserva) return res.status(404).json({ error: 'Reserva não encontrada.' });
+    await assertReservationAccess(req.user, reserva);
+    const { consultPix, cachedResponse } = require('../services/paymentIntentService');
+    const intent = await consultPix(id, reserva.tenant_id);
+    const current = await db.getAsync('SELECT status,status_pagamento FROM Reservas WHERE id=?', [id]);
+    const payable = current.status_pagamento !== 'Pago' && !['Cancelada', 'Cancelamento pendente'].includes(current.status);
+    res.json({ ...current, payment_state: intent?.state || 'none',
+      reference: intent ? reference(intent.id) : undefined,
+      pix: payable && intent ? cachedResponse(intent) : null });
+  } catch (error) { res.status(error.status || 500).json(paymentErrorBody(error)); }
+});
+
+router.get('/diagnostico/:reserva_id', verifyToken, requireGatewayManager, async (req, res) => {
+  try {
+    const { getPixIntent } = require('../services/paymentIntentService');
+    const intent = await getPixIntent(req.params.reserva_id, req.user.tenant_id);
+    if (!intent) return res.status(404).json({ error: 'Tentativa Pix não encontrada.' });
+    res.json({ reference: reference(intent.id), state: intent.state, created: intent.created,
+      last_checked: intent.last_reconciled, next_check: intent.next_reconcile, checks: intent.reconcile_count,
+      diagnostic: require('../utils/paymentProviderError').sanitizeDiagnostic(JSON.parse(intent.diagnostic_json || '{}')) });
+  } catch (error) { res.status(error.status || 500).json(paymentErrorBody(error)); }
 });
 
 // Simular pagamento (Útil apenas para desenvolvimento/testes e demonstração)
@@ -324,6 +353,8 @@ router.get('/oauth/callback', async (req, res) => {
         const publicKey = mpData.public_key || '';
 
         if (tenantId && accessToken) {
+          const connectedId = await consultarContaGateway(accessToken);
+          if (String(mpData.user_id) !== connectedId) throw new Error('OAuth account mismatch');
           await db.runAsync(`
             UPDATE Arenas
             SET gateway_access_token = ?, gateway_public_key = ?, gateway_user_id = ?
@@ -394,6 +425,8 @@ router.post('/oauth/exchange', verifyToken, requireGatewayManager, async (req, r
       const publicKey = mpData.public_key || '';
 
       if (tenantId && accessToken) {
+        const connectedId = await consultarContaGateway(accessToken);
+        if (String(mpData.user_id) !== connectedId) throw new Error('OAuth account mismatch');
         await db.runAsync(`
           UPDATE Arenas
           SET gateway_access_token = ?, gateway_public_key = ?, gateway_user_id = ?

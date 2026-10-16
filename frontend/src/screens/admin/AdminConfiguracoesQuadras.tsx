@@ -1,7 +1,9 @@
+import { ToastLayer } from "../../components/ToastLayer";
+import { TeamRecentActivity } from '../../components/TeamRecentActivity';
+import { ArenaPortalButton } from '../../components/ArenaPortalButton';
 import React, { useState, useEffect, useCallback } from "react";
 import { apiFetch as fetch } from "../../utils/apiFetch";
-import { safeStorage } from "../../utils/safeStorage";
-import { getStoredUser } from "../../utils/session";
+import { getStoredUser, clearSession } from "../../utils/session";
 import { AdminArenaConfiguracoes } from "./AdminArenaConfiguracoes";
 import type { Announcement } from "../../types/api";
 import {
@@ -23,10 +25,7 @@ import {
   Save,
   CheckCircle2,
   BellRing,
-  MessageCircle,
   CalendarX,
-  Receipt,
-  Clock,
   ListChecks,
   UserX,
   GripVertical,
@@ -46,26 +45,9 @@ interface UsuarioData {
   perfil: string;
   criado_em: string;
   ultimo_acesso?: string;
+  ativo?: number;
 }
 
-const DEFAULT_USUARIOS: UsuarioData[] = [
-  {
-    id: 1,
-    nome: "Mateus Costa",
-    email: "mateus@arenacentral.com",
-    perfil: "Gerente",
-    criado_em: "2026-10-01T09:42:00.000Z",
-    ultimo_acesso: "Hoje, 09:42",
-  },
-  {
-    id: 2,
-    nome: "Felipe Veríssimo",
-    email: "felipe@arenacentral.com",
-    perfil: "Administrador",
-    criado_em: "2026-09-30T18:20:00.000Z",
-    ultimo_acesso: "Ontem, 18:20",
-  },
-];
 
 interface PlanoInfo {
   plano: { nome: string; max_quadras: number; max_usuarios: number; valor_mensal: number };
@@ -166,7 +148,6 @@ export function AdminConfiguracoesQuadras() {
   const user = getStoredUser();
   const canManageMotivos = user?.perfil === "Administrador";
   const userName = user?.nome || "fefe";
-  const arenaSlug = safeStorage.getItem("arena_slug") || "felp-arena";
 
   const getInitialTab = () => {
     if (typeof window !== "undefined") {
@@ -209,13 +190,34 @@ export function AdminConfiguracoesQuadras() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Usuarios state
-  const [usuarios, setUsuarios] = useState<UsuarioData[]>(DEFAULT_USUARIOS);
+  const [usuarios, setUsuarios] = useState<UsuarioData[]>([]);
   const [loadingUsuarios, setLoadingUsuarios] = useState(false);
   const [currentUser, setCurrentUser] = useState<{ id: number; perfil: string } | null>(null);
-  const [planoInfo, setPlanoInfo] = useState<PlanoInfo | null>({
-    plano: { nome: "Básico", max_quadras: 3, max_usuarios: 3, valor_mensal: 99 },
-    uso: { quadras_usadas: 2, usuarios_usados: 2 },
-  });
+  const [planoInfo, setPlanoInfo] = useState<PlanoInfo | null>(null);
+  const [loadingPlano, setLoadingPlano] = useState(true);
+
+  // Resumo de horários calculado a partir das quadras reais
+  const horarioResumo = (() => {
+    const faixas = quadras
+      .filter((q) => q.hora_abertura && q.hora_fechamento)
+      .map((q) => ({
+        abre: (q.hora_abertura as string).slice(0, 5),
+        fecha: (q.hora_fechamento as string).slice(0, 5),
+      }));
+    if (faixas.length === 0) {
+      return { valor: "—", nota: "Nenhuma quadra com horário definido" };
+    }
+    const distintas = new Set(faixas.map((f) => `${f.abre}–${f.fecha}`));
+    if (distintas.size === 1) {
+      return {
+        valor: [...distintas][0],
+        nota: faixas.length === 1 ? "Horário da quadra" : "Mesmo horário em todas as quadras",
+      };
+    }
+    const abre = faixas.map((f) => f.abre).sort()[0];
+    const fecha = faixas.map((f) => f.fecha).sort().slice(-1)[0];
+    return { valor: `${abre}–${fecha}`, nota: `${distintas.size} horários diferentes entre quadras` };
+  })();
 
   // Modal usuario
   const [modalUsuarioOpen, setModalUsuarioOpen] = useState(false);
@@ -228,9 +230,12 @@ export function AdminConfiguracoesQuadras() {
   const [modalTransferirOpen, setModalTransferirOpen] = useState(false);
   const [novoAdminId, setNovoAdminId] = useState<number | "">("");
   const [transferindo, setTransferindo] = useState(false);
+  const [transferPassword, setTransferPassword] = useState("");
+  const [transferError, setTransferError] = useState("");
 
   // Modal para criar / editar quadra
   const [modalOpen, setModalOpen] = useState(false);
+  const [salvandoQuadra, setSalvandoQuadra] = useState(false);
   const [editingQuadra, setEditingQuadra] = useState<QuadraData | null>(null);
   const [formNome, setFormNome] = useState("");
   const [formTipoPiso, setFormTipoPiso] = useState("Areia");
@@ -308,8 +313,10 @@ export function AdminConfiguracoesQuadras() {
       const data = await res.json();
       if (!Array.isArray(data)) throw new Error("Resposta inválida ao carregar as quadras.");
       setQuadras(data);
+      return true;
     } catch {
       showToast("Não foi possível carregar as quadras.");
+      return false;
     } finally {
       setLoading(false);
     }
@@ -321,7 +328,7 @@ export function AdminConfiguracoesQuadras() {
       const res = await fetch("/api/usuarios", { headers: { "Content-Type": "application/json" } });
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           setUsuarios(data);
         }
       }
@@ -331,21 +338,28 @@ export function AdminConfiguracoesQuadras() {
   }, []);
 
   const loadPlanoInfo = useCallback(async () => {
+    setLoadingPlano(true);
     try {
-      const res = await fetch("/api/saas/plano", { headers: { "Content-Type": "application/json" } });
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.plano) {
-          setPlanoInfo(data);
-        }
-      }
-    } catch { /* silent */ }
+      const res = await fetch("/api/tenant/assinatura/plano", { headers: { "Content-Type": "application/json" } });
+      if (!res.ok) throw new Error("Plano indisponível");
+      const data = await res.json();
+      setPlanoInfo(data?.plano && data?.uso ? data : null);
+    } catch {
+      setPlanoInfo(null);
+    } finally {
+      setLoadingPlano(false);
+    }
   }, []);
 
   useEffect(() => {
     loadQuadras();
     fetch("/api/auth/me").then(r => r.ok ? r.json() : null).then(d => setCurrentUser(d?.usuario || null)).catch(() => {});
   }, [loadQuadras]);
+
+  // Plano da arena (limite de quadras) carregado sempre e atualizado ao cadastrar/remover quadras
+  useEffect(() => {
+    loadPlanoInfo();
+  }, [loadPlanoInfo, quadras.length]);
 
   useEffect(() => {
     if (activeTab === "usuarios") {
@@ -443,28 +457,47 @@ export function AdminConfiguracoesQuadras() {
     }
   };
 
-  const handleDesconectarMercadoPago = async () => {
-    if (!window.confirm("Deseja desconectar a conta do Mercado Pago?")) return;
+  const [modalDesconectarOpen, setModalDesconectarOpen] = useState(false);
+  const [senhaDesconectar, setSenhaDesconectar] = useState("");
+  const [desconectando, setDesconectando] = useState(false);
+
+  const handleDesconectarMercadoPago = () => {
+    setSenhaDesconectar("");
+    setModalDesconectarOpen(true);
+  };
+
+  const confirmarDesconectarMercadoPago = async () => {
+    if (!senhaDesconectar) {
+      showToast("Informe sua senha atual para desconectar.");
+      return;
+    }
+    setDesconectando(true);
     try {
-      await fetch("/api/pagamentos/gateway/oauth/desconectar", {
+      const res = await fetch("/api/pagamentos/gateway/oauth/desconectar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ senha_atual: "", codigo_2fa: "" }),
+        body: JSON.stringify({ senha_atual: senhaDesconectar }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Erro ao desconectar conta.");
       setAccessToken("");
       setGatewayConnected(false);
       setPublicKey("");
+      setModalDesconectarOpen(false);
+      setSenhaDesconectar("");
       showToast("Conta Mercado Pago desconectada.");
       loadPagamentos();
-    } catch {
-      showToast("Erro ao desconectar conta.");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Erro ao desconectar conta.");
+    } finally {
+      setDesconectando(false);
     }
   };
 
   const handleSavePagamentos = async () => {
     setSalvandoPagamentos(true);
     try {
-      const promises: Promise<any>[] = [];
+      const promises: Promise<void>[] = [];
 
       promises.push(
         fetch("/api/arenas/minha", {
@@ -539,10 +572,9 @@ export function AdminConfiguracoesQuadras() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === "notificacoes") {
-      loadNotificacoes();
-    }
-  }, [activeTab, loadNotificacoes]);
+    // Prepare the panel once; tab navigation must preserve unsaved preferences.
+    loadNotificacoes();
+  }, [loadNotificacoes]);
 
   const handleSaveNotificacoes = async () => {
     setSalvandoNotificacoes(true);
@@ -594,10 +626,8 @@ export function AdminConfiguracoesQuadras() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === "cancelamentos") {
-      loadMotivos();
-    }
-  }, [activeTab, loadMotivos]);
+    loadMotivos();
+  }, [loadMotivos]);
 
   const handleOpenAdicionarMotivo = () => {
     setEditingMotivo(null);
@@ -727,42 +757,36 @@ export function AdminConfiguracoesQuadras() {
 
   const handleTransferirAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!novoAdminId) return;
+    if (transferindo || !novoAdminId || !transferPassword) return;
+    setTransferError("");
     if (currentUser?.perfil !== "Administrador") {
-      showToast("Apenas o Administrador atual pode transferir a administração.");
+      setTransferError("Apenas o Administrador atual pode transferir a administra\u00e7\u00e3o.");
       return;
     }
-    const targetUser = usuarios.find((u) => u.id === Number(novoAdminId));
-    if (!targetUser) return;
-    if (
-      !window.confirm(
-        `Tem certeza que deseja transferir a administração para ${targetUser.nome}? Seu perfil passará a ser Gerente.`
-      )
-    ) {
+    const targetUser = usuarios.find(u => u.id === Number(novoAdminId) && u.ativo === 1 && canManageUser(u));
+    if (!targetUser) {
+      setTransferError("Selecione um integrante ativo da equipe.");
       return;
     }
     setTransferindo(true);
     try {
-      const res = await fetch(`/api/usuarios/${targetUser.id}`, {
-        method: "PUT",
+      const res = await fetch("/api/usuarios/transferir-administracao", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ perfil: "Administrador" }),
+        body: JSON.stringify({ usuario_id: targetUser.id, senha_atual: transferPassword }),
       });
       if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error(d.error || "Erro ao transferir administração.");
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Erro ao transferir administra\u00e7\u00e3o.");
       }
-      showToast(`Administração transferida para ${targetUser.nome}!`);
       setModalTransferirOpen(false);
       setNovoAdminId("");
-      loadUsuarios();
-      fetch("/api/auth/me")
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d) => setCurrentUser(d?.usuario || null))
-        .catch(() => {});
+      clearSession();
+      window.dispatchEvent(new Event('cm:session-expired'));
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Erro ao transferir administração.");
+      setTransferError(err instanceof Error ? err.message : "Erro ao transferir administra\u00e7\u00e3o.");
     } finally {
+      setTransferPassword("");
       setTransferindo(false);
     }
   };
@@ -829,7 +853,7 @@ export function AdminConfiguracoesQuadras() {
           precosMap[m] = Number(q.preco_base || q.preco_hora || 100).toFixed(2).replace(".", ",");
           return m;
         } else {
-          precosMap[m.nome] = Number(m.preco ? m.preco / 100 : q.preco_base || 100).toFixed(2).replace(".", ",");
+          precosMap[m.nome] = Number(m.preco ?? q.preco_base ?? 100).toFixed(2).replace(".", ",");
           return m.nome;
         }
       });
@@ -854,88 +878,64 @@ export function AdminConfiguracoesQuadras() {
 
   const handleSaveQuadraForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    const precoNum = getFirstPreco();
-
-    const modalidadesPayload = formModalidades.map((m) => ({
-      nome: m,
-      preco: Math.round(
-        (parseFloat((formModalidadePrecos[m] || "100").replace(/\./g, "").replace(",", ".")) || 100) * 100
-      ),
-    }));
-
-    if (editingQuadra) {
-      setQuadras((prev) =>
-        prev.map((q) =>
-          q.id === editingQuadra.id
-            ? {
-                ...q,
-                nome: formNome,
-                tipo: formTipoPiso,
-                preco_base: precoNum,
-                hora_abertura: formHoraAbertura,
-                hora_fechamento: formHoraFechamento,
-                modalidades: formModalidades,
-              }
-            : q
-        )
-      );
-      try {
-        await fetch(`/api/quadras/${editingQuadra.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            nome: formNome,
-            preco_base: precoNum * 100,
-            hora_abertura: formHoraAbertura,
-            hora_fechamento: formHoraFechamento,
-            tipo: formTipoPiso,
-            modalidades: modalidadesPayload,
-          }),
-        });
-      } catch {}
-      showToast("Quadra atualizada com sucesso!");
-    } else {
-      const newQuadra: QuadraData = {
-        id: Date.now(),
-        nome: formNome,
-        tipo: formTipoPiso,
-        preco_base: precoNum,
-        hora_abertura: formHoraAbertura,
-        hora_fechamento: formHoraFechamento,
-        status: "Ativa",
-        modalidades: formModalidades,
-      };
-      setQuadras((prev) => [...prev, newQuadra]);
-      try {
-        await fetch("/api/quadras", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            nome: formNome,
-            preco_base: precoNum * 100,
-            hora_abertura: formHoraAbertura,
-            hora_fechamento: formHoraFechamento,
-            tipo: formTipoPiso,
-            modalidades: modalidadesPayload,
-          }),
-        });
-      } catch {}
-      showToast("Nova quadra cadastrada com sucesso!");
+    if (salvandoQuadra) return;
+    setSalvandoQuadra(true);
+    try {
+      const modalidades = formModalidades.map((nome) => ({
+        nome,
+        preco: parseFloat((formModalidadePrecos[nome] || "100").replace(/\./g, "").replace(",", ".")),
+      }));
+      if (modalidades.some((m) => !Number.isFinite(m.preco) || m.preco <= 0)) {
+        throw new Error("Informe um preço válido para cada modalidade.");
+      }
+      const response = await fetch(editingQuadra ? `/api/quadras/${editingQuadra.id}` : "/api/quadras", {
+        method: editingQuadra ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nome: formNome,
+          preco_base: getFirstPreco(),
+          hora_abertura: formHoraAbertura,
+          hora_fechamento: formHoraFechamento,
+          tipo: formTipoPiso,
+          modalidades,
+          ...(editingQuadra ? { status: editingQuadra.status || (editingQuadra.ativa === false ? "Inativa" : "Ativa") } : {}),
+        }),
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.error || "Não foi possível salvar a quadra.");
+      }
+      setModalOpen(false);
+      const refreshed = await loadQuadras();
+      showToast(refreshed
+        ? (editingQuadra ? "Quadra atualizada com sucesso!" : "Nova quadra cadastrada com sucesso!")
+        : "Quadra salva. Não foi possível atualizar a lista; recarregue a página.");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Não foi possível salvar a quadra.");
+    } finally {
+      setSalvandoQuadra(false);
     }
-    setModalOpen(false);
   };
 
   const handleDeleteQuadra = async () => {
-    if (!editingQuadra) return;
+    if (!editingQuadra || salvandoQuadra) return;
     if (!window.confirm(`Excluir a quadra "${editingQuadra.nome}"? Esta ação não pode ser desfeita.`)) return;
-    setQuadras((prev) => prev.filter((q) => q.id !== editingQuadra.id));
+    setSalvandoQuadra(true);
     try {
-      await fetch(`/api/quadras/${editingQuadra.id}`, { method: "DELETE" });
-    } catch {}
-    showToast("Quadra excluída com sucesso!");
-    setModalOpen(false);
+      const response = await fetch(`/api/quadras/${editingQuadra.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.error || "Não foi possível excluir a quadra.");
+      }
+      setQuadras((prev) => prev.filter((q) => q.id !== editingQuadra.id));
+      setModalOpen(false);
+      showToast("Quadra excluída com sucesso!");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Não foi possível excluir a quadra.");
+    } finally {
+      setSalvandoQuadra(false);
+    }
   };
-
   const handleAddModalidade = () => {
     const nova = formNovaModalidade.trim();
     if (!nova || formModalidades.includes(nova)) return;
@@ -989,12 +989,12 @@ export function AdminConfiguracoesQuadras() {
     <>
       {/* Toast Alert */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-[#071915] text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 border border-[#C9FF3B]/30 animate-fade-in">
+        <ToastLayer><div className="fixed bottom-6 right-6 z-50 bg-[#071915] text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 border border-[#C9FF3B]/30 animate-fade-in">
           <div className="w-5 h-5 rounded-full bg-[#C9FF3B] flex items-center justify-center text-[#071915]">
             <Check size={13} strokeWidth={3} />
           </div>
           <span className="text-sm font-medium">{toastMessage}</span>
-        </div>
+        </div></ToastLayer>
       )}
 
       {/* Container Principal */}
@@ -1064,32 +1064,7 @@ export function AdminConfiguracoesQuadras() {
               className="box-border w-fit shrink-0 h-fit flex flex-row gap-[10px] justify-start items-center"
             >
               {/* Portal do Cliente */}
-              <a
-                href={`/portal/${arenaSlug}`}
-                target="_blank"
-                rel="noreferrer"
-                data-pencil-name="Portal do Cliente Configurações"
-                className="box-border w-fit shrink-0 h-[34px] flex flex-row gap-[7px] px-[12px] justify-start items-center bg-[#ECFFF4] hover:bg-[#d9fae6] transition-colors rounded-[17px] no-underline cursor-pointer"
-              >
-                <svg
-                  data-pencil-name="Ícone Portal Configurações"
-                  viewBox="0 0 13.99993896484375 14"
-                  preserveAspectRatio="xMidYMid meet"
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="box-border w-[14px] shrink-0 h-[14px]"
-                >
-                  <path
-                    d="M6.76074 0.58789q-1.8457 0.09912-3.3291 1.09375-1.0083 0.66992-1.70215 1.65772-0.69385 0.98779-0.97412 2.16357-0.16748 0.71436-0.16748 1.49707 0 0.61523 0.0957 1.16895 0.09912 0.55371 0.32471 1.12793 0.4751 1.24414 1.43897 2.21826 0.96729 0.97412 2.21484 1.46289 0.58789 0.22559 1.1416 0.33154 0.55371 0.10254 1.19629 0.10254 0.75537 0 1.43213-0.15381 0.68018-0.15381 1.35351-0.4751 1.26123-0.61865 2.16358-1.70215 0.90234-1.0835 1.25097-2.43359 0.35205-1.35352 0.11963-2.72412-0.229-1.37402-1.01513-2.52246-0.81006-1.18945-2.05078-1.92432-1.2373-0.73486-2.66602-0.86133-0.48877-0.04102-0.82715-0.02734z m-1.14844 1.3877q-1.09033 1.62354-1.39794 3.52734-0.04102 0.16748-0.07178 0.44092-0.02734 0.27344-0.02735 0.34179l0 0.02735q0 0.07178-0.03418 0.08545-0.03418 0.01367-0.21875 0.02734l-2.08496 0 0.01368-0.09912q0.08545-0.64258 0.34179-1.28516 0.25977-0.646 0.65283-1.16211 1.0083-1.36035 2.64551-1.89013l0.19824-0.05811q0.01367 0-0.01709 0.04444z m3.25049 0.12304q1.03564 0.37939 1.84571 1.19287 0.81348 0.81006 1.20654 1.84571 0.22217 0.60156 0.29394 1.18945l0.01368 0.09912-2.08838 0q-0.18115-0.01367-0.21533-0.02734-0.03418-0.01367-0.03418-0.08545l0-0.02735q0-0.06836-0.03077-0.34179-0.02734-0.27344-0.06836-0.45459-0.30762-1.89014-1.38427-3.51367l-0.04444-0.04444 0.15381 0.04444q0.14014 0.04102 0.35205 0.12304z m-1.72265 0.14014q0.64258 0.82715 1.04931 1.85596 0.40674 1.02881 0.50586 2.02343l0.02735 0.30762-3.45899 0 0.04102-0.29394q0.08545-0.90918 0.42041-1.83204 0.33838-0.92627 0.88183-1.70898 0.11279-0.16748 0.2461-0.34863 0.1333-0.18457 0.14697-0.17774 0.01367 0.00684 0.14014 0.17432z m-3.03858 5.36279q0.01367 0.02734 0.01367 0.10596 0 0.0752 0.02735 0.34863 0.03076 0.27344 0.07178 0.44092 0.30762 1.90381 1.38427 3.52734l0.04444 0.04444-0.15381-0.04444q-1.66797-0.50244-2.70362-1.90381-0.39307-0.51611-0.65283-1.15869-0.25635-0.646-0.34179-1.28857l-0.01368-0.09912 2.1294 0.01367q0.18115 0 0.19482 0.01367z m4.6211 0.02735q-0.01367 0.05811-0.02735 0.23925-0.07178 0.75537-0.33154 1.55518-0.25635 0.79639-0.64941 1.4834-0.15381 0.2666-0.42041 0.64599-0.2666 0.37598-0.29395 0.37598-0.02734 0-0.29395-0.37598-0.2666-0.37939-0.42041-0.64599-0.39307-0.68701-0.65283-1.4834-0.25635-0.7998-0.32812-1.55518l-0.04102-0.29394 3.45899 0 0 0.05469z m3.48632 0.04443q-0.16748 1.32959-0.98779 2.44385-0.82031 1.11084-2.05078 1.67138-0.23926 0.09912-0.52637 0.19825-0.28711 0.0957-0.27343 0.06836l0.07177-0.09913q0.42041-0.64258 0.76221-1.45605 0.3418-0.81348 0.5127-1.62354 0.06836-0.28027 0.11621-0.64941 0.05127-0.37256 0.05127-0.51269l0-0.02735q0-0.07178 0.03418-0.08545 0.03418-0.01367 0.21533-0.02734l2.08838 0-0.01368 0.09912z"
-                    fill="#008A5A"
-                  />
-                </svg>
-                <div
-                  data-pencil-name="Texto Portal Configurações"
-                  className="text-[12px]/[normal] box-border text-[#007A50] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
-                >
-                  Portal do Cliente
-                </div>
-              </a>
+              <ArenaPortalButton />
 
               {/* Usuário Logado */}
               <div
@@ -1399,13 +1374,13 @@ export function AdminConfiguracoesQuadras() {
                     data-pencil-name="Valor Config Quadras cadastradas"
                     className="text-[22px]/[normal] box-border text-[#2563EB] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap leading-none"
                   >
-                    {quadras.length} / 6
+                    {quadras.length} / {planoInfo?.plano?.max_quadras && planoInfo.plano.max_quadras > 0 ? planoInfo.plano.max_quadras : planoInfo ? "∞" : "—"}
                   </div>
                   <div
                     data-pencil-name="Desc Config Quadras cadastradas"
                     className="text-[11px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
                   >
-                    Quadras cadastradas no plano atual
+                    {planoInfo ? `Quadras cadastradas no plano ${planoInfo.plano.nome}` : "Quadras cadastradas no plano atual"}
                   </div>
                 </div>
               </div>
@@ -1446,13 +1421,13 @@ export function AdminConfiguracoesQuadras() {
                     data-pencil-name="Valor Config Horário padrão"
                     className="text-[22px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap leading-none"
                   >
-                    07:00–22:00
+                    {horarioResumo.valor}
                   </div>
                   <div
                     data-pencil-name="Desc Config Horário padrão"
                     className="text-[11px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
                   >
-                    Usado em novas quadras
+                    {horarioResumo.nota}
                   </div>
                 </div>
               </div>
@@ -1529,7 +1504,9 @@ export function AdminConfiguracoesQuadras() {
                     data-pencil-name="Sub Quadras Configurações"
                     className="text-[12px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
                   >
-                    Plano Pro: {quadras.length}/6 quadras cadastradas
+                    {loadingPlano || loading ? "Carregando plano e quadras..." : planoInfo
+                      ? `Plano ${planoInfo.plano.nome}: ${quadras.length}${planoInfo.plano.max_quadras > 0 ? `/${planoInfo.plano.max_quadras}` : " (sem limite)"} quadras cadastradas`
+                      : `${quadras.length} quadras cadastradas · Plano indisponível`}
                   </div>
                 </div>
 
@@ -1562,8 +1539,8 @@ export function AdminConfiguracoesQuadras() {
               </div>
 
               {/* Tabela com Scroll Horizontal Seguro */}
-              <div className="w-full overflow-x-auto custom-scrollbar">
-                <div className="w-full min-w-[780px]">
+              <div className="w-full overflow-x-hidden">
+                <div className="w-full min-w-0">
                   {/* Colunas Cabeçalho */}
                   <div
                     data-pencil-name="Colunas Quadras Config"
@@ -1571,25 +1548,13 @@ export function AdminConfiguracoesQuadras() {
                   >
                     <div
                       data-pencil-name="Coluna Quadras NOME"
-                      className="text-[10px]/[normal] box-border w-[150px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left"
+                      className="text-[10px]/[normal] box-border w-[130px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left"
                     >
                       NOME
                     </div>
                     <div
-                      data-pencil-name="Coluna Quadras MODALIDADE"
-                      className="text-[10px]/[normal] box-border w-[260px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left"
-                    >
-                      MODALIDADE
-                    </div>
-                    <div
-                      data-pencil-name="Coluna Quadras HORÁRIO"
-                      className="text-[10px]/[normal] box-border w-[140px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left"
-                    >
-                      HORÁRIO
-                    </div>
-                    <div
                       data-pencil-name="Coluna Quadras STATUS"
-                      className="text-[10px]/[normal] box-border w-[90px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left"
+                      className="text-[10px]/[normal] box-border w-[80px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left"
                     >
                       STATUS
                     </div>
@@ -1598,6 +1563,18 @@ export function AdminConfiguracoesQuadras() {
                       className="text-[10px]/[normal] box-border w-[150px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left"
                     >
                       AÇÕES
+                    </div>
+                    <div
+                      data-pencil-name="Coluna Quadras MODALIDADE"
+                      className="text-[10px]/[normal] box-border flex-1 min-w-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left"
+                    >
+                      MODALIDADE
+                    </div>
+                    <div
+                      data-pencil-name="Coluna Quadras HORÁRIO"
+                      className="text-[10px]/[normal] box-border w-[110px] shrink-0 text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold tracking-[0.5px] text-left"
+                    >
+                      HORÁRIO
                     </div>
                   </div>
 
@@ -1633,8 +1610,8 @@ export function AdminConfiguracoesQuadras() {
                           className="box-border w-full h-[69.5px] shrink-0 flex flex-row gap-[14px] px-[22px] justify-start items-center border-b border-[#F4EFE8] hover:bg-[#FAF7F2] transition-colors"
                         >
                           {/* Nome e Preço */}
-                          <div className="box-border w-[150px] shrink-0 h-fit flex flex-col gap-[5px] justify-start items-start">
-                            <div className="text-[13px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap truncate max-w-[145px]">
+                          <div className="order-1 box-border w-[130px] shrink-0 h-fit flex flex-col gap-[5px] justify-start items-start">
+                            <div className="text-[13px]/[normal] box-border text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap truncate max-w-[125px]">
                               {quadra.nome}
                             </div>
                             <div className="text-[11px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap">
@@ -1643,7 +1620,7 @@ export function AdminConfiguracoesQuadras() {
                           </div>
 
                           {/* Modalidades Pills */}
-                          <div className="box-border w-[260px] shrink-0 h-fit flex flex-row flex-wrap gap-[4px] justify-start items-center">
+                          <div className="order-4 box-border flex-1 min-w-0 h-fit flex flex-row flex-wrap gap-[4px] justify-start items-center">
                             {modalidadesList.slice(0, 3).map((mod, idx) => {
                               const style =
                                 MODALITY_STYLES[mod] || {
@@ -1677,14 +1654,14 @@ export function AdminConfiguracoesQuadras() {
                           </div>
 
                           {/* Horário */}
-                          <div className="text-[12px]/[normal] box-border w-[140px] shrink-0 text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap">
+                          <div className="order-5 text-[12px]/[normal] box-border w-[110px] shrink-0 text-[#071915] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap">
                             {horarioFormatado}
                           </div>
 
                           {/* Status */}
-                          <div className="box-border w-[90px] shrink-0">
+                          <div className="order-2 box-border w-[80px] shrink-0">
                             <div
-                              className={`box-border w-[90px] h-[24px] flex flex-row justify-center items-center rounded-[12px] ${
+                              className={`box-border w-[80px] h-[24px] flex flex-row justify-center items-center rounded-[12px] ${
                                 isAtiva ? "bg-[#EAF8EF]" : "bg-[#F1EDE6]"
                               }`}
                             >
@@ -1699,7 +1676,7 @@ export function AdminConfiguracoesQuadras() {
                           </div>
 
                           {/* Ações */}
-                          <div className="box-border w-[150px] shrink-0 h-fit flex flex-row gap-[6px] justify-start items-center">
+                          <div className="order-3 box-border w-[150px] shrink-0 h-fit flex flex-row gap-[6px] justify-start items-center">
                             <button
                               type="button"
                               onClick={() => openEditQuadraModal(quadra)}
@@ -1761,7 +1738,9 @@ export function AdminConfiguracoesQuadras() {
             </div>
           </div>}
 
-          {activeTab === "arena" && <AdminArenaConfiguracoes />}
+          <div hidden={activeTab !== "arena"} className="flex-1 w-full min-w-0">
+            <AdminArenaConfiguracoes />
+          </div>
 
           {/* Painel Usuários */}
           {activeTab === "usuarios" && (
@@ -1808,8 +1787,11 @@ export function AdminConfiguracoesQuadras() {
                       type="button"
                       onClick={() => {
                         setNovoAdminId("");
+                        setTransferPassword("");
+                        setTransferError("");
                         setModalTransferirOpen(true);
                       }}
+                      disabled={currentUser?.perfil !== "Administrador" || loadingUsuarios}
                       data-pencil-name="Transferir administração"
                       className="cursor-pointer box-border w-fit shrink-0 h-[36px] flex flex-row gap-[7px] px-[12px] justify-start items-center outline outline-1 outline-[#E6DED2] -outline-offset-[0.5px] rounded-[9px] hover:bg-[#FAF8F4] transition-colors"
                     >
@@ -2010,9 +1992,9 @@ export function AdminConfiguracoesQuadras() {
 
               {/* Capacidade da equipe */}
               {(() => {
-                const maxVagas = planoInfo?.plano?.max_usuarios ?? 3;
+                const maxVagas = planoInfo?.plano?.max_usuarios ?? 0;
                 const usados = planoInfo ? planoInfo.uso.usuarios_usados : usuarios.length;
-                const planoNome = planoInfo?.plano?.nome || "Básico";
+                const planoNome = planoInfo?.plano?.nome;
                 const pct = maxVagas > 0 ? Math.min((usados / maxVagas) * 100, 100) : 100;
                 return (
                   <div
@@ -2048,13 +2030,15 @@ export function AdminConfiguracoesQuadras() {
                           data-pencil-name="Título capacidade equipe"
                           className="text-[15px] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-extrabold text-left whitespace-nowrap"
                         >
-                          Sua equipe ainda pode crescer
+                          {planoInfo && maxVagas > 0 && usados >= maxVagas ? "Limite de usuários atingido" : "Capacidade da equipe"}
                         </div>
                         <div
                           data-pencil-name="Descrição capacidade equipe"
                           className="text-[11px] box-border text-[#A7B6AE] font-[Inter,system-ui,sans-serif] font-medium text-left whitespace-nowrap"
                         >
-                          Você utiliza {usados} das {maxVagas > 0 ? maxVagas : "∞"} vagas disponíveis no Plano {planoNome}.
+                          {loadingPlano ? "Carregando plano..." : planoInfo
+                            ? `Você utiliza ${usados} das ${maxVagas > 0 ? maxVagas : "∞"} vagas disponíveis no Plano ${planoNome}.`
+                            : "Não foi possível consultar os limites do plano."}
                         </div>
                       </div>
                     </div>
@@ -2070,7 +2054,7 @@ export function AdminConfiguracoesQuadras() {
                           data-pencil-name="Texto vagas"
                           className="text-[11px] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
                         >
-                          {usados} de {maxVagas > 0 ? maxVagas : "∞"} vagas
+                          {loadingPlano || !planoInfo ? "—" : `${usados} de ${maxVagas > 0 ? maxVagas : "∞"} vagas`}
                         </div>
                         <div
                           data-pencil-name="Barra vagas"
@@ -2079,7 +2063,7 @@ export function AdminConfiguracoesQuadras() {
                           <div
                             data-pencil-name="Progresso vagas"
                             className="box-border h-[7px] absolute left-0 top-0 bg-[#C9FF3B] rounded-[4px]"
-                            style={{ width: `${pct}%` }}
+                            style={{ width: `${loadingPlano || !planoInfo ? 0 : pct}%` }}
                           />
                         </div>
                       </div>
@@ -2275,7 +2259,7 @@ export function AdminConfiguracoesQuadras() {
                         data-pencil-name="Subtítulo atividade usuários"
                         className="text-[10px] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-medium text-left whitespace-nowrap"
                       >
-                        Últimas alterações na equipe
+                        Últimas ações da equipe
                       </div>
                     </div>
                     <svg
@@ -2293,96 +2277,7 @@ export function AdminConfiguracoesQuadras() {
                   </div>
 
                   {/* Lista de Atividades */}
-                  {(() => {
-                    const atividades = [
-                      {
-                        texto: `${usuarios[0]?.nome || "Mateus Costa"} entrou no sistema`,
-                        data: "Hoje, 09:42",
-                        icone: (
-                          <svg
-                            data-pencil-name="Símbolo atividade Hoje, 09:42"
-                            viewBox="0 0 13.99993896484375 14"
-                            preserveAspectRatio="xMidYMid meet"
-                            xmlns="http://www.w3.org/2000/svg"
-                            className="box-border w-[14px] shrink-0 h-[14px]"
-                          >
-                            <path
-                              d="M8.59619 1.18945q-0.11279 0.02734-0.21875 0.11963-0.10254 0.09229-0.15381 0.18457-0.04785 0.08887-0.04785 0.25635 0 0.16748 0.04102 0.24609 0.04443 0.0752 0.12646 0.16065 0.08545 0.08203 0.15381 0.12646l0.08545 0.04102 2.63183 0.01367 0.09913 0.04102q0.2085 0.09912 0.30761 0.30761l0.04102 0.09912 0 8.42871-0.04102 0.09913q-0.08545 0.16748-0.22558 0.26318l-0.01367 0q-0.06836 0.05811-0.14698 0.07178-0.0752 0.01367-0.34179 0.01367l-2.31055 0.01367-0.08545 0.05469q-0.18115 0.09912-0.28027 0.2666-0.04102 0.08545-0.04102 0.25293 0 0.16748 0.04102 0.24609 0.04443 0.0752 0.12646 0.16065 0.08545 0.08203 0.15381 0.12646l0.08545 0.04102 2.60449-0.01367q0.23584 0 0.30762-0.02735 0.48877-0.14014 0.81689-0.46826 0.33154-0.33154 0.47168-0.82031 0.02734-0.08545 0.02735-0.71436l0.01367-3.78027-0.01367-3.78027q0-0.62891-0.02735-0.71436-0.12646-0.48877-0.458-0.81689-0.32813-0.33154-0.80323-0.47168l-0.14013-0.04102-1.37061 0q-1.37402 0-1.41504 0.01367z m-2.89844 2.32422q-0.19482 0.05469-0.32812 0.23242-0.1333 0.17432-0.11963 0.36914l0 0.01368q0.01367 0.12646 0.05469 0.19824 0.05811 0.0957 0.2666 0.32129l1.76367 1.77734-5.75244 0-0.08545 0.05469q-0.18115 0.09912-0.28027 0.2666-0.04102 0.08545-0.04102 0.25293 0 0.16748 0.04102 0.24609 0.04443 0.0752 0.12646 0.16065 0.08545 0.08203 0.15381 0.12646l0.08545 0.04102 5.75244 0-0.99463 0.99463q-0.65625 0.66992-0.83056 0.85449-0.17432 0.18115-0.20508 0.24951-0.10938 0.23926-0.01367 0.46485 0.09912 0.22217 0.32128 0.32128 0.22559 0.0957 0.46485-0.01367 0.06836-0.04443 0.33496-0.29394 0.2666-0.25293 1.30225-1.28858 1.52441-1.52783 1.56884-1.59619 0.02734-0.05811 0.03418-0.10596 0.00684-0.04785 0.00684-0.16064 0-0.11279-0.00684-0.16064-0.00684-0.04785-0.03418-0.10596-0.04443-0.06836-1.56884-1.59619-1.0083-1.02197-1.28858-1.27832-0.28027-0.25977-0.35205-0.29395-0.06836-0.0376-0.18115-0.05127-0.10938-0.01367-0.19483 0z"
-                              fill="#637A20"
-                            />
-                          </svg>
-                        ),
-                      },
-                      {
-                        texto: `${usuarios[1]?.nome || "Felipe Veríssimo"} atualizou uma reserva`,
-                        data: "Ontem, 18:20",
-                        icone: (
-                          <svg
-                            data-pencil-name="Símbolo atividade Ontem, 18:20"
-                            viewBox="0 0 13.99993896484375 14"
-                            preserveAspectRatio="xMidYMid meet"
-                            xmlns="http://www.w3.org/2000/svg"
-                            className="box-border w-[14px] shrink-0 h-[14px]"
-                          >
-                            <path
-                              d="M4.57666 0.60156q-0.12305 0.01367-0.24268 0.09912-0.11963 0.08203-0.1914 0.19483-0.04102 0.08545-0.05469 0.20508-0.01367 0.11621-0.01367 0.35546l0 0.29395-1.32959 0.01367q-0.14014 0.01367-0.23926 0.02735-0.50244 0.14014-0.85449 0.50586-0.34863 0.3623-0.44776 0.88183-0.02734 0.0957-0.02734 0.81006l0 7.99463 0.05469 0.15381q0.15723 0.51953 0.56055 0.86133 0.40674 0.3418 0.93994 0.3999 0.15381 0.02734 4.26904 0.02734 4.11523 0 4.26904-0.02734 0.30762-0.02734 0.58789-0.16748 0.32471-0.15381 0.56055-0.44092 0.23926-0.28711 0.35205-0.65283l0.05469-0.15381 0-7.99463q0-0.71436-0.02735-0.81006-0.09912-0.51953-0.45117-0.88183-0.34863-0.36572-0.85107-0.50586-0.09912-0.01367-0.23926-0.02735l-1.32959-0.01367 0-0.29395q0-0.32129-0.03418-0.45459-0.03418-0.1333-0.14697-0.24609-0.14014-0.14014-0.35889-0.16064-0.21533-0.02051-0.37597 0.09228-0.16064 0.10938-0.21875 0.29395-0.02734 0.05469-0.03418 0.1333-0.00684 0.0752-0.00684 0.30078l0 0.33496-3.5 0 0-0.34863q0-0.23926-0.00684-0.30762-0.00684-0.07178-0.03418-0.12646-0.08545-0.21191-0.25293-0.30762-0.16748-0.09912-0.37939-0.05811z m-0.50244 2.67285q0.01367 0.25293 0.02051 0.31788 0.00684 0.06152 0.03418 0.14697 0.05811 0.0957 0.14013 0.18115 0.21191 0.19482 0.50586 0.14697 0.29395-0.04785 0.42041-0.31445 0.02734-0.08545 0.03418-0.14014 0.00684-0.05811 0.02051-0.32129l0-0.36572 3.5 0 0 0.36572q0.01367 0.26318 0.02051 0.32129 0.00684 0.05469 0.03418 0.14014 0.12646 0.2666 0.42041 0.31445 0.29395 0.04785 0.50586-0.14697 0.08203-0.08545 0.14013-0.18115 0.02734-0.08545 0.03418-0.14697 0.00684-0.06494 0.02051-0.31788l0-0.34863 1.31592 0 0.08545 0.04102q0.08203 0.04443 0.15722 0.12304 0.07861 0.0752 0.11963 0.16065 0.04443 0.08203 0.05811 0.28027 0.01367 0.19482 0.01367 0.85108l0 0.86816-9.35156 0 0.01367-1.72266q0.01367-0.16748 0.02734-0.20849 0.09912-0.2666 0.35206-0.36572 0.05469-0.01367 0.16748-0.02735l1.18945 0 0 0.34863z m7.58789 5.82422q0 1.89014-0.00684 2.30371-0.00683 0.41357-0.0205 0.45459-0.09912 0.25293-0.35206 0.35205l-0.0957 0.04102-8.37402 0-0.0957-0.04102q-0.15381-0.0581-0.26661-0.19824l-0.02734-0.02734q-0.04443-0.05469-0.05811-0.15381-0.02734-0.14014-0.02734-0.60156l-0.01367-4.80225 9.35156 0-0.01367 2.67285z m-3.01123-1.49707q-0.0957 0.01367-0.16748 0.05127-0.06836 0.03418-1.07666 1.02881l-0.99463 0.99121-0.40674-0.40332q-0.2666-0.2666-0.3623-0.35205-0.11279-0.09912-0.19141-0.12646-0.0752-0.02734-0.21533-0.02735-0.14014 0-0.23926 0.04102-0.19482 0.09912-0.28027 0.31787-0.08203 0.21533-0.01368 0.42383 0.02734 0.07178 0.14014 0.1914 0.11279 0.11963 0.58106 0.58789 0.46826 0.46826 0.58789 0.58106 0.11963 0.11279 0.1914 0.14013 0.2085 0.06836 0.417 0 0.08545-0.02734 0.28027-0.21533 0.19824-0.19141 1.08008-1.08691l0.97754-0.98096q0.25293-0.25293 0.31103-0.34863 0.05469-0.08545 0.05469-0.19824l0-0.02735q0.01367-0.28027-0.19141-0.45459-0.20166-0.17432-0.48193-0.1333z"
-                              fill="#637A20"
-                            />
-                          </svg>
-                        ),
-                      },
-                      {
-                        texto: "Perfil Administrador foi atualizado",
-                        data: "25/09/2026",
-                        icone: (
-                          <svg
-                            data-pencil-name="Símbolo atividade 25/09/2026"
-                            viewBox="0 0 13.99993896484375 14"
-                            preserveAspectRatio="xMidYMid meet"
-                            xmlns="http://www.w3.org/2000/svg"
-                            className="box-border w-[14px] shrink-0 h-[14px]"
-                          >
-                            <path
-                              d="M6.84619 0.60156q-0.34863 0.02734-0.68701 0.30762-0.51611 0.42041-1.00147 0.70068-0.48193 0.28027-1.01513 0.4751-0.30762 0.11279-0.58789 0.1709-0.28027 0.05469-0.66992 0.08203-0.23926 0.01367-0.36573 0.07178-0.19482 0.06836-0.37939 0.22217-0.18115 0.15381-0.26319 0.34863l-0.01367 0.03076q-0.07178 0.12646-0.08545 0.22217-0.01367 0.15381-0.02734 0.60156l0 1.78076q0 2.25244 0.01367 2.46094 0.14014 1.6543 1.10742 2.88477 0.14014 0.16748 0.43409 0.46142 0.29395 0.29394 0.48877 0.44775 0.92285 0.7417 2.2832 1.27491 0.46143 0.18115 0.65625 0.23926 0.23926 0.05469 0.43408 0.01367 0.16748-0.02734 0.5332-0.15381 1.35693-0.51953 2.27979-1.20313 0.37939-0.2666 0.71435-0.60498 1.37402-1.3706 1.54151-3.37353 0.01367-0.23584 0.01367-2.46094 0-2.22852-0.02734-2.35498-0.07178-0.32129-0.31787-0.56396-0.24268-0.24609-0.5503-0.31788-0.09912-0.02734-0.37939-0.04101-0.48877-0.02734-0.96387-0.18115-0.81348-0.2666-1.55518-0.77246-0.2666-0.18115-0.64257-0.48877-0.42041-0.33496-0.96729-0.28028z m0.43408 1.34326q0.64258 0.51953 1.32959 0.86817 1.2168 0.61865 2.25244 0.68701l0.21192 0-0.01367 4.31348q0 0.33496-0.02735 0.50244-0.22559 1.34326-1.1416 2.27637-0.91602 0.92969-2.66601 1.57226l-0.21192 0.08545-0.18115-0.05469q-2.32422-0.85449-3.2334-2.22851-0.47852-0.71436-0.63232-1.63721-0.02734-0.18115-0.02735-0.50244l-0.01367-4.32715 0.19483 0q0.86816-0.05469 1.84912-0.48193 0.98096-0.42725 1.83545-1.12793 0.16748-0.14014 0.19482-0.14014 0.02734 0 0.28027 0.19482z"
-                              fill="#637A20"
-                            />
-                          </svg>
-                        ),
-                      },
-                    ];
-
-                    return atividades.map((ativ, idx) => (
-                      <div
-                        key={idx}
-                        data-pencil-name={`Atividade ${ativ.data}`}
-                        className="box-border w-full h-[36px] shrink-0 flex flex-row gap-[10px] px-[10px] justify-start items-center bg-[#FAF8F4] rounded-[9px]"
-                      >
-                        <div
-                          data-pencil-name={`Ícone atividade ${ativ.data}`}
-                          className="box-border w-[24px] shrink-0 h-[24px] flex flex-row gap-0 justify-center items-center bg-[#E5F2BF] rounded-[7px]"
-                        >
-                          {ativ.icone}
-                        </div>
-                        <div
-                          data-pencil-name={`Detalhes atividade ${ativ.data}`}
-                          className="box-border flex-1 md:[flex:1_1_0] w-full shrink-0 h-fit flex flex-row justify-between items-center gap-2 min-w-0"
-                        >
-                          <div
-                            data-pencil-name={`Texto atividade ${ativ.data}`}
-                            className="text-[11px] box-border text-[#394236] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap truncate"
-                          >
-                            {ativ.texto}
-                          </div>
-                          <div
-                            data-pencil-name={`Data atividade ${ativ.data}`}
-                            className="text-[10px] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-medium text-left whitespace-nowrap shrink-0"
-                          >
-                            {ativ.data}
-                          </div>
-                        </div>
-                      </div>
-                    ));
-                  })()}
+                  <TeamRecentActivity refreshKey={usuarios} />
                 </div>
               </div>
             </div>
@@ -2446,7 +2341,11 @@ export function AdminConfiguracoesQuadras() {
                 {/* Conexão Mercado Pago */}
                 <div
                   data-pencil-name="Conexão Mercado Pago"
-                  className="box-border w-full min-h-[100px] shrink-0 flex flex-col md:flex-row gap-4 p-[16px] justify-between items-start md:items-center bg-[#EAF7FB] outline outline-1 outline-[#B9DFEC] -outline-offset-1 rounded-[14px]"
+                  className={`box-border w-full min-h-[100px] shrink-0 flex flex-col md:flex-row gap-4 p-[16px] justify-between items-start md:items-center outline outline-1 -outline-offset-1 rounded-[14px] transition-colors ${
+                    gatewayConnected
+                      ? "bg-[#EAF8EF] outline-[#BFE5CC]"
+                      : "bg-[#EAF7FB] outline-[#B9DFEC]"
+                  }`}
                 >
                   <div
                     data-pencil-name="Info Mercado Pago"
@@ -2454,7 +2353,7 @@ export function AdminConfiguracoesQuadras() {
                   >
                     <div
                       data-pencil-name="Ícone Mercado Pago"
-                      className="box-border w-[44px] shrink-0 h-[44px] flex flex-row justify-center items-center bg-[#0AA5E8] rounded-[13px]"
+                      className={`box-border w-[44px] shrink-0 h-[44px] flex flex-row justify-center items-center rounded-[13px] transition-colors ${gatewayConnected ? "bg-[#2BAE66]" : "bg-[#0AA5E8]"}`}
                     >
                       <LinkIcon className="box-border w-[20px] shrink-0 h-[20px] text-white" />
                     </div>
@@ -2466,13 +2365,15 @@ export function AdminConfiguracoesQuadras() {
                         data-pencil-name="Título Mercado Pago"
                         className="text-[14px]/[normal] box-border text-[#09668F] font-[Inter,system-ui,sans-serif] font-extrabold text-left whitespace-nowrap"
                       >
-                        Conexão automática Mercado Pago
+                        {gatewayConnected ? "Mercado Pago conectado" : "Conexão automática Mercado Pago"}
                       </div>
                       <div
                         data-pencil-name="Descrição Mercado Pago"
                         className="text-[10px]/[normal] box-border text-[#4B7180] font-[Inter,system-ui,sans-serif] font-medium text-left"
                       >
-                        Conecte sua conta bancária com segurança, sem copiar chaves manualmente.
+                        {gatewayConnected
+                          ? "Sua conta está conectada e pronta para receber Pix e cartão automaticamente."
+                          : "Conecte sua conta bancária com segurança, sem copiar chaves manualmente."}
                       </div>
                     </div>
                   </div>
@@ -2503,6 +2404,51 @@ export function AdminConfiguracoesQuadras() {
                     </button>
                   </div>
                 </div>
+
+                {modalDesconectarOpen && (
+                  <div
+                    className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="titulo-desconectar-mp"
+                  >
+                    <div className="w-full max-w-[400px] flex flex-col gap-4 p-[22px] bg-white rounded-[16px] shadow-xl">
+                      <div id="titulo-desconectar-mp" className="text-[16px] font-extrabold text-[#071915]">
+                        Desconectar Mercado Pago
+                      </div>
+                      <p className="text-[12px] text-[#4F5550] m-0">
+                        Por segurança, confirme sua senha atual. Sem a conta conectada, novos pagamentos automáticos deixam de funcionar.
+                      </p>
+                      <input
+                        type="password"
+                        autoFocus
+                        value={senhaDesconectar}
+                        onChange={(e) => setSenhaDesconectar(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") confirmarDesconectarMercadoPago(); }}
+                        placeholder="Senha atual"
+                        className="w-full h-[40px] px-3 rounded-[10px] outline outline-1 outline-[#DCD3C6] focus:outline-[#071915] text-[13px]"
+                      />
+                      <div className="flex flex-row gap-2 justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setModalDesconectarOpen(false)}
+                          disabled={desconectando}
+                          className="h-[38px] px-[14px] rounded-[9px] bg-white outline outline-1 outline-[#DED6CA] text-[12px] font-bold text-[#071915] cursor-pointer hover:bg-neutral-100"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={confirmarDesconectarMercadoPago}
+                          disabled={desconectando}
+                          className="h-[38px] px-[14px] rounded-[9px] bg-[#E02424] hover:bg-[#c81e1e] text-[12px] font-bold text-white cursor-pointer disabled:opacity-60"
+                        >
+                          {desconectando ? "Desconectando..." : "Desconectar"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Colunas credenciais e Pix */}
                 <div
@@ -4100,7 +4046,8 @@ export function AdminConfiguracoesQuadras() {
               </div>
               <button
                 type="button"
-                onClick={() => setModalTransferirOpen(false)}
+                disabled={transferindo}
+                  onClick={() => { setTransferPassword(""); setTransferError(""); setModalTransferirOpen(false); }}
                 className="box-border w-[34px] shrink-0 h-[34px] flex flex-row justify-center items-center bg-[#F2EEE7] hover:bg-[#e8e2d8] transition-colors rounded-[10px] cursor-pointer"
                 title="Fechar"
               >
@@ -4109,6 +4056,15 @@ export function AdminConfiguracoesQuadras() {
             </div>
 
             <form onSubmit={handleTransferirAdmin} className="box-border w-full flex flex-col gap-[16px]">
+              <label className="flex flex-col gap-2 text-sm text-[#30362F]">
+                Sua senha atual
+                <input type="password" autoComplete="current-password" required
+                  value={transferPassword} disabled={transferindo}
+                  onChange={e => setTransferPassword(e.target.value)}
+                  className="h-[46px] rounded-[11px] border border-[#DED6CA] bg-white px-3" />
+              </label>
+              {transferError && <p role="alert" className="text-sm text-red-700">{transferError}</p>}
+              <p className="text-xs text-[#6F766F]">Ao confirmar, você passará a Gerente e as duas contas precisarão entrar novamente.</p>
               <div className="box-border w-full flex flex-col gap-[7px]">
                 <label className="text-[11px]/[normal] box-border text-[#30362F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap">
                   Novo Administrador *
@@ -4117,6 +4073,8 @@ export function AdminConfiguracoesQuadras() {
                   <ShieldCheck className="box-border w-[16px] shrink-0 h-[16px] text-[#8A9088]" />
                   <select
                     required
+                    aria-label="Novo Administrador"
+                    disabled={transferindo}
                     value={novoAdminId}
                     onChange={(e) => setNovoAdminId(e.target.value ? Number(e.target.value) : "")}
                     style={{ WebkitAppearance: "none", MozAppearance: "none" }}
@@ -4124,7 +4082,7 @@ export function AdminConfiguracoesQuadras() {
                   >
                     <option value="">Selecione um colaborador</option>
                     {usuarios
-                      .filter((u) => u.id !== currentUser?.id)
+                      .filter((u) => u.ativo === 1 && canManageUser(u))
                       .map((u) => (
                         <option key={u.id} value={u.id}>
                           {u.nome} ({u.email}) - {u.perfil}
@@ -4152,14 +4110,15 @@ export function AdminConfiguracoesQuadras() {
               <div className="box-border w-full flex flex-row justify-end items-center gap-[10px] pt-2">
                 <button
                   type="button"
-                  onClick={() => setModalTransferirOpen(false)}
+                  disabled={transferindo}
+                  onClick={() => { setTransferPassword(""); setTransferError(""); setModalTransferirOpen(false); }}
                   className="box-border w-fit shrink-0 h-[42px] flex flex-row p-[0px_17px] justify-start items-center bg-[#FFFFFF] outline outline-1 outline-[#D5CCC0] -outline-offset-1 rounded-[10px] hover:bg-neutral-50 transition-colors cursor-pointer text-[12px] text-[#51564F] font-bold"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  disabled={transferindo || !novoAdminId}
+                  disabled={transferindo || !novoAdminId || !transferPassword}
                   className="box-border w-fit shrink-0 h-[42px] shadow-[0px_6px_14px_#07191533] flex flex-row gap-[8px] p-[0px_18px] justify-start items-center bg-[#071915] rounded-[10px] hover:bg-neutral-800 transition-colors cursor-pointer text-[12px] text-[#FFFFFF] font-extrabold disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <ArrowRightLeft className="w-[15px] h-[15px] text-[#C9FF3B]" />
@@ -4187,7 +4146,7 @@ export function AdminConfiguracoesQuadras() {
               </div>
               <button
                 type="button"
-                onClick={() => setModalOpen(false)}
+                disabled={salvandoQuadra} onClick={() => setModalOpen(false)}
                 className="w-[34px] h-[34px] shrink-0 rounded-full bg-[#F7F2EA] flex items-center justify-center hover:bg-neutral-200 transition-colors cursor-pointer"
               >
                 <X size={16} color="#6F766F" />
@@ -4357,7 +4316,7 @@ export function AdminConfiguracoesQuadras() {
                 {editingQuadra ? (
                   <button
                     type="button"
-                    onClick={handleDeleteQuadra}
+                    disabled={salvandoQuadra} onClick={handleDeleteQuadra}
                     className="h-[40px] px-[14px] flex items-center justify-center bg-[#FFF3F3] outline outline-1 outline-[#F7CACA] rounded-[10px] text-[13px] text-[#B01F24] hover:bg-red-100 transition-colors cursor-pointer"
                   >
                     Excluir
@@ -4370,13 +4329,13 @@ export function AdminConfiguracoesQuadras() {
                 <div className="flex flex-row gap-[10px]">
                   <button
                     type="button"
-                    onClick={() => setModalOpen(false)}
+                    disabled={salvandoQuadra} onClick={() => setModalOpen(false)}
                     className="h-[40px] px-[14px] flex items-center justify-center bg-[#FFFFFF] outline outline-1 outline-[#DED6CA] rounded-[10px] text-[13px] text-[#071915] hover:bg-neutral-50 transition-colors cursor-pointer"
                   >
                     Cancelar
                   </button>
                   <button
-                    type="submit"
+                    type="submit" disabled={salvandoQuadra}
                     className="h-[40px] px-[16px] flex flex-row items-center gap-[8px] bg-[#071915] rounded-[10px] text-[13px] font-bold text-[#FFFFFF] hover:bg-neutral-800 transition-colors cursor-pointer shadow-sm"
                   >
                     <svg viewBox="0 0 14 14" className="w-[15px] h-[15px] shrink-0" xmlns="http://www.w3.org/2000/svg">

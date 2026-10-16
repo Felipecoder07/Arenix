@@ -78,7 +78,8 @@ it('reopens a direct Pix QR without a gateway and reports gateway outages for ga
     expect(unavailable.body.payment_pending_review).toBe(true);
     expect(unavailable.body).not.toHaveProperty('copia_cola');
     expect(unavailable.body).not.toHaveProperty('qr_code');
-    expect(provider).toHaveBeenCalledTimes(1);
+    // Recovery never creates a charge when no original intent exists.
+    expect(provider).not.toHaveBeenCalled();
   } finally { provider.mockRestore(); }
 });
 

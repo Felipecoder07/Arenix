@@ -217,7 +217,8 @@ it('reads and database/provider failure logs never expose fixture secrets',async
   provider.mockRejectedValueOnce(new Error(secrets.join(' ')));
   const networkFailure=await auth(request(app).post(gateway+'/cobranca'),admin).send({reserva_id:1,metodo:'Pix'});
   expect(networkFailure.status).toBeGreaterThanOrEqual(400); responses.push(networkFailure.body);
-  expect(provider).toHaveBeenCalledTimes(2);
+  // An ambiguous first failure must block a second emission, including its transport call.
+  expect(provider).toHaveBeenCalledTimes(1);
   const original=db.allAsync.bind(db);
   spies.push(vi.spyOn(db,'allAsync').mockImplementation((sql,args)=>sql.includes('FROM ConfiguracoesSaaS') ? Promise.reject(new Error(secrets.join(' '))) : original(sql,args)));
   const databaseFailure=await auth(request(app).get('/api/saas/configuracoes'),master);

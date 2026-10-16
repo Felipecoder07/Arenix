@@ -74,16 +74,13 @@ function calcularProximaDataVencimento(dataBaseStr, diaVencimento = 10, ciclo = 
   }
 
   // Se não há data base anterior:
-  const hoje = new Date();
-  const anoHoje = hoje.getFullYear();
-  const mesHoje = hoje.getMonth() + 1;
-  const diaHoje = hoje.getDate();
+  const [anoHoje, mesHoje, diaHoje] = getTodayString().split('-').map(Number);
 
   let ano = anoHoje;
   let mes = mesHoje;
 
   // Se hoje já passou do dia do vencimento, o próximo vencimento é no mês seguinte
-  if (diaHoje > diaAlvo) {
+  if (diaHoje > Math.min(diaAlvo, new Date(anoHoje, mesHoje, 0).getDate())) {
     mes += 1;
     if (mes > 12) {
       mes = 1;
@@ -103,7 +100,7 @@ function calcularProximaDataVencimento(dataBaseStr, diaVencimento = 10, ciclo = 
  */
 function calcularDiasRestantesTrial(trialExpiraEm) {
   if (!trialExpiraEm) return 0;
-  const hojeStr = new Date().toISOString().split('T')[0];
+  const hojeStr = getTodayString();
   if (trialExpiraEm < hojeStr) return 0;
   const dHoje = new Date(hojeStr + 'T00:00:00Z');
   const dTrial = new Date(trialExpiraEm + 'T00:00:00Z');

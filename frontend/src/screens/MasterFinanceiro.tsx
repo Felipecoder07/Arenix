@@ -8,9 +8,8 @@ import { exportMasterCsv } from '../utils/masterExport';
 import { MasterRevenueChart } from '../components/MasterRevenueChart';
 import { formatBRL, formatDate } from '../data/mock';
 
-const BLOCK_AFTER_DAYS = 7;
-
 export function MasterFinanceiro() {
+  const [billingPolicy, setBillingPolicy] = useState<{ days: number; today: string } | null>(null);
   const [editPlan, setEditPlan] = useState<(Omit<SaaSPlan, 'valor_mensal' | 'valor_anual'> & { valor_mensal: string; valor_anual: string }) | null>(null);
   const [planos, setPlanos] = useState<SaaSPlan[]>([]);
   const [faturas, setFaturas] = useState<SaaSInvoice[]>([]);
@@ -51,11 +50,14 @@ export function MasterFinanceiro() {
     try {
       const headers = {};
       
-      const [faturasRes, metricsRes, planosRes] = await Promise.all([
+      const [faturasRes, metricsRes, planosRes, config] = await Promise.all([
         fetch('/api/saas/faturas', { headers }).then(r => r.json()),
         fetch('/api/saas/metrics', { headers }).then(r => r.json()),
-        fetch('/api/saas/planos', { headers }).then(r => r.json())
+        fetch('/api/saas/planos', { headers }).then(r => r.json()),
+        fetch('/api/saas/configuracoes', { headers }).then(r => r.ok ? r.json() : null)
       ]);
+      setBillingPolicy(config && Number.isInteger(config.dias_tolerancia_bloqueio) && config.data_faturamento
+        ? { days: config.dias_tolerancia_bloqueio, today: config.data_faturamento } : null);
 
       setFaturas(faturasRes);
       setPlanos(planosRes);
@@ -130,9 +132,8 @@ export function MasterFinanceiro() {
 
   const calcAtraso = (dataVencimento: string, status: string) => {
     if (status === 'Paga') return 0;
-    const v = new Date(dataVencimento);
-    const hoje = new Date();
-    const diff = hoje.getTime() - v.getTime();
+    if (!billingPolicy) return 0;
+    const diff = Date.parse(billingPolicy.today + 'T00:00:00Z') - Date.parse(dataVencimento.slice(0, 10) + 'T00:00:00Z');
     if (diff <= 0) return 0;
     return Math.floor(diff / (1000 * 3600 * 24));
   };
@@ -142,7 +143,7 @@ export function MasterFinanceiro() {
       <PageHeader
         title="Financeiro & assinaturas"
         description="Planos, faturamento e inadimplência de toda a plataforma" context={false}
-        actions={<><Button variant="ghost" onClick={() => exportMasterCsv('faturas.csv', [['Arena', 'Fatura', 'Vencimento', 'Valor', 'Status'], ...faturasFiltradas.map(f => [f.arena_nome, f.id, f.data_vencimento, f.valor, f.status])])}><Download size={13} /> Exportar</Button><Button variant="primary" onClick={() => document.getElementById('master-invoices')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}><Plus size={14} /> Registrar pagamento</Button></>}
+        actions={<><Button variant="ghost" onClick={() => exportMasterCsv('faturas.csv', [['Arena', 'Fatura', 'Vencimento', 'Valor', 'Status'], ...faturasFiltradas.map(f => [f.arena_nome, f.id, f.data_vencimento, f.valor, f.status])])}><Download size={13} /> Exportar</Button><Button variant="primary" onClick={() => document.getElementById('master-invoices')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}><Plus size={14} /> Ver faturas para pagamento</Button></>}
       />
 
       {/* MRR + history */}
@@ -172,7 +173,7 @@ export function MasterFinanceiro() {
       {/* Auto-block notice */}
       <div className="master-notice flex items-center gap-2.5 px-4 py-3 rounded-xl bg-cream-surface border border-border-passive text-sm">
         <Clock size={15} className="text-muted" />
-        <span className="text-charcoal/80">Arenas com faturas vencidas há <strong>{BLOCK_AFTER_DAYS} dias ou mais</strong> são bloqueadas automaticamente pela plataforma.</span>
+        <span className="text-charcoal/80">{billingPolicy ? <>Arenas com faturas vencidas há <strong>mais de {billingPolicy.days} dias</strong> são bloqueadas na verificação diária da plataforma.</> : 'Prazo de bloqueio indisponível. Atualize a página para consultar a configuração.'}</span>
       </div>
 
       {/* Plans */}
@@ -278,7 +279,7 @@ export function MasterFinanceiro() {
               <tbody className="divide-y divide-border-passive">
                 {faturasFiltradas.map((f) => {
                   const overdueDays = calcAtraso(f.data_vencimento, f.status);
-                  const rowTint = f.status === 'Atrasada' && overdueDays >= BLOCK_AFTER_DAYS
+                  const rowTint = f.status === 'Atrasada' && billingPolicy && overdueDays > billingPolicy.days
                     ? 'bg-danger-soft/40'
                     : f.status === 'Atrasada' ? 'bg-warning-soft/40' : '';
                   return (

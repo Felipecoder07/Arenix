@@ -318,14 +318,14 @@ export function AdminDashboard() {
         </div>
 
         {/* Card 2: FATURAMENTO PENDENTE */}
-        <div className="box-border flex flex-col gap-[8px] p-[20px] justify-start items-start bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[16px] shadow-sm">
+        <div className="box-border min-w-0 flex flex-col gap-[8px] p-[20px] justify-start items-start bg-[#FFFFFF] outline outline-1 outline-[#E6DED2] -outline-offset-1 rounded-[16px] shadow-sm">
           <div className="text-[13px] leading-tight text-[#4F5550] font-[Inter,system-ui,sans-serif] font-normal tracking-[0.6px] whitespace-nowrap">
             FATURAMENTO PENDENTE
           </div>
           <div className="text-[30px] leading-tight text-[#071915] font-[Inter,system-ui,sans-serif] font-normal whitespace-nowrap">
             {formatCurrency(faturamentoPendente)}
           </div>
-          <div className="text-[13px] leading-tight text-[#4F5550] font-[Inter,system-ui,sans-serif] font-normal whitespace-nowrap">
+          <div className="max-w-full text-[13px] leading-snug text-[#4F5550] font-[Inter,system-ui,sans-serif] font-normal whitespace-normal break-words">
             {reservasPendentesDia} reserva(s) com saldo pendente hoje
           </div>
         </div>

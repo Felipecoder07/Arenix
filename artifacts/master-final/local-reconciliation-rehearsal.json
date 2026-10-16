@@ -1,0 +1,22 @@
+{
+  "generated_at": "2026-10-09T02:17:42.859Z",
+  "mode": "rehearsal",
+  "backup": ".local-security\\review-2026-10-09T02-17-42-674Z\\before.sqlite",
+  "arenas_reconciled": [
+    2,
+    4
+  ],
+  "migration_added": true,
+  "test_invoice_ids": [
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24
+  ],
+  "invoice_values_and_statuses_unchanged": true,
+  "integrity": "ok",
+  "idempotency_verified": true
+}

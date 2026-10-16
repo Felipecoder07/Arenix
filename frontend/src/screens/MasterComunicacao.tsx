@@ -5,12 +5,13 @@ import { apiFetch as fetch } from '../utils/apiFetch';
 import { useState, useEffect } from 'react';
 import { Send, Megaphone, Trash2, Calendar, Bell, Mail, History } from 'lucide-react';
 import { Card, Badge, Button, Field, Input, Select, Textarea, ConfirmModal, EmptyState, Modal } from '../components/ui';
-import { formatDate } from '../data/mock';
+import { formatDate, formatDateTime } from '../data/mock';
 
 export function MasterComunicacao() {
   const [arenas, setArenas] = useState<SaaSArena[]>([]);
   const [banners, setBanners] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
 
   // Notificação individual
   const [targetArena, setTargetArena] = useState('');
@@ -58,7 +59,8 @@ export function MasterComunicacao() {
   }, [fetchDados]);
 
   const handleSendIndividual = async () => {
-    if (!message.trim() || !targetArena) return;
+    if (!message.trim() || !targetArena || sending) return;
+    setSending(true);
     setErrorMsg('');
     setSent(false);
     try {
@@ -86,13 +88,20 @@ export function MasterComunicacao() {
     } catch (e) {
       console.error(e);
       setErrorMsg('Falha de rede ao conectar com o servidor.');
+    } finally {
+      setSending(false);
     }
   };
 
   const handleSendBroadcast = async () => {
-    if (!broadcastMsg.trim()) return;
+    if (!broadcastMsg.trim() || sending) return;
     setBroadcastErrorMsg('');
     setBroadcastSent(false);
+    if (broadcastWhen === 'later' && (!broadcastAt || !Number.isFinite(new Date(broadcastAt).getTime()) || new Date(broadcastAt).getTime() <= Date.now())) {
+      setBroadcastErrorMsg('Escolha uma data e hora futuras para o envio.');
+      return;
+    }
+    setSending(true);
     try {
       
       // Define a data de expiração (se for agendado para depois, expira 7 dias após o agendamento)
@@ -110,6 +119,7 @@ export function MasterComunicacao() {
           message: broadcastMsg,
           audience: 'all',
           channel: broadcastChannel,
+          scheduledAt: broadcastWhen === 'later' ? new Date(broadcastAt).toISOString() : undefined,
           expiresAt
         })
       });
@@ -127,6 +137,8 @@ export function MasterComunicacao() {
     } catch (e) {
       console.error(e);
       setBroadcastErrorMsg('Falha de rede ao conectar com o servidor.');
+    } finally {
+      setSending(false);
     }
   };
 
@@ -159,20 +171,20 @@ export function MasterComunicacao() {
           <Field label="ARENA DE DESTINO"><Select aria-label="Arena de destino" value={targetArena} onChange={e => { setTargetArena(e.target.value); setErrorMsg(''); }}>{arenas.map(a => <option key={a.id} value={String(a.id)}>{a.nome}</option>)}</Select></Field>
           <div className="master-channel-options" role="group" aria-label="Canal da mensagem"><Button variant={channel === 'alerta' ? 'primary' : 'ghost'} aria-pressed={channel === 'alerta'} onClick={() => setChannel('alerta')}><Bell size={13} /> Alerta no sistema</Button><Button variant={channel === 'email' ? 'primary' : 'ghost'} aria-pressed={channel === 'email'} onClick={() => setChannel('email')}><Mail size={13} /> E-mail</Button></div>
           <Field label="MENSAGEM"><Textarea maxLength={500} value={message} onChange={e => { setMessage(e.target.value); setErrorMsg(''); }} placeholder="Digite a mensagem que a arena verá..." /></Field>
-          <footer><span>{sent ? 'Mensagem enviada.' : message.length + ' / 500 caracteres'}</span><Button variant="primary" disabled={!message.trim() || !targetArena} onClick={handleSendIndividual}><Send size={14} /> Enviar agora</Button></footer>
+          <footer><span>{sent ? 'Mensagem recebida para envio.' : message.length + ' / 500 caracteres'}</span><Button variant="primary" disabled={sending || !message.trim() || !targetArena} onClick={handleSendIndividual}><Send size={14} /> Enviar agora</Button></footer>
         </section>
         <section className="master-composer master-broadcast">
           <header><span className="master-composer-icon"><Megaphone size={16} /></span><div><h3>Comunicado para toda a rede</h3><p>Entrega simultânea para todas as arenas</p></div><small>{arenas.length} ARENAS</small></header>
           {broadcastErrorMsg && <p role="alert" className="text-danger">{broadcastErrorMsg}</p>}
           <div className="master-broadcast-controls"><span>CANAL E ENVIO</span><div><Select aria-label="Canal do comunicado" value={broadcastChannel} onChange={e => setBroadcastChannel(e.target.value === 'email' ? 'email' : 'alerta')}><option value="email">E-mail</option><option value="alerta">Alerta no sistema</option></Select><Select aria-label="Quando enviar" value={broadcastWhen} onChange={e => setBroadcastWhen(e.target.value === 'later' ? 'later' : 'now')}><option value="now">Disparar imediatamente</option><option value="later">Agendar para depois</option></Select></div></div>
-          {broadcastWhen === 'later' && <Field label="DATA E HORA DO ENVIO"><Input type="datetime-local" value={broadcastAt} onChange={e => setBroadcastAt(e.target.value)} /></Field>}
+          {broadcastWhen === 'later' && <Field label="DATA E HORA DO ENVIO"><Input aria-label="Data e hora do envio (horário local)" type="datetime-local" value={broadcastAt} onChange={e => setBroadcastAt(e.target.value)} /></Field>}
           <Field label="MENSAGEM"><Textarea maxLength={1000} value={broadcastMsg} onChange={e => { setBroadcastMsg(e.target.value); setBroadcastErrorMsg(''); }} placeholder="Escreva o comunicado que todas as arenas receberão..." /></Field>
-          <footer><span>{broadcastSent ? 'Comunicado enviado.' : broadcastMsg.length + ' / 1000 caracteres'}</span><Button variant="primary" disabled={!broadcastMsg.trim()} onClick={handleSendBroadcast}><Megaphone size={14} /> {broadcastWhen === 'now' ? 'Enviar para ' + arenas.length + ' arenas' : 'Agendar envio'}</Button></footer>
+          <footer><span>{broadcastSent ? (broadcastWhen === 'later' ? 'Comunicado agendado.' : 'Comunicado recebido para envio.') : broadcastMsg.length + ' / 1000 caracteres'}</span><Button variant="primary" disabled={sending || !broadcastMsg.trim()} onClick={handleSendBroadcast}><Megaphone size={14} /> {broadcastWhen === 'now' ? 'Enviar para ' + arenas.length + ' arenas' : 'Agendar envio'}</Button></footer>
         </section>
       </div>
       <Card className="master-data-panel master-announcements">
-        <div className="master-table-heading"><strong><Calendar size={15} /> Banners e avisos ativos <em>{banners.length} ativos</em></strong><span>Conteúdos visíveis agora na plataforma</span></div>
-        {banners.length === 0 ? <EmptyState message="Nenhum banner ativo no momento." /> : <ul>{banners.map(b => <li key={b.id}><span className={'master-announcement-icon ' + (b.channel === 'email' ? 'is-email' : '')}>{b.channel === 'email' ? <Mail size={16} /> : <Bell size={16} />}</span><div className="master-announcement-body"><p>{b.message}</p><div><span>{b.audienceLabel}</span><span>{b.channel === 'email' ? 'E-mail' : 'Alerta'}</span>{b.expiresAt && <span>Expira em {formatDate(b.expiresAt)}</span>}</div></div><Badge status="ativo">● Ativo</Badge><button className="master-announcement-remove" onClick={() => setRemoveBanner(b.id)} aria-label={'Remover comunicado: ' + b.message}><Trash2 size={14} /></button></li>)}</ul>}
+        <div className="master-table-heading"><strong><Calendar size={15} /> Comunicados e agendamentos <em>{banners.length} registros</em></strong><span>Publicações e envios programados</span></div>
+        {banners.length === 0 ? <EmptyState message="Nenhum banner ativo no momento." /> : <ul>{banners.map(b => <li key={b.id}><span className={'master-announcement-icon ' + (b.channel === 'email' ? 'is-email' : '')}>{b.channel === 'email' ? <Mail size={16} /> : <Bell size={16} />}</span><div className="master-announcement-body"><p>{b.message}</p><div><span>{b.audienceLabel}</span><span>{b.channel === 'email' ? 'E-mail' : 'Alerta'}</span>{b.scheduledAt && <span>Envio: {formatDateTime(b.scheduledAt)}</span>}{!!b.failedDeliveries && <span>{b.failedDeliveries} envio(s) falharam</span>}{!!b.uncertainDeliveries && <span>{b.uncertainDeliveries} envio(s) sem confirmação</span>}{b.expiresAt && <span>Expira em {formatDate(b.expiresAt)}</span>}</div></div><Badge status="ativo">{b.expiresAt && new Date(b.expiresAt).getTime() <= Date.now() ? 'Expirado' : b.state === 'agendado' ? 'Agendado' : b.channel === 'email' ? 'Envio processado ou em fila' : 'Publicado'}</Badge><button className="master-announcement-remove" onClick={() => setRemoveBanner(b.id)} aria-label={'Remover comunicado: ' + b.message}><Trash2 size={14} /></button></li>)}</ul>}
       </Card>
       <Modal open={historyOpen} onClose={() => setHistoryOpen(false)} title="Histórico de envios" description="Comunicados disponíveis no sistema">
         {banners.length === 0 ? <EmptyState message="Nenhum comunicado disponível." /> : <ul className="space-y-4">{banners.map(b => <li key={b.id}><p>{b.message}</p><small>{b.audienceLabel} · {formatDate(b.createdAt)} · {b.channel === 'email' ? 'E-mail' : 'Alerta'}</small></li>)}</ul>}
@@ -180,7 +192,7 @@ export function MasterComunicacao() {
 
       <ConfirmModal open={!!removeBanner} onClose={() => setRemoveBanner(null)} onConfirm={handleRemoveBanner}
         title="Remover banner" destructive confirmLabel="Remover agora"
-        message="O banner será removido imediatamente, antes da expiração programada."
+        message="O comunicado será desativado e os envios ainda não iniciados serão cancelados. E-mails já enviados ou em andamento não podem ser recolhidos."
       />
     </div>
   );

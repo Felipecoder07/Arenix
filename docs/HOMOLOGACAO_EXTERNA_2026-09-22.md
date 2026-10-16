@@ -16,6 +16,24 @@ Credencial TEST aceita e cartões fictícios tokenizados; criação APRO e OTHE
 retornou HTTP 400, causa 10113. Nenhum pagamento ou estorno criado nesta etapa.
 O bloqueador financeiro permanece aberto; resultados históricos abaixo preservados.
 
+**Retomada 09/10/2026, sem domínio:** a credencial local autenticou com HTTP 200;
+uma tentativa de criar Pix na API isolada retornou HTTP 400, causa 2034
+(`Invalid users involved`). Nenhuma cobrança foi criada. A tentativa foi repetida
+com um e-mail no formato de usuário de teste, sem comprovação de conta cadastrada;
+o provedor continuou retornando 2034. A consulta anterior ao pagamento 1328247564 confirmou
+`live_mode=false`, BRL 100, status pending e recebedor correspondente, mas isso
+não aprova o ciclo atual. Já existem três Webhooks assinados com HTTP 200 em
+23/09; os três consultaram esse pagamento ainda pendente. A rejeição indica
+incompatibilidade dos usuários/ambientes envolvidos; a causa exata segue aberta. Evidências
+privadas atuais em `.local-security/homologacao/instance/provider-checks.jsonl`
+e `.local-security/homologacao/flow-check.json`. A investigação posterior também
+identificou 32 arquivos divergentes na instância isolada, tratamento genérico de
+erro e limitações do ensaio OAuth. Próximos passos e critérios estão no
+[plano de correção aguardando liberação](PLANO_CORRECAO_PIX_2026-10-09.md).
+O procedimento precisa corresponder à Payments API usada pelo código; o roteiro
+APRO da Orders API não comprova aprovação Pix nesta integração. Nenhum token
+foi exibido nos logs.
+
 Estado: execução parcial em ambiente isolado (atualizado em 23/09/2026). Não publicar nem criar pagamentos reais com base
 neste roteiro. Domínio/hospedagem foram adiados pelo responsável. Os testes locais
 usam respostas simuladas e o banco em memória; não suprem estas evidências.
@@ -209,5 +227,9 @@ no lançamento e sua indisponibilidade estiver refletida na interface/oferta.
    por percentual, presença de credenciais ou quantidade de testes aprovados.
 
 Verificação local repetível: `npm.cmd run validate` e `npm.cmd run check:local`.
+
+Atualização de 12/10/2026: a implementação Pix e a validação automatizada completa estão registradas no [plano de execução](PLANO_IMPLEMENTACAO_CORRECAO_PIX_2026-10-10.md). A validação passou nas 10 etapas. Instância `pix-20261012-final-v2` identificada por manifesto e banco isolado. Consulta somente de leitura da credencial TEST existente retornou `/users/me` HTTP 200, conta brasileira, sem tag `test_user`; isso não comprova emissão Pix. Nenhuma nova cobrança/estorno externo foi executada. Credencial de teste master e configuração OAuth ausentes; responsável adiou a configuração. Erro 2034, confirmação por webhook, devolução e conciliação dos históricos seguem pendentes de evidência externa.
+
+Continuação de 12/10 às 23:54 BRT: uma criação Pix de controle de R$ 1,00 foi tentada com credencial TEST da arena e a mesma chave de idempotência preservada após falha local de rede. O provedor respondeu HTTP 500 sem código de causa, request ID `741189c2-5e7b-4b13-a588-2b3442ae5e26`. Duas buscas pela referência retornaram zero resultados, mas a operação permanece incerta. O e-mail do comprador foi uma hipótese derivada do nome de usuário TESTUSER, não uma identidade confirmada. Nenhuma aprovação, baixa, estorno ou resolução do 2034 foi comprovada. Detalhes sanitizados e referência privada estão no plano de execução.
 O segundo comando não faz chamadas externas nem inicia jobs; seu sucesso indica
 apenas integridade/cifragem/relatório local, não valida as configurações de produção.

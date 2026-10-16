@@ -97,7 +97,7 @@ export function AdminLayout() {
       )}
 
       {/* Área Principal Dashboard (Com scroll independente) */}
-      <div className="flex-1 h-screen overflow-y-auto custom-scrollbar flex flex-col min-w-0 z-10 px-4 md:px-8 py-6">
+      <div className="relative flex-1 h-screen overflow-y-auto custom-scrollbar flex flex-col min-w-0 px-4 md:px-8 py-6">
         <div className="max-w-[1240px] mx-auto w-full flex-1 flex flex-col">
           {!isReservasPage && !isPagamentosPage && !isClientesPage && !isAssinaturaPage && !isAuditoriaPage && !isConfiguracoesPage && !isRelatoriosPage && (
             <AdminTopbar onToggleSidebar={() => setMobileOpen(!mobileOpen)} />

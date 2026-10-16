@@ -1,6 +1,16 @@
 const db=require('../config/database');
 const {ensureSecuritySchema}=require('../config/securitySchema');
 const {httpError,secret}=require('../utils/security');
+const {paymentError,normalizePaymentError}=require('../utils/paymentProviderError');
+function cachedResponse(intent) {
+  if (!intent?.response_json || intent.state !== 'pending') return null;
+  let response;
+  try { response = JSON.parse(intent.response_json); } catch { return null; }
+  if (!response?.gateway_ref || response.error) return null;
+  if (intent.method === 'Pix' && (!response.copia_cola ||
+      (intent.expires_at && !(Date.parse(intent.expires_at) > Date.now())))) return null;
+  return response;
+}
 async function withIntent(method,reservationId,value,tenantId,create) {
   await ensureSecuritySchema(db);
   // Callers pass integer centavos, matching Reservations, Pagamentos and the gateway API.
@@ -13,10 +23,11 @@ async function withIntent(method,reservationId,value,tenantId,create) {
     const existing=await db.getAsync("SELECT * FROM PaymentIntents WHERE tenant_id=? AND scope=? AND method=? AND state IN ('creating','pending','unknown')",[tenantId,scope,method]);
     if(existing) {
       if(existing.amount_cents!==amount) throw httpError(409,'Já existe uma cobrança em andamento para este pedido.');
-      if(existing.response_json) return {cached:JSON.parse(existing.response_json)};
-      if(existing.state==='creating'&&Date.now()-existing.updated<30000) throw httpError(409,'Cobrança sendo processada. Consulte novamente.');
-      await db.runAsync("UPDATE PaymentIntents SET state='creating',updated=? WHERE id=?",[Date.now(),existing.id]);
-      return {id:existing.id};
+      const cached = cachedResponse(existing);
+      if(cached) return {cached};
+      // Age is not proof of failure. Never POST again from a request/polling path.
+      // The outbox recovers the original operation by its reference.
+      throw normalizePaymentError(paymentError('PIX_RECONCILIATION_PENDING'), existing.id);
     }
     const rows=await require('./paymentLedgerService').scopeReservations(reservation);
     let balance=0;
@@ -36,11 +47,45 @@ async function withIntent(method,reservationId,value,tenantId,create) {
   try {
     const response=await create(selected.id);
     const responseState = ['rejected','cancelled'].includes(response.status) ? 'failed' : 'pending';
-    await db.runAsync("UPDATE PaymentIntents SET state=CASE WHEN state='paid' OR EXISTS(SELECT 1 FROM TransacoesGateway t WHERE t.gateway_ref=? AND t.status='Pago') THEN 'paid' ELSE ? END,gateway_ref=?,response_json=?,updated=? WHERE id=?",[response.gateway_ref,responseState,response.gateway_ref,JSON.stringify(response),Date.now(),selected.id]);
+    await db.runAsync("UPDATE PaymentIntents SET state=CASE WHEN state='paid' OR EXISTS(SELECT 1 FROM TransacoesGateway t WHERE t.gateway_ref=? AND t.status IN ('Pago','Estornado','Chargeback')) THEN 'paid' ELSE ? END,gateway_ref=?,response_json=?,updated=? WHERE id=? AND state IN ('creating','pending','unknown','paid')",[response.gateway_ref,responseState,response.gateway_ref,JSON.stringify(response),Date.now(),selected.id]);
     return response;
   } catch(error) {
-    await db.runAsync("UPDATE PaymentIntents SET state='unknown',updated=? WHERE id=?",[Date.now(),selected.id]);
-    throw error;
+    const failure = method === 'Pix' ? normalizePaymentError(error, selected.id) : error;
+    const state = failure.outcome === 'definitive_rejection' ? 'failed' : 'unknown';
+    await db.runAsync(`UPDATE PaymentIntents SET state=?,diagnostic_json=?,updated=?
+      WHERE id=? AND state IN ('creating','unknown') AND NOT EXISTS
+      (SELECT 1 FROM TransacoesGateway t WHERE t.gateway_ref=PaymentIntents.gateway_ref AND t.status IN ('Pago','Estornado','Chargeback'))`,
+    [state, JSON.stringify(failure.diagnostic || {}), Date.now(), selected.id]);
+    require('../utils/safeLogger').payment(failure.diagnostic);
+    throw failure;
   }
 }
-module.exports={withIntent};
+async function getPixIntent(reservationId, tenantId) {
+  await ensureSecuritySchema(db);
+  const reservation = await db.getAsync('SELECT * FROM Reservas WHERE id=? AND tenant_id=?', [reservationId, tenantId]);
+  if (!reservation) throw httpError(404, 'Reserva não encontrada.');
+  return db.getAsync(`SELECT * FROM PaymentIntents WHERE tenant_id=? AND scope=? AND method='Pix'
+    ORDER BY created DESC,rowid DESC LIMIT 1`, [tenantId, reservation.grupo_id || 'reservation:' + reservation.id]);
+}
+async function consultPix(reservationId, tenantId) {
+  const intent = await getPixIntent(reservationId, tenantId);
+  if (!intent || !['creating','pending','unknown'].includes(intent.state) || Date.now() - intent.updated < 30000) return intent;
+  const now = Date.now();
+  const claim = await db.runAsync(`UPDATE PaymentIntents SET next_reconcile=?,last_reconciled=?,reconcile_count=reconcile_count+1
+    WHERE id=? AND (next_reconcile IS NULL OR next_reconcile<=?)`, [now + 30000, now, intent.id, now]);
+  if (!claim.changes) return intent;
+  try {
+    const gateway = require('./gatewayService');
+    if (!intent.gateway_ref) await gateway.reconciliarPagamentoSemReferencia(intent.id);
+    else if (/^\d+$/.test(intent.gateway_ref)) {
+      const context = await gateway.resolverContextoWebhookMercadoPago(intent.gateway_ref);
+      if (context) await gateway.liquidarWebhookMercadoPago(intent.gateway_ref, context);
+    }
+  } catch (error) {
+    const failure = normalizePaymentError(error, intent.id);
+    await db.runAsync('UPDATE PaymentIntents SET diagnostic_json=? WHERE id=?', [JSON.stringify(failure.diagnostic), intent.id]);
+    require('../utils/safeLogger').payment(failure.diagnostic);
+  }
+  return getPixIntent(reservationId, tenantId);
+}
+module.exports={withIntent,cachedResponse,getPixIntent,consultPix};

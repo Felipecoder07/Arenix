@@ -64,6 +64,10 @@ export interface ArenaDetails extends SaaSArena {
 }
 
 export interface Announcement {
+  scheduledAt?: string;
+  state?: string;
+  failedDeliveries?: number;
+  uncertainDeliveries?: number;
   id: number;
   message: string;
   audience: string;

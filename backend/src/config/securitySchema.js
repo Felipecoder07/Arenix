@@ -28,6 +28,7 @@ function ensureSecuritySchema(db = require('./database')) {
       `INSERT OR IGNORE INTO SecurityMigrations(version) VALUES (1)`
     ]) await db.runAsync(sql);
 
+    await db.transaction(() => require('./migrations/pixDiagnostics').migratePixDiagnostics(db));
     const columns = await db.allAsync('PRAGMA table_info(ClientMemberships)');
     if (!columns.some(column => column.name === 'verified')) {
       await db.runAsync('ALTER TABLE ClientMemberships ADD COLUMN verified INTEGER NOT NULL DEFAULT 0');

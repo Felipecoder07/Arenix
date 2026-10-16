@@ -10,7 +10,7 @@ const { managedWrite } = require('../services/userManagementService');
 const listarUsuarios = async (req, res) => {
   try {
     const usuarios = await db.allAsync(
-      `SELECT id, nome, email, perfil, criado_em, cliente_id 
+      `SELECT id, nome, email, perfil, criado_em, cliente_id, ativo 
        FROM Usuarios 
        WHERE tenant_id = ? AND (perfil IS NULL OR (perfil != 'Cliente' AND perfil != 'cliente')) 
        ORDER BY nome ASC`,

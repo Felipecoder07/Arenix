@@ -70,11 +70,11 @@ it('stored client markup is rendered as text in the actual administrative page',
   page.on('pageerror',error=>errors.push(error.message));
   await page.goto(origin+'/admin/clientes',{waitUntil:'commit'});
   try {
-    await page.getByText(payload,{exact:true}).waitFor({state:'visible',timeout:30000});
+    await page.getByText(payload,{exact:true}).first().waitFor({state:'visible',timeout:30000});
   } catch (error) {
     throw new Error(error.message+'; URL: '+page.url()+'; browser errors: '+JSON.stringify(errors)+'; pending: '+JSON.stringify([...pending])+'; body: '+await page.locator('body').innerText());
   }
-  expect(await page.locator('.admin-clientes-page img[src="x"]').count()).toBe(0);
+  expect(await page.locator('img[src="x"]').count()).toBe(0);
   expect(await page.evaluate(()=>window.__securityXss)).toBe(0);
   expect(dialogs).toEqual([]);
   const exposed = await page.evaluate(()=>({cookies:document.cookie,stored:localStorage.getItem('courtmanager_token')}));

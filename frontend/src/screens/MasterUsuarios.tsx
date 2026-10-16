@@ -104,6 +104,9 @@ export function MasterUsuarios() {
       });
       if (res.ok) {
         alert('Link individual de redefinição enviado ao e-mail cadastrado.');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'Não foi possível enviar o link. Tente novamente.');
       }
     } catch (e) {
       console.error(e);
@@ -229,8 +232,8 @@ export function MasterUsuarios() {
 
       {/* Reset password */}
       <ConfirmModal open={!!resetUser} onClose={() => setResetUser(null)} onConfirm={handleResetPassword}
-        title="Resetar senha do usuário" destructive confirmLabel="Gerar senha temporária"
-        message={<>A senha de <strong>{resetUser?.name}</strong> será redefinida para o valor padrão <strong>arena123</strong>. O usuário poderá alterar após acessar.</>}
+        title="Enviar link de recuperação" confirmLabel="Enviar link por e-mail"
+        message={<>Um link individual será enviado ao e-mail de <strong>{resetUser?.name}</strong> para definir uma nova senha. O link vale por uma hora e as sessões atuais serão encerradas.</>}
       />
 
       {/* Deactivate */}

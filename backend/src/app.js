@@ -12,16 +12,14 @@ app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], 
 app.use('/api', globalLimiter);
 app.disable('x-powered-by');
 
-const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS
-  ? process.env.CORS_ALLOWED_ORIGINS.split(',').map((origin) => origin.trim())
-  : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:5176'];
+const allowedOrigins = require('./config/cors').allowedOrigins();
 
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-    return callback(new Error('Origem não permitida pela política de CORS'));
+    return callback(require('./utils/security').httpError(403, 'Origem nao permitida.'));
   },
   credentials: true
 }));
@@ -68,5 +66,5 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'CourtManager API rodando com sucesso.' });
 });
 
-app.use((err,req,res,next)=>{ if(res.headersSent) return next(err); res.status(err.status || 500).json({error:err.status && err.status<500 ? 'Requisicao invalida.' : 'Erro interno.'}); });
+app.use((err,req,res,next)=>{ if(res.headersSent) return next(err); res.status(err.status || 500).json({error:require('./utils/security').publicError(err, err.status && err.status<500 ? 'Requisicao invalida.' : 'Erro interno.')}); });
 module.exports = app;

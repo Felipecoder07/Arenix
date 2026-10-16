@@ -1,0 +1,35 @@
+{
+  "at": "2026-10-12T16:39:11.032Z",
+  "instance": "instance",
+  "mode": "read-only",
+  "providerQueried": false,
+  "correctionsApplied": false,
+  "reservationAttempts": [
+    {
+      "reserva_id": 1,
+      "tenant_id": 1,
+      "state": "pending",
+      "attempts": 1,
+      "withoutReference": 0
+    },
+    {
+      "reserva_id": 20010,
+      "tenant_id": 1,
+      "state": "unknown",
+      "attempts": 1,
+      "withoutReference": 1
+    },
+    {
+      "reserva_id": 20011,
+      "tenant_id": 1,
+      "state": "unknown",
+      "attempts": 1,
+      "withoutReference": 1
+    }
+  ],
+  "saasAttempts": [],
+  "openInvoices": [],
+  "pixMigrationPresent": false,
+  "action": "Preserve historical attempts. Missing reference is not proof of failure. Reconcile each uncertain operation with its original receiving account before any correction.",
+  "sourceUnchanged": true
+}

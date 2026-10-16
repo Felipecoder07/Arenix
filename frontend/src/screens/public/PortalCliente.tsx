@@ -1,3 +1,4 @@
+import { ToastLayer } from "../../components/ToastLayer";
 import { errorMessage } from '../../utils/errorMessage';
 import { apiFetch as fetch, logout } from '../../utils/apiFetch';
 import React, { useState, useEffect } from 'react';
@@ -366,12 +367,12 @@ export function PortalCliente() {
 
       {/* Toast Alert */}
       {toast && (
-        <div
+        <ToastLayer><div
           className={`fixed bottom-4 right-4 z-50 px-4 py-3 rounded-lg text-white font-medium shadow-lg transition-transform duration-200 ${toast.type === 'success' ? 'bg-success' : 'bg-danger'
             }`}
         >
           {toast.message}
-        </div>
+        </div></ToastLayer>
       )}
     </div>
   );

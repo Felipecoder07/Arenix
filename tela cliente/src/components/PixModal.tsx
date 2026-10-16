@@ -100,7 +100,6 @@ export default function PixModal({
     const t = setInterval(() => {
       setRemaining((r) => {
         if (r <= 1) {
-          onCancelPending?.();
           return 0;
         }
         return r - 1;
@@ -201,7 +200,7 @@ export default function PixModal({
                 : manual
                 ? 'Aguardando confirmação manual da arena'
                 : expired
-                ? 'Tempo esgotado — A reserva foi cancelada e a vaga liberada'
+                 ? 'Prazo de pagamento encerrado. Aguarde a consulta do status da reserva.'
                 : `Pague em ${mmss(remaining)} para garantir sua vaga`}
             </p>
           </div>

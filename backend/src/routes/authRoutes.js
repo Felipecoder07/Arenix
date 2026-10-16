@@ -79,7 +79,8 @@ router.get('/comunicados/ativos', verifyToken, require('../utils/permissions').r
       FROM ComunicadosSaaS
       WHERE (destino = 'all' OR destino = ?)
         AND ativo = 1
-        AND expira_em > datetime('now')
+        AND estado = 'publicado' AND canal = 'alerta'
+        AND julianday(expira_em) > julianday('now')
       ORDER BY criado_em DESC
     `;
     const rows = await db.allAsync(query, [String(tenantId || '')]);

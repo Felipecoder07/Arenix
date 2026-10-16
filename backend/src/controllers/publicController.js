@@ -378,6 +378,7 @@ const agendarReservaPublica = async (req, res) => {
     clientAccess.setGuestCookies(res,guestAccess);
 
     let pixData = null;
+    let pixFailure = null;
     if (paymentMethod === 'pix') {
       try {
         if (pixMode === 'chave_pix') {
@@ -387,6 +388,7 @@ const agendarReservaPublica = async (req, res) => {
           pixData = await criarCobrancaPix(primeiraReservaId, inserted.valorTotalGeral, arena.id);
         }
       } catch (eGateway) {
+        pixFailure = require('../utils/paymentProviderError').paymentErrorBody(eGateway);
         const safeMsg = String(eGateway?.message || '').replace(/[\r\n]/g, '');
         logger.warn('[Public Checkout Warning] Falha ao gerar Pix no gateway:', safeMsg);
       }
@@ -408,6 +410,8 @@ const agendarReservaPublica = async (req, res) => {
       await db.runAsync(`UPDATE Reservas SET observacoes_cancelamento='Cobranca pendente de conciliacao' WHERE id IN (${placeholders})`, reservasCriadasIds);
       return res.status(202).json({
         payment_pending_review: true,
+        payment_state: pixFailure?.next_action === 'correct_configuration' ? 'failed' : 'unknown',
+        payment_error: pixFailure,
         reserva_id: primeiraReservaId,
         reservas_ids: reservasCriadasIds,
         message: 'Reserva registrada, mas não foi possível confirmar a cobrança Pix. Consulte o status antes de tentar novamente.'
@@ -688,17 +692,21 @@ async function resolverPixDados(reserva, arena) {
   let gatewayRef = transacao?.gateway_ref || null;
   let copiaCola = null;
   let qrCode = null;
+  let expiresAt = null;
 
   try {
-      const full=await db.getAsync('SELECT * FROM Reservas WHERE id=?',[reserva.id]);
-      const members=await require('../services/paymentLedgerService').scopeReservations(full);
-      let balance=0;
-      for(const m of members){const p=await db.getAsync('SELECT COALESCE(SUM(valor),0) AS total FROM Pagamentos WHERE reserva_id=?',[m.id]);balance+=Math.max(0,m.valor_total-p.total);}
-      const pixData = await criarCobrancaPix(reserva.id, balance, arena.id);
+      const service = require('../services/paymentIntentService');
+      const intent = await service.consultPix(reserva.id, arena.id);
+      if (intent?.state === 'failed') return { paymentPendingReview: true, payment_state: 'failed',
+        payment_error: require('../utils/paymentProviderError').paymentErrorBody(
+          require('../utils/paymentProviderError').normalizePaymentError(
+            require('../utils/paymentProviderError').paymentError('PIX_PROVIDER_REJECTED'), intent.id)) };
+      const pixData = service.cachedResponse(intent);
       if (pixData) {
         gatewayRef = pixData.gateway_ref || gatewayRef;
         copiaCola = pixData.copia_cola;
         qrCode = pixData.qr_code;
+        expiresAt = pixData.expira_em;
       }
   } catch (eGateway) {
     const safeMsg = String(eGateway?.message || '').replace(/[\r\n]/g, '');
@@ -713,7 +721,7 @@ async function resolverPixDados(reserva, arena) {
     qrCode = await require('qrcode').toDataURL(copiaCola);
   }
 
-  return { gatewayRef, copiaCola, qrCode };
+  return { gatewayRef, copiaCola, qrCode, expiresAt };
 }
 
 // 16. Recuperar/Obter Dados do Pix de uma Reserva Pendente
@@ -761,6 +769,10 @@ const obterPixReservaPendente = async (req, res) => {
     }
 
     const pixDados = await resolverPixDados(reserva, arena);
+    const current = await db.getAsync('SELECT status,status_pagamento FROM Reservas WHERE id=?', [reserva.id]);
+    if (current.status_pagamento === 'Pago' || ['Cancelada', 'Cancelamento pendente'].includes(current.status)) {
+      return res.json({ reserva_id: reserva.id, ...current });
+    }
     if (pixDados.errorConfig) {
       return res.status(400).json({
         payment_not_configured: true,
@@ -771,6 +783,8 @@ const obterPixReservaPendente = async (req, res) => {
     if (pixDados.paymentPendingReview) {
       return res.status(202).json({
         payment_pending_review: true,
+        payment_state: pixDados.payment_state || 'unknown',
+        payment_error: pixDados.payment_error,
         reserva_id: reserva.id,
         message: 'Não foi possível confirmar a cobrança Pix. Consulte o status antes de tentar novamente.'
       });
@@ -790,6 +804,7 @@ const obterPixReservaPendente = async (req, res) => {
       gateway_ref: pixDados.gatewayRef,
       copia_cola: pixDados.copiaCola,
       qr_code: pixDados.qrCode,
+      expira_em: pixDados.expiresAt || null,
       manual_confirmation: Boolean(pixDados.manualConfirmation),
       expira_em_minutos: pixDados.manualConfirmation ? null : expiraEmMinutos,
       expira_em_segundos: pixDados.manualConfirmation ? null : restanteSegundos

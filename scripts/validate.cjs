@@ -31,7 +31,10 @@ try {
   dirty = execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim().length > 0;
 } catch { /* Permite executar também em pacote sem metadados Git. */ }
 
-const report = { startedAt, commit, dirty, node: process.version, results: [], automatedPassed: false, productionApproved: false };
+const source = require('../backend/scripts/homologacao_instance.cjs');
+const sourceHashes = source.inventory(root);
+const report = { startedAt, commit, dirty, node: process.version, sourceDigest: source.digest(JSON.stringify(sourceHashes)),
+  sourceHashes, results: [], automatedPassed: false, productionApproved: false };
 const summaryPath = path.join(reportDir, 'summary.json');
 const saveReport = () => fs.writeFileSync(summaryPath, JSON.stringify(report, null, 2) + '\n');
 saveReport();
@@ -65,7 +68,9 @@ for (const [name, project, script] of steps) {
   console.log(`${passed ? 'PASSOU' : 'FALHOU'}: ${name} (${Math.round(record.durationMs / 1000)}s)`);
 }
 report.finishedAt = new Date().toISOString();
-report.automatedPassed = report.results.every(result => result.passed);
+report.sourceUnchanged = report.sourceDigest === source.digest(JSON.stringify(source.inventory(root)));
+report.automatedPassed = report.results.every(result => result.passed) && report.sourceUnchanged;
+if (!report.sourceUnchanged) console.log('Os arquivos mudaram durante a validação; execute novamente para validar a versão final.');
 saveReport();
 console.log(`Relatório: ${summaryPath}`);
 console.log('A aprovação para produção também exige as evidências de docs/HOMOLOGACAO.md.');

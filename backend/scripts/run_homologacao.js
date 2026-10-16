@@ -3,10 +3,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '../..');
-const target = path.join(root, '.local-security/homologacao/instance');
+const { resolveInstance, verifySnapshot } = require('./homologacao_instance.cjs');
+const target = resolveInstance();
+const manifest = verifySnapshot(target);
 const config = JSON.parse(fs.readFileSync(path.join(target, 'config.json')));
 assert.equal(config.NODE_ENV, 'development');
-assert.ok(config.MERCADO_PAGO_ACCESS_TOKEN?.startsWith('TEST-'));
+require('./homologacao_credentials.cjs').validateTestCredentials(config);
 // Avoid inherited secrets, dotenv from the workspace, and proxy configuration.
 for (const name of Object.keys(process.env)) {
   if (!/^(PATH|SYSTEMROOT|WINDIR|TEMP|TMP|COMSPEC|PATHEXT|USERPROFILE|APPDATA|LOCALAPPDATA)$/i.test(name)) delete process.env[name];
@@ -15,31 +17,7 @@ Object.assign(process.env, config, { NODE_PATH: path.join(root, 'backend/node_mo
 require('node:module').Module._initPaths();
 process.chdir(path.join(target, 'backend'));
 assert.equal(fs.existsSync('.env'), false, 'Unexpected dotenv in isolated instance');
-// No real credential can be sent by the harness, even if OAuth/config is changed.
-const networkFetch = global.fetch;
-global.fetch = async (input, options = {}) => {
-  const url = new URL(typeof input === 'string' ? input : input.url);
-  const authorization = new Headers(options.headers).get('authorization');
-  if (url.hostname !== 'api.mercadopago.com' || url.protocol !== 'https:' ||
-      authorization !== `Bearer ${config.MERCADO_PAGO_ACCESS_TOKEN}`) {
-    throw new Error('Homologation network guard: only the configured TEST credential is allowed.');
-  }
-  const response = await networkFetch(input, { ...options, redirect: 'error' });
-  const body = await response.clone().json().catch(() => ({}));
-  const diagnostic = value => typeof value === 'string' ? value
-    .replaceAll(config.MERCADO_PAGO_ACCESS_TOKEN, '[redacted]')
-    .replace(/\b(?:TEST-|APP_USR-)[a-zA-Z0-9-]+/g, '[redacted]')
-    .replace(/[\w.+-]+@[\w.-]+/g, '[email]')
-    .replace(/[\r\n]/g, ' ').slice(0, 250) : undefined;
-  const evidence = { at: new Date().toISOString(), method: options.method || 'GET', path: url.pathname,
-    httpStatus: response.status, liveMode: body.live_mode, amount: body.transaction_amount, currency: body.currency_id,
-    error: /^[a-z_]{1,80}$/i.test(body.error || '') ? body.error : undefined,
-    message: response.ok ? undefined : diagnostic(body.message),
-    causeCodes: Array.isArray(body.cause) ? body.cause.map(item => String(item.code)).filter(code => /^[a-z0-9_]{1,80}$/i.test(code)) : undefined,
-    descriptions: response.ok || !Array.isArray(body.cause) ? undefined : body.cause.map(item => diagnostic(item.description)) };
-  fs.appendFileSync(path.join(target, 'provider-checks.jsonl'), JSON.stringify(evidence) + '\n');
-  return response;
-};
+global.fetch = require('./homologacao_network.cjs').installNetworkGuard(config, target, manifest.digest);
 const db = require(path.join(target, 'backend/src/config/database'));
 async function initialize() {
   const databases = await db.allAsync('PRAGMA database_list');
@@ -80,12 +58,19 @@ async function initialize() {
         await db.runAsync("INSERT INTO Quadras(id,tenant_id,nome,preco_base,status) VALUES(?,?,?,10000,'Ativa')", [id, id, 'Quadra teste ' + id]);
       }
       await db.runAsync("INSERT INTO Usuarios(tenant_id,nome,email,senha_hash,perfil,ativo) VALUES(1,'Administrador homologacao',?,?,'Administrador',1)", [login.email, password]);
-      await db.runAsync("INSERT INTO Clientes(id,tenant_id,nome,email) VALUES(1,1,'Comprador Homologacao','comprador@example.com')");
+      const buyerEmail = config.MERCADO_PAGO_TEST_BUYER_EMAIL
+        ? require('./homologacao_instance.cjs').testBuyerEmail(config)
+        : 'comprador@example.com';
+      await db.runAsync("INSERT INTO Clientes(id,tenant_id,nome,email) VALUES(1,1,'Comprador Homologacao',?)", [buyerEmail]);
       await db.runAsync("INSERT INTO Reservas(id,tenant_id,cliente_id,quadra_id,data_reserva,hora_inicio,hora_fim,valor_total,status,status_pagamento,grupo_id) VALUES(1,1,1,1,'2099-12-01','10:00','11:00',10000,'Pendente','Pendente','homologacao-1')");
       await db.runAsync('COMMIT');
     } catch (error) { await db.runAsync('ROLLBACK'); throw error; }
   }
   assert.deepEqual(await db.allAsync('PRAGMA foreign_key_check'), []);
+  const { encrypt } = require(path.join(target, 'backend/src/utils/security'));
+  for (const [key, value] of [['mp_client_secret', config.HOMOLOGACAO_OAUTH_SECRET], ['mp_master_access_token', config.MERCADO_PAGO_MASTER_ACCESS_TOKEN]]) {
+    if (value) await db.runAsync('INSERT OR REPLACE INTO ConfiguracoesSaaS(chave,valor) VALUES(?,?)', [key, encrypt(value)]);
+  }
   if (process.argv.includes('--initialize-only')) {
     await new Promise((resolve, reject) => db.close(error => error ? reject(error) : resolve()));
     console.log('Isolated SQLite initialized; foreign keys OK. No application jobs started.');

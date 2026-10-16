@@ -77,7 +77,8 @@ const ArenaTabDados: React.FC<ArenaTabDadosProps> = ({
           </Select>
         </Field>
         <Field label="Dia de vencimento da fatura">
-          <Input type="number" value={String(diaVencimento)} onChange={(e) => setDiaVencimento(Number(e.target.value))} disabled={!editing} min={1} max={28} />
+          <Input type="number" value={String(diaVencimento)} onChange={(e) => setDiaVencimento(Number(e.target.value))} disabled={!editing} min={1} max={31} step={1} />
+          {editing && <p className="text-xs text-muted">Após a primeira fatura, o novo dia vale na primeira data possível após o período já faturado. Os dias de transição não têm custo adicional. Meses curtos usam o último dia do mês.</p>}
         </Field>
         <Field label="Admin responsável (Criador)"><Input value={adminResponsavel} disabled /></Field>
         <Field label="Quadras cadastradas"><Input value={String(arena.quadras)} disabled /></Field>
@@ -303,7 +304,8 @@ export function MasterArenaDetalhe({ onNavigate }: Readonly<Props>) {
           email,
           telefone,
           endereco,
-          dia_vencimento: Number(diaVencimento)
+          dia_vencimento: Number(diaVencimento),
+          plano_id: Number(planoId)
         })
       });
 
@@ -311,22 +313,6 @@ export function MasterArenaDetalhe({ onNavigate }: Readonly<Props>) {
         const errData = await resUpdate.json();
         alert(errData.error || 'Erro ao salvar dados cadastrais');
         return;
-      }
-
-      // Update plan if changed
-      if (planoId !== arena.plano_id) {
-        const resPlan = await fetch(`/api/saas/arenas/${arenaId}/plano`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ plano_id: Number(planoId) })
-        });
-        if (!resPlan.ok) {
-          const errData = await resPlan.json();
-          alert(errData.error || 'Erro ao alterar o plano');
-          return;
-        }
       }
 
       setEditing(false);

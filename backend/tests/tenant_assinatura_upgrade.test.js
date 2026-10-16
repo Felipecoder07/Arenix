@@ -133,6 +133,18 @@ describe('Testes de Integração — Upgrade Self-Service de Planos SaaS (Módul
     expect(resStatus.body.status).toBe('Paga');
   });
 
+  it('preserva o Pix existente ao recusar outra troca com fatura em aberto', async () => {
+    const oldInvoice = await db.runAsync(`INSERT INTO FaturasSaaS
+      (tenant_id, plano_id, valor, ciclo, status, data_vencimento, gateway_ref, copia_cola)
+      VALUES (?, 2, 7999, 'mensal', 'Pendente', '2099-01-01', 'pix-preservado', 'qr-preservado')`, [arenaId]);
+    const res = await auth(request(app).post('/api/tenant/assinatura/solicitar-upgrade'), adminSession)
+      .send({ plano_id: 3 });
+    expect(res.status).toBe(409);
+    expect(await db.getAsync('SELECT plano_id, valor, gateway_ref, copia_cola FROM FaturasSaaS WHERE id = ?', [oldInvoice.lastID]))
+      .toEqual({ plano_id: 2, valor: 7999, gateway_ref: 'pix-preservado', copia_cola: 'qr-preservado' });
+    await db.runAsync('DELETE FROM FaturasSaaS WHERE id = ?', [oldInvoice.lastID]);
+  });
+
   it('4.1 Segurança Multi-Tenant: Outro tenant NÃO pode simular fatura alheia', async () => {
     // Criar outro tenant B
     const uniqueB = Date.now() + '_other';

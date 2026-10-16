@@ -1,0 +1,14 @@
+{
+  "browser": "Edge headless",
+  "viewports": [
+    "1440x1000",
+    "390x844"
+  ],
+  "passed": true,
+  "screenshots": 8,
+  "pageErrors": [],
+  "dialogs": [],
+  "externalTraffic": "blocked",
+  "database": ":memory:",
+  "email": "mocked"
+}

@@ -8,14 +8,14 @@ beforeEach(fixture.seed);
 afterEach(() => vi.restoreAllMocks());
 afterAll(fixture.close);
 
-it('classifies trial by expiration in the arena timezone without changing operational status', async () => {
+it('classifies trial by the SaaS billing date with an exclusive end, without changing operational status', async () => {
   const master = await fixture.login(app, actors.master);
-  vi.spyOn(dates, 'getTodayString').mockImplementation(zone => zone === 'America/Manaus' ? '2030-01-01' : '2030-01-02');
+  vi.spyOn(dates, 'getTodayString').mockReturnValue('2030-01-02');
   for (const [expiration, status, zone, expected] of [
     ['2030-01-03', 1, 'America/Sao_Paulo', true],
-    ['2030-01-02', 1, 'America/Sao_Paulo', true],
+    ['2030-01-02', 1, 'America/Sao_Paulo', false],
     ['2030-01-01', 1, 'America/Sao_Paulo', false],
-    ['2030-01-01', 1, 'America/Manaus', true],
+    ['2030-01-01', 1, 'America/Manaus', false],
     [null, 1, 'America/Sao_Paulo', false],
     ['2030-01-03', 0, 'America/Sao_Paulo', false],
   ]) {

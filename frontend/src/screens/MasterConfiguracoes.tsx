@@ -1,3 +1,4 @@
+import { ToastLayer } from "../components/ToastLayer";
 import { useCallback } from 'react';
 import { ReauthenticationAction } from '../components/ReauthenticationAction';
 import { apiFetch as fetch } from '../utils/apiFetch';
@@ -623,11 +624,11 @@ export function MasterConfiguracoes() {
 
       {/* Toast */}
       {toast && (
-        <div className={`fixed bottom-4 right-4 z-50 px-4 py-3 rounded-lg text-white font-medium shadow-lg transition-transform duration-200 ${
+        <ToastLayer><div className={`fixed bottom-4 right-4 z-50 px-4 py-3 rounded-lg text-white font-medium shadow-lg transition-transform duration-200 ${
           toast.type === 'success' ? 'bg-success' : 'bg-danger'
         }`}>
           {toast.message}
-        </div>
+        </div></ToastLayer>
       )}
 
       {/* Título da página */}

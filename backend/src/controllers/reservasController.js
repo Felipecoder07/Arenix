@@ -135,11 +135,11 @@ const cancelarReserva = async (req, res) => {
         
         if (client && client.email && arena?.notif_cancelamento_email !== 0) {
           const { sendEmail } = require('../services/emailService');
-          const subject = `Reserva Cancelada - ${arena ? arena.nome : 'Arenix'}`;
+          const subject = `${cancellation.pending ? 'Cancelamento pendente' : 'Reserva Cancelada'} - ${arena ? arena.nome : 'Arenix'}`;
           const html = `
             <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; line-height: 1.6;">
-              <h2 style="color: #C53030;">Reserva Cancelada 🚫</h2>
-              <p>Olá, ${client.nome}. Informamos que a sua reserva foi cancelada no sistema.</p>
+              <h2 style="color: #C53030;">${cancellation.pending ? 'Cancelamento pendente' : 'Reserva Cancelada'}</h2>
+              <p>Olá, ${client.nome}. ${cancellation.pending ? 'Recebemos a solicitação de cancelamento. A conclusão depende da devolução dos valores ou da conciliação das cobranças pendentes.' : 'Informamos que a sua reserva foi cancelada no sistema.'}</p>
               <div style="background-color: #FFF5F5; border: 1px solid #FEB2B2; padding: 15px; border-radius: 5px; margin: 20px 0;">
                 <strong>Detalhes do agendamento cancelado:</strong><br />
                 📅 <strong>Data:</strong> ${reserva.data_reserva.split('-').reverse().join('/')}<br />
@@ -159,7 +159,7 @@ const cancelarReserva = async (req, res) => {
       }
     })();
 
-    res.status(cancellation.pending?202:200).json({message:cancellation.pending?'Cancelamento pendente de conciliação.':'Reserva cancelada.',pending:cancellation.pending});
+    res.status(cancellation.pending?202:200).json({message:cancellation.pending?'Cancelamento pendente. Use Estornar para devolver valores recebidos; cobrancas em aberto dependem de conciliacao.':'Reserva cancelada.',pending:cancellation.pending});
   } catch (error) {
     logger.error(error);
     res.status(500).json({ error: 'Erro ao cancelar reserva.' });
