@@ -14,6 +14,11 @@ function trustedProxies(env = process.env) {
 }
 
 function configureProxy(app, env = process.env) {
+  if (env.RENDER === 'true') {
+    // Render terminates TLS and forwards requests through one load balancer hop.
+    app.set('trust proxy', 1);
+    return;
+  }
   const proxies = trustedProxies(env);
   app.set('trust proxy', proxies.length ? proxies : false);
   if (env.NODE_ENV === 'production' && proxies.length) {
@@ -26,6 +31,12 @@ function configureProxy(app, env = process.env) {
 
 function validateProxyEnvironment(env = process.env) {
   if (env.NODE_ENV !== 'production') return;
+  if (env.RENDER === 'true') {
+    if (!env.RENDER_EXTERNAL_URL?.startsWith('https://') || env.LISTEN_HOST !== '0.0.0.0' || env.TRUST_PROXY) {
+      throw new Error('Render exige URL HTTPS, LISTEN_HOST=0.0.0.0 e TRUST_PROXY vazio.');
+    }
+    return;
+  }
   if (!trustedProxies(env).length) throw new Error('Configure TRUST_PROXY com os IPs reais do proxy.');
   const host = env.LISTEN_HOST || '127.0.0.1';
   if (!net.isIP(host) || host === '0.0.0.0' || host === '::') throw new Error('LISTEN_HOST deve ser um IP especifico, sem bind universal.');

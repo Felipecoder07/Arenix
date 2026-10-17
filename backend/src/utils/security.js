@@ -24,7 +24,7 @@ function cents(value, { zero = false } = {}) {
   return result;
 }
 function frontendUrl() {
-  const value = process.env.FRONTEND_URL || process.env.APP_URL;
+  const value = process.env.FRONTEND_URL || process.env.APP_URL || (process.env.RENDER === 'true' ? process.env.RENDER_EXTERNAL_URL : undefined);
   if (!value && production()) throw httpError(503, 'URL da aplicação não configurada.');
   const url = new URL(value || 'http://localhost:5173');
   if (production() && url.protocol !== 'https:') throw httpError(503, 'HTTPS é obrigatório.');
@@ -34,10 +34,11 @@ function validateEnvironment() {
   if (!production()) return;
   if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32 || /seu_jwt|secret-jwt|example/i.test(process.env.JWT_SECRET)) throw new Error('Configure JWT_SECRET forte antes de iniciar produção.');
   frontendUrl();
-  if (!process.env.CORS_ALLOWED_ORIGINS) throw new Error('Configure CORS_ALLOWED_ORIGINS em produção.');
+  const origins = process.env.CORS_ALLOWED_ORIGINS || (process.env.RENDER === 'true' ? process.env.RENDER_EXTERNAL_URL : '');
+  if (!origins) throw new Error('Configure CORS_ALLOWED_ORIGINS em produção.');
   require('./secretEncryption').loadKeys({ requireActive: true });
   require('../config/proxy').validateProxyEnvironment();
-  for (const origin of process.env.CORS_ALLOWED_ORIGINS.split(',').map(value => value.trim())) {
+  for (const origin of origins.split(',').map(value => value.trim())) {
     const url = new URL(origin);
     if (url.protocol !== 'https:' || url.origin !== origin || url.username || url.password) throw new Error('CORS_ALLOWED_ORIGINS exige origens HTTPS exatas.');
   }

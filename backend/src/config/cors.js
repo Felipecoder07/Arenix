@@ -1,8 +1,9 @@
 const os = require('node:os');
 
 function allowedOrigins(env = process.env, interfaces = os.networkInterfaces()) {
-  if (env.CORS_ALLOWED_ORIGINS) {
-    return env.CORS_ALLOWED_ORIGINS.split(',').map(origin => origin.trim());
+  const configured = env.CORS_ALLOWED_ORIGINS || (env.RENDER === 'true' ? env.RENDER_EXTERNAL_URL : '');
+  if (configured) {
+    return configured.split(',').map(origin => origin.trim());
   }
   if (env.NODE_ENV === 'production') return [];
 

@@ -1,6 +1,7 @@
 const { validateEnvironment } = require('../src/config/envValidation');
 
 beforeEach(() => {
+  vi.stubEnv('RENDER', '');
   vi.stubEnv('NODE_ENV', 'production');
   vi.stubEnv('JWT_SECRET', 'production-fixture-key-' + 'a'.repeat(48));
   vi.stubEnv('FRONTEND_URL', 'https://fixture.example.test');
@@ -13,6 +14,25 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 it('accepts complete production configuration', () => expect(validateEnvironment()).toBeUndefined());
+it('accepts the Render HTTPS origin and one trusted load balancer hop', () => {
+  vi.stubEnv('RENDER', 'true');
+  vi.stubEnv('RENDER_EXTERNAL_URL', 'https://arenix.onrender.com');
+  vi.stubEnv('FRONTEND_URL', '');
+  vi.stubEnv('CORS_ALLOWED_ORIGINS', '');
+  vi.stubEnv('TRUST_PROXY', '');
+  vi.stubEnv('LISTEN_HOST', '0.0.0.0');
+  expect(validateEnvironment()).toBeUndefined();
+  expect(require('../src/config/cors').allowedOrigins()).toEqual(['https://arenix.onrender.com']);
+  const app = { set: vi.fn() };
+  require('../src/config/proxy').configureProxy(app);
+  expect(app.set).toHaveBeenCalledWith('trust proxy', 1);
+});
+it('rejects incomplete Render proxy configuration', () => {
+  vi.stubEnv('RENDER', 'true');
+  vi.stubEnv('RENDER_EXTERNAL_URL', 'https://arenix.onrender.com');
+  vi.stubEnv('LISTEN_HOST', '0.0.0.0');
+  expect(validateEnvironment).toThrow();
+});
 it('allows local development without production settings', () => {
   vi.stubEnv('NODE_ENV', 'development');
   vi.stubEnv('JWT_SECRET', '');
