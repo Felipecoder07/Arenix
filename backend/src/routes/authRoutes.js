@@ -17,7 +17,11 @@ router.post('/reset-password', recoveryLimiter, resetPassword);
 router.get('/planos', async (req, res) => {
   try {
     const planos = await db.allAsync('SELECT * FROM PlanosSaaS ORDER BY valor_mensal ASC');
-    res.json(planos);
+    res.json(planos.map(plano => ({
+      ...plano,
+      valor_mensal: plano.valor_mensal / 100,
+      valor_anual: plano.valor_anual / 100,
+    })));
   } catch (err) {
     res.status(500).json({ error: 'Erro ao buscar planos públicos.' });
   }
