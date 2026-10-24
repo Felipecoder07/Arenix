@@ -221,6 +221,8 @@ describe('Módulo de Autenticação e Cadastro do Atleta por Tenant', () => {
       .send({ reserva_id: reservaId });
     expect(resCancel.status).toBe(202);
     expect(resCancel.body.message).toMatch(/cancelamento|cancelada/i);
+    const cancelledReason = await db.getAsync('SELECT motivo_cancelamento_id FROM Reservas WHERE id = ?', [reservaId]);
+    expect(cancelledReason.motivo_cancelamento_id).toBe(-1);
   });
 
   it('9. Deve marcar horários passados como status: passado e rejeitar agendamentos no passado (HTTP 400)', async () => {

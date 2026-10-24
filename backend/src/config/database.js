@@ -10,7 +10,7 @@ if (process.env.VITEST && !isTest) throw new Error('Initialize the test database
 if (isTest && process.env.TEST_DB_PATH && process.env.TEST_DB_PATH !== ':memory:') {
   throw new Error('Test databases must use SQLite :memory:. Persistent TEST_DB_PATH is forbidden.');
 }
-const dataDir = path.resolve(__dirname, '../../data');
+const dataDir = require('./runtimePaths').dataDir();
 if (!isTest && !fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 const dbPath = isTest ? ':memory:' : path.join(dataDir, 'courtmanager.sqlite');
 

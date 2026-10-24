@@ -1,3 +1,4 @@
+import { getArenaPortalUrl } from '../utils/arenaPortal';
 import { DatePicker } from '../components/ui/date-picker';
 import { useCallback } from 'react';
 import type { SaaSArena, SaaSPlan } from '../types/api';
@@ -183,7 +184,7 @@ export function MasterArenas({ onNavigate }: Readonly<Props>) {
                     <td className="px-4 py-3">
                       <div className="master-row-actions">
                         {a.slug && (
-                          <a href={`/arena/${a.slug}`} target="_blank" rel="noreferrer" title="Abrir Vitrine Pública (Link do Atleta)" className="p-1.5 rounded-md text-emerald-600 hover:bg-emerald-50 transition-colors">
+                          <a href={getArenaPortalUrl(a.slug)} target="_blank" rel="noreferrer" title="Abrir portal da arena" className="p-1.5 rounded-md text-emerald-600 hover:bg-emerald-50 transition-colors">
                             <Globe size={15} />
                           </a>
                         )}

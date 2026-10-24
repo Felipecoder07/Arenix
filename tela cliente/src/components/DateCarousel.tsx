@@ -9,35 +9,36 @@ interface DateItem {
 
 interface Props {
   dates?: DateItem[];
+  timeZone?: string;
   selectedISO: string;
   onSelect: (iso: string) => void;
 }
 
-function getNext7Days(): DateItem[] {
+function getNext7Days(timeZone?: string): DateItem[] {
   const list: DateItem[] = [];
-  const hoje = new Date();
+  const hoje = new Date(`${getLocalDateISO(new Date(), timeZone)}T12:00:00Z`);
   const diasSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
   for (let i = 0; i < 7; i++) {
     const d = new Date(hoje);
-    d.setDate(hoje.getDate() + i);
-    const iso = getLocalDateISO(d);
-    const diaNum = d.getDate();
-    const mesNum = d.getMonth() + 1;
-    const diaSem = i === 0 ? 'Hoje' : diasSemana[d.getDay()];
+    d.setUTCDate(hoje.getUTCDate() + i);
+    const iso = d.toISOString().slice(0, 10);
+    const diaNum = d.getUTCDate();
+    const mesNum = d.getUTCMonth() + 1;
+    const diaSem = i === 0 ? 'Hoje' : diasSemana[d.getUTCDay()];
 
     list.push({
       iso,
       label: diaSem,
       sub: `${diaNum}/${mesNum}`,
-      weekday: diasSemana[d.getDay()]
+      weekday: diasSemana[d.getUTCDay()]
     });
   }
   return list;
 }
 
-export default function DateCarousel({ dates, selectedISO, onSelect }: Readonly<Props>) {
-  const datesList = dates && dates.length > 0 ? dates : getNext7Days();
+export default function DateCarousel({ dates, selectedISO, onSelect, timeZone }: Readonly<Props>) {
+  const datesList = dates && dates.length > 0 ? dates : getNext7Days(timeZone);
 
   return (
     <section className="px-4 pt-5">

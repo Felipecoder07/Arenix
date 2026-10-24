@@ -33,6 +33,11 @@ const fs = require("node:fs");
 
 // ─── ATUALIZAR ARENA ────────────────────────────────────────────────────────
 const atualizarMinhaArena = async (req, res) => {
+  try {
+    require('../utils/arenaDetails').validateArenaDetails(req.body);
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message });
+  }
   const tenant_id = req.user.tenant_id;
   const admin_id = req.user.id;
   const ip = req.headers['x-forwarded-for'] || req.ip;
@@ -129,7 +134,7 @@ const uploadFotoCapa = async (req, res) => {
     const buffer=await decoder.rotate().resize({width:2400,height:2400,fit:'inside',withoutEnlargement:true}).webp({quality:85}).toBuffer();
     const ext='webp';
 
-    const uploadsDir = path.join(__dirname, '../../uploads');
+    const uploadsDir = require('../config/runtimePaths').uploadsDir();
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true });
     }

@@ -1,0 +1,40 @@
+# One Render web service keeps the panel, athlete portal, API and SQLite on one origin.
+# SQLite and uploaded images require a paid service with a persistent disk.
+services:
+  - type: web
+    name: arenix
+    runtime: node
+    plan: 0.5c-512mb
+    autoDeployTrigger: off
+    buildCommand: npm ci --omit=dev --prefix backend && npm ci --include=dev --prefix frontend && npm run build --prefix frontend && npm ci --include=dev --prefix "tela cliente" && npm run build --prefix "tela cliente" -- --base=/athlete/ && node scripts/check-public-assets.cjs
+    startCommand: node backend/src/server.js
+    healthCheckPath: /api/health
+    disk:
+      name: arenix-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: 24.15.0
+      - key: NODE_ENV
+        value: production
+      - key: LISTEN_HOST
+        value: 0.0.0.0
+      - key: APP_DATA_DIR
+        value: /var/data/db
+      - key: UPLOADS_DIR
+        value: /var/data/uploads
+      - key: BACKUP_DIR
+        value: /var/data/backups
+      - key: APP_TIMEZONE
+        value: America/Sao_Paulo
+      - key: ENABLE_PUBLIC_BOOKING_CARD
+        value: false
+      - key: ENABLE_HSTS
+        value: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SECRETS_ACTIVE_KEY_ID
+        value: render1
+      - key: SECRETS_KEYRING
+        sync: false

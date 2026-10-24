@@ -23,6 +23,25 @@ const refusal = () => ({ ok: false, status: 400, headers: new Headers({ 'x-reque
 const approveCreation = () => provider.mockImplementationOnce(async (_url, options) => ({ ok: true, status: 201, json: async () => pixProvider(options) }));
 const current = () => db.getAsync('SELECT * FROM PaymentIntents ORDER BY created DESC,rowid DESC LIMIT 1');
 
+it('polling confirms a known online Pix without webhook within the first 30 seconds, idempotently', async () => {
+  const session = await fixture.login(app);
+  await db.runAsync("INSERT INTO Pagamentos(reserva_id,valor,metodo) VALUES(1,4000,'Pix')");
+  await db.runAsync("UPDATE Reservas SET status_pagamento='Parcial' WHERE id=1");
+  await db.runAsync("INSERT INTO TransacoesGateway(reserva_id,gateway_ref,metodo,valor,status) VALUES(1,'991','Pix',6000,'Pendente')");
+  await db.runAsync("INSERT INTO PaymentIntents(id,tenant_id,reserva_id,scope,method,amount_cents,state,gateway_ref,created,updated) VALUES('polling',1,1,'group-a','Pix',6000,'pending','991',?,?)", [Date.now()-6000,Date.now()-6000]);
+  provider.mockResolvedValue({ ok: true, json: async () => ({ id: 991, status: 'approved', currency_id: 'BRL', collector_id: 123, transaction_amount: 60 }) });
+  for (let i=0;i<2;i++) {
+    const result = await auth(request(app).get('/api/pagamentos/gateway/status/1?gateway_ref=991'), session);
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({ status_pagamento: 'Pago', transacao_status: 'Pago' });
+    expect(result.headers['cache-control']).toBe('no-store');
+  }
+  expect((await db.getAsync('SELECT SUM(valor) total FROM Pagamentos WHERE reserva_id=1')).total).toBe(10000);
+  expect(provider).toHaveBeenCalledTimes(1);
+  const foreign = await fixture.login(app, 4);
+  expect((await auth(request(app).get('/api/pagamentos/gateway/status/3?gateway_ref=991'), foreign)).status).toBe(404);
+});
+
 it('records a definitive first 2034, exposes a safe 422, and permits a new corrected attempt', async () => {
   const session = await fixture.login(app);
   provider.mockResolvedValueOnce(refusal());

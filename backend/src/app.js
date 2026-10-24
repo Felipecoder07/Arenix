@@ -39,11 +39,12 @@ app.use((req,res,next)=>{
 
 // Servir arquivos estáticos do frontend React e Uploads de Mídia
 const fs = require("node:fs");
-const uploadsDir = path.join(__dirname, '../uploads');
+const uploadsDir = require('./config/runtimePaths').uploadsDir();
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 app.use('/uploads', (req,res,next)=>{ if(!/^\/[a-zA-Z0-9_.-]+\.(jpg|jpeg|png|webp)$/.test(req.path)) return res.sendStatus(404); res.set('Content-Security-Policy', "default-src 'none'; sandbox"); next(); }, express.static(uploadsDir, {dotfiles:'deny',index:false}));
+app.use('/athlete', express.static(path.join(__dirname, '../../tela cliente/dist')));
 app.use(express.static(path.join(__dirname, '../../frontend/dist')));
 
 // Rotas API

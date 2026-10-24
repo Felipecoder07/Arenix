@@ -401,10 +401,14 @@ export function AdminConfiguracoes() {
             window.history.replaceState({}, document.title, window.location.pathname + '?tab=pagamentos');
           }
         })
-        .catch(err => console.error('Erro na troca de código OAuth:', err));
+        .catch(err => showToast(errorMessage(err) || 'Erro ao conectar a conta Mercado Pago.', 'error'));
     } else if (oauthStatus === 'success') {
       handleTabChange('pagamentos');
       showToast('✓ Conta do Mercado Pago conectada com sucesso!', 'success');
+    } else if (oauthStatus === 'error') {
+      handleTabChange('pagamentos');
+      showToast(params.get('message') || 'Não foi possível conectar a conta Mercado Pago. Inicie uma nova conexão.', 'error');
+      window.history.replaceState({}, document.title, window.location.pathname + '?tab=pagamentos');
     }
   }, [loadArena, loadMaquineta, loadMotivos, loadQuadras, loadUsuarios]);
 

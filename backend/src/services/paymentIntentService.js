@@ -69,10 +69,15 @@ async function getPixIntent(reservationId, tenantId) {
 }
 async function consultPix(reservationId, tenantId) {
   const intent = await getPixIntent(reservationId, tenantId);
-  if (!intent || !['creating','pending','unknown'].includes(intent.state) || Date.now() - intent.updated < 30000) return intent;
+  if (!intent || !['creating','pending','unknown'].includes(intent.state)) return intent;
+  // Static QR codes have no provider transaction to consult. Known online
+  // charges can be checked promptly while ambiguous creation keeps its backoff.
+  if (intent.gateway_ref?.startsWith('PIX_ESTATICO_')) return intent;
+  const interval = intent.gateway_ref ? 5000 : 30000;
+  if (Date.now() - intent.updated < interval) return intent;
   const now = Date.now();
   const claim = await db.runAsync(`UPDATE PaymentIntents SET next_reconcile=?,last_reconciled=?,reconcile_count=reconcile_count+1
-    WHERE id=? AND (next_reconcile IS NULL OR next_reconcile<=?)`, [now + 30000, now, intent.id, now]);
+    WHERE id=? AND (next_reconcile IS NULL OR next_reconcile<=?)`, [now + interval, now, intent.id, now]);
   if (!claim.changes) return intent;
   try {
     const gateway = require('./gatewayService');

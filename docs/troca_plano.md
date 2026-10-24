@@ -1,18 +1,10 @@
-O objetivo é deixar a troca de plano coerente entre a oferta exibida, a cobrança e os limites liberados para a arena.
+1. Valores exibidos 100 vezes maiores. Histórico, cartão e recibo recebem centavos e formatam como reais. Isso transforma R$ 49,99 em R$ 4.999,00 e R$ 767,88 em R$ 76.788,00. A geração do Pix faz a conversão corretamente, então a tela pode mostrar um valor diferente do cobrado. Código da API (/C:/Users/Mateus/Downloads/Volei System/backend/src/routes/tenantAssinaturaRoutes.js:174)
+2. O cartão mistura informações de faturas diferentes. Usa o valor da pendência mais recente, o vencimento da mais antiga e o nome do plano atual da arena. Valor, data e plano podem não pertencer à mesma cobrança. Seleção da fatura (/C:/Users/Mateus/Downloads/Volei System/frontend/src/screens/admin/AdminAssinatura.tsx:482)
+3. “Pagar Fatura com Pix” não usa a fatura exibida. O botão chama o adiantamento, que procura a pendência mais antiga. Portanto, pode abrir outra cobrança. Botão (/C:/Users/Mateus/Downloads/Volei System/frontend/src/screens/admin/AdminAssinatura.tsx:1264)
+4. Uma fatura paga pode continuar com botão de pagamento. Quando não existem pendências, o sistema usa a última fatura paga como alternativa, mas mantém “Pagar Fatura com Pix”. Clicar pode gerar a próxima mensalidade. Lógica do cartão (/C:/Users/Mateus/Downloads/Volei System/frontend/src/screens/admin/AdminAssinatura.tsx:1269)
+5. Existe conteúdo fictício quando o histórico está vazio. A interface cria uma linha de R$ 0,00 — Trial ativo, mesmo sem verificar se a arena está em trial. Histórico vazio (/C:/Users/Mateus/Downloads/Volei System/frontend/src/screens/admin/AdminAssinatura.tsx:1309)
+6. O adiantamento ainda inventa desconto anual de 20%. Se não houver preço anual cadastrado, aplica esse desconto automaticamente. Isso ficou inconsistente com a troca de plano, que agora recusa preço indisponível. Cálculo (/C:/Users/Mateus/Downloads/Volei System/backend/src/routes/tenantAssinaturaRoutes.js:587)
+7. O período mostrado não considera o fim real registrado. “Janeiro/2027 a Janeiro/2028” é montado apenas pelo vencimento e ciclo. Pode ficar incorreto para períodos ajustados ou proporcionais. Competência (/C:/Users/Mateus/Downloads/Volei System/backend/src/utils/dateUtils.js:35)
+8. O recibo contém dados de exemplo. O emissor tem CNPJ 00.000.000/0001-00; quando falta referência de pagamento, o código também inventa uma identificação AUTH-.... Recibo (/C:/Users/Mateus/Downloads/Volei System/backend/src/routes/tenantAssinaturaRoutes.js:708)
 
-1. Definir a regra de cobrança
-   Minha recomendação é manter inicialmente a cobrança integral do novo ciclo, informando o valor e a vigência antes da confirmação. Se quisermos cobrar somente a diferença proporcional, será necessário implementar o cálculo e definir como aproveitar o período já pago.
-2. Remover os dados de exemplo
-   Buscar preços, nomes e limites exclusivamente no servidor. Se a consulta falhar, mostrar uma mensagem com “Tentar novamente” e impedir a contratação até carregar os dados reais.
-3. Ajustar a confirmação da troca
-   Exibir plano atual, plano escolhido, ciclo, valor total e quando a mudança entra em vigor. Corrigir a promessa de liberação imediata: os novos limites só serão aplicados após a confirmação do pagamento. Manter Enterprise claramente identificado como contratação por consultor.
-4. Validar as regras no servidor
-   Conferir permissões, capacidade da arena e faturas pendentes. Garantir que tentativas repetidas reutilizem a cobrança válida, sem duplicar faturas, e que o valor seja sempre calculado pelo servidor.
-5. Concluir o fluxo de pagamento
-   Tratar Pix expirado, falha na geração, nova tentativa e retomada de uma cobrança pendente. Após o pagamento confirmado, atualizar plano, vigência e limites, refletindo os dados nas telas de Assinatura, Quadras e Usuários.
-6. Validar antes de liberar
-   Testar upgrade, downgrade permitido e bloqueado, ciclo mensal/anual, falhas de consulta, cobrança duplicada e confirmação repetida do pagamento. Fazer também uma validação em ambiente de homologação do provedor.
-
-Critério de conclusão: o preço confirmado deve corresponder à cobrança; o plano só deve mudar após pagamento confirmado; os limites devem refletir essa mudança; nenhuma falha pode apresentar dados fictícios ou gerar cobrança duplicada.
-
-A primeira decisão é a regra financeira: cobrança integral do novo ciclo ou diferença proporcional. Ela precisa ficar definida antes de alterar o cálculo.
+As mensalidades futuras marcadas como pagas não são necessariamente erro: podem representar adiantamentos. Para confirmar esses registros específicos, seria necessário conferir os pagamentos correspondentes.

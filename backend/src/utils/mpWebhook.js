@@ -1,8 +1,11 @@
 const crypto=require('node:crypto');
-const {production}=require('./security');
+const {production,httpError}=require('./security');
 async function validateWebhook(req) {
   const secret=await require('../services/credentialService').readCredential('mp_webhook_secret');
-  if(!secret) return !production() && process.env.NODE_ENV==='test';
+  if(!secret) {
+    if(!production() && process.env.NODE_ENV==='test') return true;
+    throw httpError(503, 'Segredo do webhook Mercado Pago não configurado.');
+  }
   const parts=Object.fromEntries(String(req.headers['x-signature']||'').split(',').map(p=>p.trim().split('=')));
   const id=String(req.query['data.id']||req.body?.data?.id||req.query.id||req.body?.id||'').toLowerCase();
   const requestId=req.headers['x-request-id'];

@@ -105,7 +105,12 @@ const parseCurrencyToFloat = (value: string) => {
 };
 
 const formatCurrency = (val: number) => {
-  return 'R$ ' + val.toFixed(2).replace('.', ',');
+  return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+};
+
+const formatPaymentDate = (timestamp: string) => {
+  const utc = /Z$|[+-]\d{2}:?\d{2}$/.test(timestamp) ? timestamp : timestamp.replace(' ', 'T') + 'Z';
+  return new Date(utc).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 };
 
 const formatData = (dateStr: string) => {
@@ -198,6 +203,7 @@ ${hand} ${clientPortalUrl}`;
   const [copiaCola, setCopiaCola] = useState('');
   const [loadingGateway, setLoadingGateway] = useState(false);
   const [showPixCobranca, setShowPixCobranca] = useState(false);
+  const [pixManual, setPixManual] = useState(false);
   const [posDeviceId, setPosDeviceId] = useState('');
 
   const showToast = (message: string, type: 'success' | 'error') => {
@@ -215,7 +221,19 @@ ${hand} ${clientPortalUrl}`;
       });
       if (res.ok) {
         const data = await res.json();
-        setKpis(data);
+        setKpis({
+          ...data,
+          recebidoHoje: data.recebidoHoje / 100,
+          pendenteHoje: data.pendenteHoje / 100,
+          recebidoMes: data.recebidoMes / 100,
+          totalInadimplencia: data.totalInadimplencia / 100,
+          resumoFiltrado: data.resumoFiltrado ? {
+            ...data.resumoFiltrado,
+            recebido: data.resumoFiltrado.recebido / 100,
+            pendente: data.resumoFiltrado.pendente / 100,
+            faturamentoTotal: data.resumoFiltrado.faturamentoTotal / 100,
+          } : null,
+        });
       }
     } catch (err) {
       console.warn('Erro ao carregar KPIs de pagamento:', err);
@@ -242,7 +260,12 @@ ${hand} ${clientPortalUrl}`;
       });
       if (res.ok) {
         const data = await res.json();
-        setReservas(data);
+        setReservas(data.map((row: ReservaPagamento) => ({
+          ...row,
+          valor_total: row.valor_total / 100,
+          total_pago: row.total_pago / 100,
+          saldo_devedor: row.saldo_devedor / 100,
+        })));
       } else {
         setReservas([]);
       }
@@ -282,11 +305,11 @@ ${hand} ${clientPortalUrl}`;
         const data = rows.map(payment => ({ ...payment, valor: payment.valor / 100 }));
         setPagamentosReserva(data);
         
-        // Se for estorno, seleciona automaticamente o último pagamento positivo válido
+        // O valor devolvível considera todos os pagamentos e estornos já registrados.
         const positivos = data.filter((p: Pagamento) => p.valor > 0);
         if (positivos.length > 0) {
           setPagamentoEstornoId(positivos[positivos.length - 1].id);
-          setEstpValor(formatFloatToCurrencyInput(positivos[positivos.length - 1].valor));
+          setEstpValor(formatFloatToCurrencyInput(Math.max(0, data.reduce((total, payment) => total + payment.valor, 0))));
         } else {
           setPagamentoEstornoId(null);
           setEstpValor('');
@@ -301,17 +324,21 @@ ${hand} ${clientPortalUrl}`;
 
   // Polling para o Pix Online no painel Admin
   useEffect(() => {
-    if (!showPixCobranca || !reservaAtual) return;
-
+    if (!showPixCobranca || !reservaAtual || !gatewayRef || pixManual) return;
+    let cancelled = false;
+    let checking = false;
 
     const checkStatus = async () => {
+      if (checking || cancelled) return;
+      checking = true;
       try {
-        const res = await fetch(`/api/pagamentos/gateway/status/${reservaAtual.id}`, {
+        const res = await fetch(`/api/pagamentos/gateway/status/${reservaAtual.id}?gateway_ref=${encodeURIComponent(gatewayRef)}`, {
           headers: {}
         });
         if (res.ok) {
           const data = await res.json();
-          if (data.status_pagamento === 'Pago' || data.status_pagamento === 'Parcial') {
+          if (!cancelled && data.transacao_status === 'Pago') {
+            cancelled = true;
             showToast(data.status_pagamento === 'Pago' ? 'Pagamento confirmado (Quitado) no caixa!' : 'Pagamento parcial registrado no caixa!', 'success');
             
             // Limpa estados e fecha modal
@@ -329,12 +356,15 @@ ${hand} ${clientPortalUrl}`;
         }
       } catch (err) {
         console.warn(err);
+      } finally {
+        checking = false;
       }
     };
 
+    void checkStatus();
     const intervalId = setInterval(checkStatus, 3000);
-    return () => clearInterval(intervalId);
-  }, [showPixCobranca, reservaAtual, carregarKPIs, carregarReservas]);
+    return () => { cancelled = true; clearInterval(intervalId); };
+  }, [showPixCobranca, reservaAtual, gatewayRef, pixManual, carregarKPIs, carregarReservas]);
 
   const handleSimularPagamentoPix = async () => {
     if (!gatewayRef) return;
@@ -364,6 +394,7 @@ ${hand} ${clientPortalUrl}`;
     setActiveModal(null);
     setReservaAtual(null);
     setShowPixCobranca(false);
+    setPixManual(false);
     setGatewayRef('');
     setQrCode('');
     setCopiaCola('');
@@ -402,6 +433,8 @@ ${hand} ${clientPortalUrl}`;
 
     if (rpMetodo === 'Pix Online (Gateway)' || rpMetodo === 'Cartão (Maquineta Online)') {
       setLoadingGateway(true);
+      setGatewayRef('');
+      setPixManual(false);
       setShowPixCobranca(true);
       try {
         const metodo = rpMetodo === 'Pix Online (Gateway)' ? 'Pix' : 'Maquineta';
@@ -422,6 +455,7 @@ ${hand} ${clientPortalUrl}`;
         }
 
         setGatewayRef(data.gateway_ref);
+        setPixManual(Boolean(data.manual_confirmation || data.is_estatico));
         if (metodo === 'Pix') {
           setQrCode(data.qr_code);
           setCopiaCola(data.copia_cola);
@@ -459,6 +493,27 @@ ${hand} ${clientPortalUrl}`;
       carregarReservas();
     } catch (err) {
       showToast(errorMessage(err), 'error');
+    }
+  };
+
+  const confirmarPixManual = async () => {
+    if (!pixManual || !reservaAtual || loadingGateway) return;
+    setLoadingGateway(true);
+    try {
+      const response = await fetch('/api/pagamentos', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reserva_id: reservaAtual.id, valor: parseCurrencyToFloat(rpValor), metodo: 'Pix' }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Erro ao registrar recebimento Pix.');
+      fecharModalPagamento();
+      showToast('Recebimento Pix registrado após conferência.', 'success');
+      void carregarKPIs();
+      void carregarReservas();
+    } catch (error) {
+      showToast(errorMessage(error), 'error');
+    } finally {
+      setLoadingGateway(false);
     }
   };
 
@@ -545,15 +600,15 @@ ${hand} ${clientPortalUrl}`;
         r.quadra_nome,
         r.data_reserva,
         `${r.hora_inicio}-${r.hora_fim}`,
-        r.valor_total.toFixed(2),
-        r.total_pago.toFixed(2),
-        r.saldo_devedor.toFixed(2),
+        r.valor_total.toFixed(2).replace('.', ','),
+        r.total_pago.toFixed(2).replace('.', ','),
+        r.saldo_devedor.toFixed(2).replace('.', ','),
         r.metodos || '',
         r.status_pagamento
       ]);
     });
 
-    const csvContent = '\uFEFF' + rows.map(e => e.join(';')).join('\n');
+    const csvContent = '\uFEFF' + rows.map(row => row.map(value => `"${value.replace(/"/g, '""')}"`).join(';')).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -983,7 +1038,7 @@ ${hand} ${clientPortalUrl}`;
                 data-pencil-name="Nota Recebido no mês"
                 className="text-[12px]/[normal] box-border text-[#6F766F] font-[Inter,system-ui,sans-serif] font-normal text-left whitespace-nowrap"
               >
-                mês atual
+                mês atual · líquido de estornos
               </div>
             </div>
           </div>
@@ -1542,8 +1597,15 @@ ${hand} ${clientPortalUrl}`;
                         <img src={qrCode} alt="Pix QR Code" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                       </div>
                       <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '16px', maxWidth: '280px' }}>
-                        Peça para o cliente escanear o QR Code acima. A tela atualizará automaticamente após o pagamento.
+                        {pixManual
+                          ? 'Pix por chave, sem confirmação automática. Confira o crédito no banco da arena antes de registrar o recebimento. Para confirmar automaticamente, conecte o Mercado Pago em Configurações → Pagamentos.'
+                          : 'Peça para o cliente escanear o QR Code acima. A tela atualizará automaticamente após a confirmação do Mercado Pago.'}
                       </p>
+                      {pixManual && (
+                        <button type="button" className="btn-primary" onClick={confirmarPixManual} disabled={loadingGateway}>
+                          Conferi no banco: registrar recebimento
+                        </button>
+                      )}
                       
                       <div style={{ width: '100%', textAlign: 'left', marginBottom: '20px' }}>
                         <label style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>Pix Copia e Cola</label>
@@ -1586,7 +1648,7 @@ ${hand} ${clientPortalUrl}`;
                       <div style={{ maxHeight: '120px', overflowY: 'auto' }}>
                         {pagamentosReserva.filter(p => p.valor > 0).map(p => (
                           <div className="hist-item" key={p.id}>
-                            <span>{p.metodo} — {new Date(p.registrado_em).toLocaleDateString('pt-BR')}</span>
+                            <span>{p.metodo} — {formatPaymentDate(p.registrado_em)}</span>
                             <span className="valor-positivo">{formatCurrency(p.valor)}</span>
                           </div>
                         ))}
@@ -1686,7 +1748,7 @@ ${hand} ${clientPortalUrl}`;
                         }
                       }}
                     >
-                      <span className="text-xs text-charcoal">{p.metodo} — {new Date(p.registrado_em).toLocaleDateString('pt-BR')}</span>
+                      <span className="text-xs text-charcoal">{p.metodo} — {formatPaymentDate(p.registrado_em)}</span>
                       <span className="font-semibold text-xs valor-positivo">{formatCurrency(p.valor)}</span>
                     </div>
                   ))}

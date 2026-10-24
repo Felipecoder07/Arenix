@@ -8,6 +8,54 @@ beforeEach(() => window.history.replaceState({}, '', '/admin/configuracoes?aba=q
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('persistência de quadras', () => {
+  it.each(['Nova quadra', 'Editar'])('permite limpar e redigitar o preço sem restaurar o valor ao abrir %s', async action => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => response(String(input) === '/api/quadras' ? [quadra] : {}));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<AdminConfiguracoesQuadras />);
+    await screen.findByText('Quadra existente');
+    fireEvent.click(screen.getByRole('button', { name: action }));
+    const input = screen.getByLabelText('Preço por hora de Beach Tennis');
+    for (const value of ['', '0', '10abc', '1,2,3']) {
+      fireEvent.change(input, { target: { value } });
+      fireEvent.blur(input);
+      expect(input).toHaveValue(value === '0' ? '0,00' : value);
+      expect(input).toHaveAttribute('aria-invalid', 'true');
+      fireEvent.submit(input.closest('form')!);
+      expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST' || init?.method === 'PUT')).toBe(false);
+    }
+    fireEvent.change(input, { target: { value: '' } });
+    for (const [typed, displayed] of [['1', '0,01'], ['0,012', '0,12'], ['0,125', '1,25'], ['1,255', '12,55'], ['12,550', '125,50']]) {
+      fireEvent.change(input, { target: { value: typed } });
+      expect(input).toHaveValue(displayed);
+    }
+    expect(input).toHaveAttribute('aria-invalid', 'false');
+    fireEvent.submit(input.closest('form')!);
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => {
+      if (init?.method !== (action === 'Editar' ? 'PUT' : 'POST')) return false;
+      const body = JSON.parse(String(init.body));
+      return body.preco_base === 125.5 && body.modalidades[0].preco === 125.5;
+    })).toBe(true));
+  });
+
+  it.each(['Nova quadra', 'Editar'])('bloqueia horários iguais ou invertidos ao abrir %s', async (action) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => response(String(input) === '/api/quadras' ? [quadra] : {}));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<AdminConfiguracoesQuadras />);
+    await screen.findByText('Quadra existente');
+    fireEvent.click(screen.getByRole('button', { name: action }));
+    const opening = screen.getByLabelText('Horário de abertura: hora');
+    const closing = screen.getByLabelText('Horário de fechamento: hora');
+    const form = opening.closest('form')!;
+    for (const hour of ['07', '06']) {
+      fireEvent.change(closing, { target: { value: hour } });
+      expect(screen.getByRole('alert')).toHaveTextContent('O fechamento deve ser depois da abertura.');
+      fireEvent.submit(form);
+    }
+    expect(fetchMock.mock.calls.every(call => !(call[1] as RequestInit | undefined)?.method)).toBe(true);
+    fireEvent.change(closing, { target: { value: '22' } });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it.each([
     ['Basic', 3, 'Plano Basic: 1/3 quadras cadastradas'],
     ['Pro', 6, 'Plano Pro: 1/6 quadras cadastradas'],

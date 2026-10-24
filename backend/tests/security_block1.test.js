@@ -190,6 +190,9 @@ it('omitted, null and blank credentials preserve previous values; removal requir
   expect((await auth(request(app).delete('/api/saas/credenciais/mp_master_access_token'),session).send({senha_atual:PASSWORD})).status).toBe(200);
   expect(await require('../src/services/saasBillingService').getMasterAccessToken()).toBeNull();
   expect((await auth(request(app).get('/api/saas/configuracoes'),session)).body.has_mp_master_access_token).toBe(false);
+  vi.stubEnv('MERCADO_PAGO_WEBHOOK_SECRET','ENV-WEBHOOK-MUST-NOT-RETURN');
+  expect((await auth(request(app).delete('/api/saas/credenciais/mp_webhook_secret'),session).send({senha_atual:PASSWORD})).status).toBe(200);
+  expect(await require('../src/services/credentialService').readCredential('mp_webhook_secret')).toBeNull();
 });
 
 it('tenant disconnect refuses missing/wrong password and managers, preserves token on rejection',async()=>{

@@ -3,6 +3,13 @@ const db = require('../config/database');
 const logAuditEvent = require('../utils/auditLogger');
 const { cents } = require('../utils/security');
 
+function validCourtHours(opening, closing) {
+  const time = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+  return typeof opening === 'string' && typeof closing === 'string'
+    && time.test(opening) && (time.test(closing) || closing === '24:00')
+    && opening < closing;
+}
+
 // Listar quadras filtrando pelo tenant do usuário logado
 const listarQuadras = async (req, res) => {
   try {
@@ -48,10 +55,13 @@ const listarQuadras = async (req, res) => {
 const criarQuadra = async (req, res) => {
   try {
     const tenant_id = req.user.tenant_id;
-    const { nome, tipo, modalidades, preco_base, hora_abertura, hora_fechamento } = req.body;
+    const { nome, tipo, modalidades, preco_base, hora_abertura = '07:00', hora_fechamento = '22:00' } = req.body;
 
     if (!nome || !tipo) {
       return res.status(400).json({ error: 'Nome e tipo de quadra são obrigatórios.' });
+    }
+    if (!validCourtHours(hora_abertura, hora_fechamento)) {
+      return res.status(400).json({ error: 'Informe horários válidos. O fechamento deve ser depois da abertura.' });
     }
 
     // Validar limite de quadras do plano SaaS da arena
@@ -134,12 +144,17 @@ const atualizarQuadra = async (req, res) => {
   try {
     const tenant_id = req.user.tenant_id;
     const quadraId = req.params.id;
-    const { nome, tipo, modalidades, preco_base, hora_abertura, hora_fechamento, status } = req.body;
+    const { nome, tipo, modalidades, preco_base, status } = req.body;
 
     // Verificar se a quadra existe e pertence ao tenant
-    const quadra = await db.getAsync('SELECT id FROM Quadras WHERE id = ? AND tenant_id = ?', [quadraId, tenant_id]);
+    const quadra = await db.getAsync('SELECT id, hora_abertura, hora_fechamento FROM Quadras WHERE id = ? AND tenant_id = ?', [quadraId, tenant_id]);
     if (!quadra) {
       return res.status(404).json({ error: 'Quadra não encontrada.' });
+    }
+
+    const { hora_abertura = quadra.hora_abertura, hora_fechamento = quadra.hora_fechamento } = req.body;
+    if (!validCourtHours(hora_abertura, hora_fechamento)) {
+      return res.status(400).json({ error: 'Informe horários válidos. O fechamento deve ser depois da abertura.' });
     }
 
     const basePrice = preco_base != null ? cents(preco_base) : 8000;

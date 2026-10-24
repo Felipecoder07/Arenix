@@ -161,6 +161,9 @@ interface ConfigTabGatewayProps {
   masterTokenPreview: string;
   showMasterToken: boolean;
   setShowMasterToken: (v: boolean) => void;
+  mpWebhookSecret: string;
+  setMpWebhookSecret: (v: string) => void;
+  hasWebhookSecret: boolean;
   saving: boolean;
   onSave: () => void;
 }
@@ -181,6 +184,9 @@ const ConfigTabGateway: React.FC<ConfigTabGatewayProps> = ({
   masterTokenPreview,
   showMasterToken,
   setShowMasterToken,
+  mpWebhookSecret,
+  setMpWebhookSecret,
+  hasWebhookSecret,
   saving,
   onSave
 }) => {
@@ -311,16 +317,36 @@ const ConfigTabGateway: React.FC<ConfigTabGatewayProps> = ({
           </div>
         </div>
 
-        <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #bbf7d0', display: 'flex', justifyContent: 'flex-end' }}>
-          <button
-            className="btn-primary"
-            onClick={onSave}
-            disabled={saving}
-            style={{ backgroundColor: '#166534', borderColor: '#15803d' }}
-          >
-            {saving ? 'Salvando...' : '💾 Salvar Configurações de Gateway'}
-          </button>
+      </div>
+
+      <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '20px' }}>
+        <h4 style={{ margin: '0 0 4px 0', fontSize: '14px', color: '#1e293b', fontWeight: 700 }}>
+          3. Assinatura dos Webhooks
+        </h4>
+        <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#64748b' }}>
+          No Mercado Pago, abra Suas integrações → aplicação → Webhooks → Configurar notificações e copie a chave secreta da aplicação que enviará as notificações ao Arenix.
+        </p>
+        <div className="setting-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '8px', borderBottom: 'none' }}>
+          <div className="setting-info">
+            <div className="setting-name">Chave secreta do Webhook</div>
+            <div className="setting-desc">{hasWebhookSecret ? '✓ Chave configurada' : '⚠️ Chave não configurada'}</div>
+          </div>
+          <input
+            type="password"
+            autoComplete="off"
+            placeholder="Cole a chave secreta aqui"
+            value={mpWebhookSecret}
+            onChange={(event) => setMpWebhookSecret(event.target.value)}
+            style={{ width: '100%', maxWidth: '420px' }}
+            aria-label="Chave secreta do Webhook Mercado Pago"
+          />
         </div>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+        <button className="btn-primary" onClick={onSave} disabled={saving}>
+          {saving ? 'Salvando...' : '💾 Salvar Configurações de Gateway'}
+        </button>
       </div>
     </div>
   );
@@ -512,9 +538,11 @@ export function MasterConfiguracoes() {
   const [mpClientId, setMpClientId]             = useState('');
   const [mpClientSecret, setMpClientSecret]     = useState('');
   const [mpMasterToken, setMpMasterToken]       = useState('');
+  const [mpWebhookSecret, setMpWebhookSecret]   = useState('');
   const [hasClientSecret, setHasClientSecret]   = useState(false);
   const [clientSecretPreview, setClientSecretPreview] = useState('');
   const [hasMasterToken, setHasMasterToken]     = useState(false);
+  const [hasWebhookSecret, setHasWebhookSecret] = useState(false);
   const [masterTokenPreview, setMasterTokenPreview] = useState('');
   const [showSecret, setShowSecret]             = useState(false);
   const [showMasterToken, setShowMasterToken]   = useState(false);
@@ -549,8 +577,10 @@ export function MasterConfiguracoes() {
         setMpClientId(data.mp_client_id || '');
         setMpClientSecret('');
         setMpMasterToken('');
+        setMpWebhookSecret('');
         setHasClientSecret(Boolean(data.has_mp_client_secret));
         setHasMasterToken(Boolean(data.has_mp_master_access_token));
+        setHasWebhookSecret(Boolean(data.has_mp_webhook_secret));
         setClientSecretPreview(data.has_mp_client_secret ? 'Configurado' : '');
         setMasterTokenPreview(data.has_mp_master_access_token ? 'Configurado' : '');
       } else {
@@ -582,7 +612,8 @@ export function MasterConfiguracoes() {
           reasons,
           mp_client_id: mpClientId,
           mp_client_secret: mpClientSecret,
-          mp_master_access_token: mpMasterToken
+          mp_master_access_token: mpMasterToken,
+          mp_webhook_secret: mpWebhookSecret
         })
       });
       if (res.ok) {
@@ -684,6 +715,9 @@ export function MasterConfiguracoes() {
             masterTokenPreview={masterTokenPreview}
             showMasterToken={showMasterToken}
             setShowMasterToken={setShowMasterToken}
+            mpWebhookSecret={mpWebhookSecret}
+            setMpWebhookSecret={setMpWebhookSecret}
+            hasWebhookSecret={hasWebhookSecret}
             saving={saving}
             onSave={handleSave}
           />

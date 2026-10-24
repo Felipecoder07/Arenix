@@ -3,18 +3,21 @@ import { expect, it, vi } from 'vitest';
 import { AdminPagamentos } from '../src/screens/admin/AdminPagamentos';
 
 vi.mock('react-router-dom', () => ({ useOutletContext: () => ({}) }));
-const reservation = { id: 1, cliente_nome: 'Cliente Pix', quadra_nome: 'Quadra 1', data_reserva: '2030-01-10', hora_inicio: '10:00', hora_fim: '11:00', valor_total: 100, total_pago: 100, saldo_devedor: 0, metodos: 'Pix Online', status_pagamento: 'Cancelado (Pendente Estorno)' };
+const reservation = { id: 1, cliente_nome: 'Cliente Pix', quadra_nome: 'Quadra 1', data_reserva: '2030-01-10', hora_inicio: '10:00', hora_fim: '11:00', valor_total: 10000, total_pago: 10000, saldo_devedor: 0, metodos: 'Pix Online', status_pagamento: 'Cancelado (Pendente Estorno)' };
 const quote = { online: true, valor_centavos: 20000, confirmacao: 'confirmed-scope', reservas: [{ id: 1, data: '2030-01-10', inicio: '10:00', fim: '11:00' }, { id: 2, data: '2030-01-10', inicio: '11:00', fim: '12:00' }] };
 const response = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body });
 
-function setup({ pending = false, quoteError = false, manual = false } = {}) {
+function setup({ pending = false, quoteError = false, manual = false, outstanding = false, refunded = false } = {}) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === '/api/pagamentos/estorno') return response({ pending, message: pending ? 'Devolucao pendente de confirmacao do Mercado Pago.' : 'Devolucao confirmada pelo Mercado Pago.' }, pending ? 202 : 200);
     if (url.endsWith('/1/estorno')) return quoteError ? response({ error: 'Concilie o recebimento antes de devolver.' }, 409) : response({ ...quote, online: !manual });
-    if (url.endsWith('/reserva/1')) return response([{ id: 11, reserva_id: 1, valor: 10000, metodo: manual ? 'Pix' : 'Pix Online', registrado_em: '2030-01-10T10:00:00Z' }]);
-    if (url.startsWith('/api/pagamentos/reservas?')) return response([reservation]);
-    if (url.startsWith('/api/pagamentos/resumo')) return response({});
+    if (url.endsWith('/reserva/1')) return response([
+      { id: 11, reserva_id: 1, valor: 10000, metodo: manual ? 'Pix' : 'Pix Online', registrado_em: '2030-01-10T10:00:00Z' },
+      ...(refunded ? [{ id: 12, reserva_id: 1, valor: -2000, metodo: 'Estorno', registrado_em: '2030-01-10T11:00:00Z' }] : []),
+    ]);
+    if (url.startsWith('/api/pagamentos/reservas?')) return response([outstanding ? { ...reservation, total_pago: 4000, saldo_devedor: 6000, status_pagamento: 'Parcial' } : reservation]);
+    if (url.startsWith('/api/pagamentos/resumo')) return response({ recebidoHoje: 5992, recebidoMes: 5992, totalInadimplencia: 12014, qtdInadimplentes: 8 });
     if (init?.method === 'POST') throw new Error('Unexpected POST');
     return response([]);
   });
@@ -69,4 +72,28 @@ it('converts manual payment history from centavos to reais', async () => {
   await openRefund();
   await waitFor(() => expect(screen.getByLabelText('Valor a estornar *')).toHaveValue('100,00'));
   expect(screen.getByLabelText('Valor a estornar *')).not.toHaveAttribute('readonly');
+});
+
+it('displays API centavos as reais in the summary and booking list', async () => {
+  setup();
+  await screen.findByText('Cliente Pix');
+  const monthly = document.querySelector('[data-pencil-name="Valor Recebido no mês"]');
+  const overdue = document.querySelector('[data-pencil-name="Valor Inadimplência"]');
+  expect(monthly?.textContent?.replace(/\s/g, ' ')).toBe('R$ 59,92');
+  expect(overdue?.textContent?.replace(/\s/g, ' ')).toBe('R$ 120,14');
+  expect(screen.getAllByText(/R\$\s100,00/).length).toBeGreaterThan(0);
+});
+
+it('prefills the manual payment with the remaining balance in reais', async () => {
+  setup({ outstanding: true });
+  await waitFor(() => {
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar' }));
+    expect(screen.getByDisplayValue('60,00')).toBeInTheDocument();
+  });
+});
+
+it('deducts prior refunds from the suggested manual refund', async () => {
+  setup({ manual: true, refunded: true });
+  await openRefund();
+  await waitFor(() => expect(screen.getByLabelText('Valor a estornar *')).toHaveValue('80,00'));
 });

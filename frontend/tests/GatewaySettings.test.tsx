@@ -111,4 +111,12 @@ describe('configuração de pagamentos sem exposição de credenciais', () => {
     expect(screen.getByLabelText('Chave de API / Access Token da Arena (Mercado Pago / PagBank)')).toHaveValue('');
     expect(screen.getByText('✓ Conta Conectada')).toBeInTheDocument();
   });
+
+  it('shows an OAuth callback error in the payments tab', async () => {
+    window.history.replaceState({}, '', '/admin/configuracoes?oauth=error&message=Autoriza%C3%A7%C3%A3o%20expirada');
+    show();
+    await screen.findByText('Autorização expirada');
+    expect(window.location.search).toBe('?tab=pagamentos');
+    expect(fetchMock.mock.calls.some(([url]) => url === '/api/pagamentos/gateway/oauth/exchange')).toBe(false);
+  });
 });

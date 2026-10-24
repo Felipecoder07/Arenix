@@ -73,163 +73,30 @@ const registrarEstorno=safe(async(req,res)=>{
  res.json({message:'Estorno manual registrado.',saldo_devedor:result.saldoDevedor,status_pagamento:result.novoStatus});
 });
 
-const resumoPagamentos = async (req, res) => {
-  try {
-    const hoje = getTodayString();
-    const tenant_id = req.user.tenant_id;
-    const mes = hoje.substring(0, 7);
-    const hora = getLocalTimeString();
-    const dataFiltro = req.query.data ? req.query.data.trim() : null;
-
-    // Recebido hoje (apenas reservas ativas/não canceladas)
-    const recebidoHoje = await db.getAsync(
-      `SELECT COALESCE(SUM(p.valor),0) as total, COUNT(CASE WHEN p.valor > 0 THEN 1 END) as qtd 
-       FROM Pagamentos p 
-       JOIN Reservas r ON p.reserva_id = r.id 
-       WHERE DATE(p.registrado_em) = ? AND r.status != 'Cancelada' AND r.tenant_id = ?`,
-      [hoje, tenant_id]);
-
-    // Pendente hoje
-    const pendenteHoje = await db.allAsync(
-      `SELECT r.valor_total, COALESCE((SELECT SUM(valor) FROM Pagamentos WHERE reserva_id = r.id),0) as pago
-       FROM Reservas r WHERE r.data_reserva = ? AND r.status != 'Cancelada' AND r.status_pagamento != 'Pago' AND r.tenant_id = ?`,
-      [hoje, tenant_id]);
-    const totalPendenteHoje = pendenteHoje.reduce((acc, r) => acc + Math.max(0, r.valor_total - r.pago), 0);
-
-    // Recebido no mês (apenas reservas ativas/não canceladas)
-    const recebidoMes = await db.getAsync(
-      `SELECT COALESCE(SUM(p.valor),0) as total 
-       FROM Pagamentos p 
-       JOIN Reservas r ON p.reserva_id = r.id 
-       WHERE strftime('%Y-%m', p.registrado_em) = ? AND r.status != 'Cancelada' AND r.tenant_id = ?`,
-      [mes, tenant_id]);
-
-    // Inadimplência global para o card
-    const inadimplentes = await db.allAsync(
-      `SELECT r.valor_total, COALESCE((SELECT SUM(valor) FROM Pagamentos WHERE reserva_id = r.id),0) as pago
-       FROM Reservas r WHERE r.status != 'Cancelada' AND r.status_pagamento != 'Pago' AND r.tenant_id = ?`,
-      [tenant_id]
-    );
-    const totalInadimplencia = inadimplentes.reduce((acc, r) => acc + Math.max(0, r.valor_total - r.pago), 0);
-
-    // Contagens Globais para as Tabs
-    const countPendentes = await db.getAsync(`SELECT COUNT(*) as c FROM Reservas WHERE status != 'Cancelada' AND status_pagamento != 'Pago' AND tenant_id = ?`, [tenant_id]);
-    const countPagos = await db.getAsync(`SELECT COUNT(*) as c FROM Reservas WHERE status != 'Cancelada' AND status_pagamento = 'Pago' AND tenant_id = ?`, [tenant_id]);
-    const countTodos = await db.getAsync(`SELECT COUNT(*) as c FROM Reservas WHERE status != 'Cancelada' AND tenant_id = ?`, [tenant_id]);
-    const countInadimplentes = await db.getAsync(`
-      SELECT COUNT(*) as c FROM Reservas 
-      WHERE status != 'Cancelada' AND status_pagamento != 'Pago' AND tenant_id = ?
-      AND (data_reserva < ? OR (data_reserva = ? AND hora_fim < ?))
-    `, [tenant_id, hoje, hoje, hora]);
-
-    let resumoFiltrado = null;
-    let countsFiltrados = {
-      pendentes: countPendentes.c,
-      pagos: countPagos.c,
-      todos: countTodos.c,
-      inadimplentes: countInadimplentes.c
-    };
-
-    if (dataFiltro) {
-      // Recebido na data selecionada (apenas reservas ativas/não canceladas)
-      const recebidoData = await db.getAsync(
-        `SELECT COALESCE(SUM(p.valor),0) as total, COUNT(CASE WHEN p.valor > 0 THEN 1 END) as qtd 
-         FROM Pagamentos p 
-         JOIN Reservas r ON p.reserva_id = r.id 
-         WHERE (DATE(p.registrado_em) = ? OR r.data_reserva = ?) AND r.status != 'Cancelada' AND r.tenant_id = ?`,
-        [dataFiltro, dataFiltro, tenant_id]
-      );
-
-      // Pendente na data selecionada
-      const pendenteData = await db.allAsync(
-        `SELECT r.valor_total, COALESCE((SELECT SUM(valor) FROM Pagamentos WHERE reserva_id = r.id),0) as pago
-         FROM Reservas r WHERE r.data_reserva = ? AND r.status != 'Cancelada' AND r.status_pagamento != 'Pago' AND r.tenant_id = ?`,
-        [dataFiltro, tenant_id]
-      );
-      const totalPendenteData = pendenteData.reduce((acc, r) => acc + Math.max(0, r.valor_total - r.pago), 0);
-
-      // Total faturado/agendado na data selecionada
-      const faturamentoData = await db.getAsync(
-        `SELECT COALESCE(SUM(valor_total),0) as total, COUNT(*) as qtd 
-         FROM Reservas 
-         WHERE data_reserva = ? AND status != 'Cancelada' AND tenant_id = ?`,
-        [dataFiltro, tenant_id]
-      );
-
-      // Contagens na data selecionada
-      const countPendData = await db.getAsync(`SELECT COUNT(*) as c FROM Reservas WHERE status != 'Cancelada' AND status_pagamento != 'Pago' AND data_reserva = ? AND tenant_id = ?`, [dataFiltro, tenant_id]);
-      const countPagData = await db.getAsync(`SELECT COUNT(*) as c FROM Reservas WHERE status != 'Cancelada' AND status_pagamento = 'Pago' AND data_reserva = ? AND tenant_id = ?`, [dataFiltro, tenant_id]);
-      const countTodosData = await db.getAsync(`SELECT COUNT(*) as c FROM Reservas WHERE status != 'Cancelada' AND data_reserva = ? AND tenant_id = ?`, [dataFiltro, tenant_id]);
-      const countInadData = await db.getAsync(`
-        SELECT COUNT(*) as c FROM Reservas 
-        WHERE status != 'Cancelada' AND status_pagamento != 'Pago' AND data_reserva = ? AND tenant_id = ?
-        AND (data_reserva < ? OR (data_reserva = ? AND hora_fim < ?))
-      `, [dataFiltro, tenant_id, hoje, hoje, hora]);
-
-      countsFiltrados = {
-        pendentes: countPendData.c,
-        pagos: countPagData.c,
-        todos: countTodosData.c,
-        inadimplentes: countInadData.c
-      };
-
-      resumoFiltrado = {
-        data: dataFiltro,
-        recebido: recebidoData.total,
-        qtdPagamentos: recebidoData.qtd,
-        pendente: totalPendenteData,
-        qtdPendente: pendenteData.length,
-        faturamentoTotal: faturamentoData.total,
-        totalReservas: faturamentoData.qtd,
-        qtdInadimplentes: countInadData.c
-      };
-    }
-
-    res.json({
-      recebidoHoje: recebidoHoje.total,
-      qtdPagamentosHoje: recebidoHoje.qtd,
-      pendenteHoje: totalPendenteHoje,
-      qtdPendenteHoje: pendenteHoje.length,
-      recebidoMes: recebidoMes.total,
-      totalInadimplencia,
-      qtdInadimplentes: countInadimplentes.c,
-      dataFiltro,
-      resumoFiltrado,
-      counts: countsFiltrados,
-      countsGlobais: {
-        pendentes: countPendentes.c,
-        pagos: countPagos.c,
-        todos: countTodos.c,
-        inadimplentes: countInadimplentes.c
-      }
-    });
-  } catch (error) {
-    logger.error(error);
-    res.status(500).json({ error: 'Erro ao buscar resumo de pagamentos.' });
-  }
-};
+const { summary, paymentDate, balanceSql, overdueSql } = require('../services/paymentSummaryService');
+const resumoPagamentos = safe(async (req, res) => {
+  res.json(await summary(req.user.tenant_id, paymentDate(req.query.data)));
+});
 
 // ─── LISTAGEM DE RESERVAS COM PAGAMENTOS ─────────────────────────────────────
 const listarReservasPagamentos = async (req, res) => {
   try {
     const tenant_id = req.user.tenant_id;
-    const { status, busca, data } = req.query;
+    const { status, busca } = req.query;
+    const data = paymentDate(req.query.data);
 
     let where = `r.tenant_id = ? AND r.status != 'Cancelada'`;
     const params = [tenant_id];
 
     if (status === 'Pendente') {
-      where += ` AND r.status_pagamento IN ('Pendente', 'Parcial')`;
+      where += ` AND (${balanceSql}) > 0`;
     } else if (status === 'Pago') {
-      where += ` AND r.status_pagamento = 'Pago'`;
+      where += ` AND (${balanceSql}) <= 0`;
     } else if (status === 'inadimplentes') {
-      // reservas cujo horário já passou e ainda não foram pagas
-      const hoje = new Date().toISOString().split('T')[0];
-      const tenant_id = req.user.tenant_id;
-      const hora = new Date().toTimeString().substring(0, 5);
-      where += ` AND r.status_pagamento != 'Pago'
-                 AND (r.data_reserva < ? OR (r.data_reserva = ? AND r.hora_fim < ?))`;
-      params.push(hoje, hoje, hora);
+      where += ` AND (${balanceSql}) > 0 AND ${overdueSql}`;
+      const arena = await db.getAsync('SELECT fuso_horario FROM Arenas WHERE id=?', [req.user.tenant_id]);
+      const zone = arena?.fuso_horario || 'America/Sao_Paulo';
+      params.push(getTodayString(zone), getTodayString(zone), getLocalTimeString(zone));
     }
 
     if (data) {
@@ -259,13 +126,15 @@ const listarReservasPagamentos = async (req, res) => {
 
     const comSaldo = reservas.map(r => ({
       ...r,
-      saldo_devedor: Math.max(0, r.valor_total - r.total_pago)
+      status_pagamento: r.status === 'Cancelamento pendente' ? r.status_pagamento :
+        r.total_pago >= r.valor_total ? 'Pago' : r.total_pago > 0 ? 'Parcial' : 'Pendente',
+      saldo_devedor: r.status === 'Cancelamento pendente' ? 0 : Math.max(0, r.valor_total - r.total_pago)
     }));
 
     res.json(comSaldo);
   } catch (error) {
     logger.error(error);
-    res.status(500).json({ error: 'Erro ao listar reservas para pagamentos.' });
+    res.status(error.status || 500).json({ error: error.status === 400 ? error.message : 'Erro ao listar reservas para pagamentos.' });
   }
 };
 

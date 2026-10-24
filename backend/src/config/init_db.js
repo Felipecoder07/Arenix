@@ -322,12 +322,8 @@ const initDb = () => {
       }
     });
 
-    // Webhook Secret pessoal do Master para validar assinaturas HMAC de notificações de pagamentos
-    db.get("SELECT COUNT(*) as count FROM ConfiguracoesSaaS WHERE chave = 'mp_webhook_secret'", (err, row) => {
-      if (row && row.count === 0) {
-        db.run("INSERT INTO ConfiguracoesSaaS (chave, valor) VALUES ('mp_webhook_secret', '')");
-      }
-    });
+    // Sem linha padrão: um valor vazio é uma desativação explícita e impediria
+    // a leitura de MERCADO_PAGO_WEBHOOK_SECRET em uma instalação nova.
 
     // Dias de tolerância antes de limpar cadastros fantasma (nunca pagaram)
     db.get("SELECT COUNT(*) as count FROM ConfiguracoesSaaS WHERE chave = 'dias_abandono_cadastro'", (err, row) => {

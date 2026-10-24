@@ -1,3 +1,5 @@
+import { CourtTimeSelect } from "../../components/CourtTimeSelect";
+import { formatCourtPriceInput, parseCourtPrice } from "../../utils/courtPrice";
 import { ToastLayer } from "../../components/ToastLayer";
 import { TeamRecentActivity } from '../../components/TeamRecentActivity';
 import { ArenaPortalButton } from '../../components/ArenaPortalButton';
@@ -850,7 +852,7 @@ export function AdminConfiguracoesQuadras() {
     if (Array.isArray(q.modalidades)) {
       mods = q.modalidades.map((m) => {
         if (typeof m === "string") {
-          precosMap[m] = Number(q.preco_base || q.preco_hora || 100).toFixed(2).replace(".", ",");
+          precosMap[m] = Number(q.preco_base ?? q.preco_hora ?? 100).toFixed(2).replace(".", ",");
           return m;
         } else {
           precosMap[m.nome] = Number(m.preco ?? q.preco_base ?? 100).toFixed(2).replace(".", ",");
@@ -860,7 +862,7 @@ export function AdminConfiguracoesQuadras() {
     }
     if (mods.length === 0) {
       mods = ["Beach Tennis"];
-      precosMap["Beach Tennis"] = Number(q.preco_base || 100).toFixed(2).replace(".", ",");
+      precosMap["Beach Tennis"] = Number(q.preco_base ?? 100).toFixed(2).replace(".", ",");
     }
     setFormModalidades(mods);
     setFormModalidadePrecos(precosMap);
@@ -868,34 +870,32 @@ export function AdminConfiguracoesQuadras() {
     setModalOpen(true);
   };
 
-  const getFirstPreco = () => {
-    const first = formModalidades[0];
-    if (first && formModalidadePrecos[first]) {
-      return parseFloat(formModalidadePrecos[first].replace(/\./g, "").replace(",", ".")) || 100;
-    }
-    return 100;
-  };
+  const horarioQuadraInvalido = Number(formHoraAbertura.split(':')[0]) >= Number(formHoraFechamento.split(':')[0]);
 
   const handleSaveQuadraForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (salvandoQuadra) return;
+    if (horarioQuadraInvalido) {
+      showToast("O fechamento deve ser depois da abertura.");
+      return;
+    }
     setSalvandoQuadra(true);
     try {
       const modalidades = formModalidades.map((nome) => ({
         nome,
-        preco: parseFloat((formModalidadePrecos[nome] || "100").replace(/\./g, "").replace(",", ".")),
+        preco: parseCourtPrice(formModalidadePrecos[nome] ?? ""),
       }));
-      if (modalidades.some((m) => !Number.isFinite(m.preco) || m.preco <= 0)) {
-        throw new Error("Informe um preço válido para cada modalidade.");
+      if (!modalidades.length || modalidades.some((m) => !Number.isFinite(m.preco))) {
+        throw new Error("Informe um preço maior que zero, com até duas casas decimais, para cada modalidade.");
       }
       const response = await fetch(editingQuadra ? `/api/quadras/${editingQuadra.id}` : "/api/quadras", {
         method: editingQuadra ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           nome: formNome,
-          preco_base: getFirstPreco(),
-          hora_abertura: formHoraAbertura,
-          hora_fechamento: formHoraFechamento,
+          preco_base: modalidades[0].preco,
+          hora_abertura: `${formHoraAbertura.split(':')[0]}:00`,
+          hora_fechamento: `${formHoraFechamento.split(':')[0]}:00`,
           tipo: formTipoPiso,
           modalidades,
           ...(editingQuadra ? { status: editingQuadra.status || (editingQuadra.ativa === false ? "Inativa" : "Ativa") } : {}),
@@ -1029,35 +1029,6 @@ export function AdminConfiguracoesQuadras() {
             data-pencil-name="Ações Cabeçalho Configurações"
             className="box-border w-fit shrink-0 h-fit flex flex-row gap-[10px] justify-start items-center"
           >
-            {/* Salvar Alterações (Apenas na aba Quadras) */}
-            {activeTab === "quadras" && (
-              <button
-                type="button"
-                onClick={() => showToast("Todas as alterações foram salvas!")}
-                data-pencil-name="Salvar Alterações Configurações"
-                className="box-border w-fit shrink-0 h-[42px] flex flex-row gap-[8px] px-[16px] justify-start items-center bg-[#071915] hover:bg-neutral-800 transition-colors rounded-[10px] cursor-pointer shadow-sm active:scale-95"
-              >
-                <svg
-                  data-pencil-name="Ícone Salvar Configurações"
-                  viewBox="0 0 13.99993896484375 14"
-                  preserveAspectRatio="xMidYMid meet"
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="box-border w-[16px] shrink-0 h-[16px]"
-                >
-                  <path
-                    d="M2.60449 1.20313q-0.50586 0.08545-0.87842 0.43749-0.36914 0.34863-0.50927 0.86475-0.02734 0.08545-0.02735 0.71436l-0.01367 3.78027 0.01367 3.78027q0 0.62891 0.02735 0.71436 0.14014 0.48877 0.46826 0.82031 0.33154 0.32813 0.82031 0.46826 0.08545 0.02734 0.71436 0.02735l3.78027 0.01367 3.78027-0.01367q0.62891 0 0.71436-0.02735 0.48877-0.14014 0.81689-0.46826 0.33154-0.33154 0.47168-0.82031 0.02734-0.08545 0.02735-0.56055l0.01367-6.09082-0.05469-0.16748q-0.09912-0.32129-0.29394-0.57422-0.09912-0.14014-1.31592-1.34326l-0.92627-0.92285q-0.28027-0.28027-0.42041-0.3794-0.0957-0.06836-0.2666-0.14013-0.12305-0.05469-0.26319-0.09912l-0.14013-0.04102-3.20606 0q-3.21973 0-3.33252 0.02734z m0.89551 2.05761q0 0.93994 0.01367 1.03565 0.07178 0.35205 0.33496 0.61181 0.2666 0.25635 0.61866 0.32813 0.10938 0.01367 2.26611 0.01367l2.17041-0.01367 0.09912-0.04102q0.2666-0.12646 0.32129-0.42041 0.05469-0.29395-0.15381-0.50586-0.14014-0.14014-0.33496-0.16748-0.11279-0.02734-2.14307-0.02734l-2.0166 0 0-1.75 2.07129 0q2.07129 0 2.18408 0.01367l0.01367 0.01367q0.09912 0.01367 0.18457 0.05811 0.0957 0.06836 0.34864 0.32129l1.80468 1.79101q0.23926 0.25293 0.30762 0.36573 0.04443 0.06836 0.05811 0.18115l0.01367 0.01367q0.01367 0.11279 0 3.12061l0 3.01122-0.04102 0.09913q-0.09912 0.19482-0.2666 0.29394-0.08545 0.04102-0.20508 0.05469-0.11621 0.01367-0.35546 0.01367l-0.29395 0 0-1.80469q0-1.80811-0.01367-1.91748-0.05469-0.31104-0.28711-0.56054-0.23242-0.25293-0.55371-0.35205-0.06836-0.02734-0.44776-0.02735l-4.22802 0q-0.44775 0-0.58789 0.02735-0.11279 0.01367-0.2085 0.07177l-0.05811 0.02735q-0.12646 0.05469-0.28027 0.20849-0.15381 0.15381-0.2085 0.28028l-0.02734 0.0581q-0.04443 0.0957-0.0581 0.18115-0.02734 0.12646-0.02735 0.46143l-0.01367 3.34619-0.29395 0q-0.23926 0-0.35888-0.01367-0.11621-0.01367-0.20166-0.05469-0.16748-0.09912-0.2666-0.29394l-0.04102-0.09913 0-8.42871 0.04102-0.09912q0.07178-0.14014 0.18798-0.229 0.11963-0.09229 0.25977-0.11963 0.08545 0 0.37939-0.01367l0.29395 0 0 0.93652z m5.82422 6.66504l0 1.75-4.64844 0 0-3.5 4.64844 0 0 1.75z"
-                    fill="#C9FF3B"
-                  />
-                </svg>
-                <div
-                  data-pencil-name="Texto Salvar Configurações"
-                  className="text-[13px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-bold text-left whitespace-nowrap"
-                >
-                  Salvar alterações
-                </div>
-              </button>
-            )}
-
             {/* Acesso usuário Configurações */}
             <div
               data-pencil-name="Acesso usuário Configurações"
@@ -1710,6 +1681,27 @@ export function AdminConfiguracoesQuadras() {
                   )}
                 </div>
               </div>
+            </div>
+
+            {/* Footer salvar quadras */}
+            <div
+              data-pencil-name="Footer quadras config"
+              className="box-border w-full flex flex-row justify-end items-center -mt-[2px]"
+            >
+              <button
+                type="button"
+                onClick={() => showToast("Todas as alterações foram salvas!")}
+                data-pencil-name="Salvar quadras config"
+                className="box-border w-fit shrink-0 h-[42px] flex flex-row gap-[8px] px-[17px] justify-start items-center bg-[#071915] hover:bg-neutral-800 transition-colors rounded-[10px] cursor-pointer shadow-sm"
+              >
+                <Save className="box-border w-[15px] shrink-0 h-[15px] text-[#C9FF3B]" />
+                <span
+                  data-pencil-name="Texto salvar quadras"
+                  className="text-[12px]/[normal] box-border text-[#FFFFFF] font-[Inter,system-ui,sans-serif] font-extrabold text-left whitespace-nowrap"
+                >
+                  Salvar configurações
+                </span>
+              </button>
             </div>
 
             {/* Ajuda / Banner Inferior */}
@@ -3509,6 +3501,7 @@ export function AdminConfiguracoesQuadras() {
                             >
                               {m.motivo}
                             </span>
+                            {m.id < 0 && <span className="text-[9px] text-[#6F766F]">Padrão do sistema</span>}
                             {m.contagem > 0 && m.contagem === maiorContagem && (
                               <div
                                 data-pencil-name={`Padrão ${m.motivo}`}
@@ -3650,6 +3643,7 @@ export function AdminConfiguracoesQuadras() {
                       className="text-[10px]/[15px] box-border w-full text-[#A7B6AE] font-[Inter,system-ui,sans-serif] font-medium text-left"
                     >
                       Essas opções aparecem para a equipe no momento de cancelar uma reserva e alimentam seus relatórios.
+                      {' '}Os motivos padrão do sistema não podem ser editados ou excluídos. Você pode adicionar motivos próprios e editá-los.
                     </div>
                   </div>
 
@@ -4262,10 +4256,19 @@ export function AdminConfiguracoesQuadras() {
                         <div className="w-[96px] h-[34px] flex flex-row px-[10px] justify-end items-center bg-[#FFFFFF] outline outline-1 outline-[#DED6CA] rounded-[9px]">
                           <input
                             type="text"
-                            value={formModalidadePrecos[mod] || "100,00"}
+                            inputMode="decimal"
+                            aria-label={`Preço por hora de ${mod}`}
+                            aria-invalid={!Number.isFinite(parseCourtPrice(formModalidadePrecos[mod] ?? ""))}
+                            value={formModalidadePrecos[mod] ?? ""}
                             onChange={(e) =>
-                              setFormModalidadePrecos((prev) => ({ ...prev, [mod]: e.target.value }))
+                              setFormModalidadePrecos((prev) => ({ ...prev, [mod]: formatCourtPriceInput(e.target.value) }))
                             }
+                            onPaste={(event) => {
+                              event.preventDefault();
+                              const text = event.clipboardData.getData('text').trim();
+                              const price = parseCourtPrice(text);
+                              setFormModalidadePrecos(prev => ({ ...prev, [mod]: Number.isFinite(price) ? price.toFixed(2).replace('.', ',') : text }));
+                            }}
                             className="w-full text-right bg-transparent text-[13px] font-bold text-[#071915] outline-none"
                           />
                         </div>
@@ -4273,41 +4276,18 @@ export function AdminConfiguracoesQuadras() {
                       </div>
                     </div>
                   ))}
+                  <p className="text-[11px] text-[#6F766F]">Digite os números; a vírgula é automática. Ex.: 12550 vira 125,50. O valor deve ser maior que zero.</p>
                 </div>
               )}
 
               {/* Horários */}
-              <div className="flex flex-row gap-[12px]">
-                <div className="flex-1 flex flex-col gap-[7px]">
-                  <label className="text-[12px] font-bold text-[#071915]">Horário de abertura *</label>
-                  <div className="w-full h-[40px] flex flex-row px-[12px] justify-between items-center bg-[#FBFAF7] outline outline-1 outline-[#DED6CA] rounded-[10px]">
-                    <input
-                      type="text"
-                      value={formHoraAbertura}
-                      onChange={(e) => setFormHoraAbertura(e.target.value)}
-                      placeholder="07:00"
-                      className="flex-1 bg-transparent text-[13px] text-[#071915] outline-none"
-                    />
-                    <svg viewBox="0 0 14 14" className="w-[15px] h-[15px] shrink-0" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M6.69238 0.60156q-1.16211 0.04102-2.22851 0.50586-1.06299 0.46143-1.90381 1.26807-0.8374 0.80322-1.34326 1.85254-0.48877 1.0083-0.60157 2.15674-0.02734 0.19482-0.02734 0.61523 0 0.42041 0.02734 0.61523 0.11279 1.14844 0.60157 2.15674 0.65967 1.40137 1.89697 2.33789 1.24072 0.93652 2.75146 1.20313 0.5332 0.09912 1.13477 0.09912 0.75537 0 1.43213-0.15381 0.68018-0.15381 1.35351-0.4751 1.26123-0.61865 2.16358-1.70215 0.90234-1.0835 1.25439-2.44384 0.29395-1.11768 0.18116-2.25244-0.11279-1.13477-0.60157-2.17041-0.58789-1.20313-1.62011-2.08497-1.02881-0.88184-2.31397-1.2749-1.0083-0.30762-2.15674-0.25293z m0.96729 1.18946q1.07666 0.14014 1.99267 0.68017 0.91602 0.54004 1.56201 1.4082 0.82715 1.104 1.00831 2.54639 0.01367 0.16748 0.01367 0.57422 0 0.40674-0.01367 0.57422-0.14014 1.16211-0.7212 2.12939-0.58105 0.96387-1.53466 1.62354-0.4751 0.33496-1.04932 0.56055-0.57422 0.22217-1.18945 0.30761-0.25293 0.04102-0.72803 0.04102-0.4751 0-0.72803-0.04102-1.07666-0.15381-1.95849-0.68701-0.88184-0.5332-1.52784-1.3877-0.82715-1.104-1.0083-2.54638-0.01367-0.16748-0.01367-0.57422 0-0.40674 0.01367-0.57422 0.14014-1.12109 0.66993-2.05078 0.5332-0.92969 1.43212-1.58936 0.54346-0.40674 1.20655-0.66992 0.6665-0.2666 1.32617-0.3247l0.25293-0.02735q0.0957-0.01367 0.4751 0 0.37939 0.01367 0.51953 0.02735z m-0.81348 1.14843q-0.25293 0.08545-0.37939 0.30762l-0.04102 0.08545 0 3.83496 0.04102 0.08545q0.04443 0.06836 0.12646 0.15381 0.08545 0.08203 0.15381 0.12646l0.08545 0.04102 2.46435 0q0.18115 0 0.26319-0.03418 0.08545-0.0376 0.16748-0.11963 0.08545-0.08545 0.1333-0.18799 0.05127-0.10596 0.05127-0.23242 0-0.12646-0.04102-0.23926-0.09912-0.19482-0.29394-0.29394l-0.08545-0.04102-1.91748 0 0-3.09326-0.04102-0.08545q-0.09912-0.18115-0.28027-0.2666-0.08545-0.04102-0.22559-0.04785-0.14014-0.00684-0.18115 0.00683z" fill="#6F766F" />
-                    </svg>
-                  </div>
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col sm:flex-row gap-[16px]">
+                  <CourtTimeSelect id="quadra-abertura" label="Horário de abertura" value={formHoraAbertura} onChange={setFormHoraAbertura} />
+                  <CourtTimeSelect id="quadra-fechamento" label="Horário de fechamento" value={formHoraFechamento} onChange={setFormHoraFechamento} />
                 </div>
-                <div className="flex-1 flex flex-col gap-[7px]">
-                  <label className="text-[12px] font-bold text-[#071915]">Horário de fechamento *</label>
-                  <div className="w-full h-[40px] flex flex-row px-[12px] justify-between items-center bg-[#FBFAF7] outline outline-1 outline-[#DED6CA] rounded-[10px]">
-                    <input
-                      type="text"
-                      value={formHoraFechamento}
-                      onChange={(e) => setFormHoraFechamento(e.target.value)}
-                      placeholder="22:00"
-                      className="flex-1 bg-transparent text-[13px] text-[#071915] outline-none"
-                    />
-                    <svg viewBox="0 0 14 14" className="w-[15px] h-[15px] shrink-0" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M6.69238 0.60156q-1.16211 0.04102-2.22851 0.50586-1.06299 0.46143-1.90381 1.26807-0.8374 0.80322-1.34326 1.85254-0.48877 1.0083-0.60157 2.15674-0.02734 0.19482-0.02734 0.61523 0 0.42041 0.02734 0.61523 0.11279 1.14844 0.60157 2.15674 0.65967 1.40137 1.89697 2.33789 1.24072 0.93652 2.75146 1.20313 0.5332 0.09912 1.13477 0.09912 0.75537 0 1.43213-0.15381 0.68018-0.15381 1.35351-0.4751 1.26123-0.61865 2.16358-1.70215 0.90234-1.0835 1.25439-2.44384 0.29395-1.11768 0.18116-2.25244-0.11279-1.13477-0.60157-2.17041-0.58789-1.20313-1.62011-2.08497-1.02881-0.88184-2.31397-1.2749-1.0083-0.30762-2.15674-0.25293z m0.96729 1.18946q1.07666 0.14014 1.99267 0.68017 0.91602 0.54004 1.56201 1.4082 0.82715 1.104 1.00831 2.54639 0.01367 0.16748 0.01367 0.57422 0 0.40674-0.01367 0.57422-0.14014 1.16211-0.7212 2.12939-0.58105 0.96387-1.53466 1.62354-0.4751 0.33496-1.04932 0.56055-0.57422 0.22217-1.18945 0.30761-0.25293 0.04102-0.72803 0.04102-0.4751 0-0.72803-0.04102-1.07666-0.15381-1.95849-0.68701-0.88184-0.5332-1.52784-1.3877-0.82715-1.104-1.0083-2.54638-0.01367-0.16748-0.01367-0.57422 0-0.40674 0.01367-0.57422 0.14014-1.12109 0.66993-2.05078 0.5332-0.92969 1.43212-1.58936 0.54346-0.40674 1.20655-0.66992 0.6665-0.2666 1.32617-0.3247l0.25293-0.02735q0.0957-0.01367 0.4751 0 0.37939 0.01367 0.51953 0.02735z m-0.81348 1.14843q-0.25293 0.08545-0.37939 0.30762l-0.04102 0.08545 0 3.83496 0.04102 0.08545q0.04443 0.06836 0.12646 0.15381 0.08545 0.08203 0.15381 0.12646l0.08545 0.04102 2.46435 0q0.18115 0 0.26319-0.03418 0.08545-0.0376 0.16748-0.11963 0.08545-0.08545 0.1333-0.18799 0.05127-0.10596 0.05127-0.23242 0-0.12646-0.04102-0.23926-0.09912-0.19482-0.29394-0.29394l-0.08545-0.04102-1.91748 0 0-3.09326-0.04102-0.08545q-0.09912-0.18115-0.28027-0.2666-0.08545-0.04102-0.22559-0.04785-0.14014-0.00684-0.18115 0.00683z" fill="#6F766F" />
-                    </svg>
-                  </div>
-                </div>
+                <p className="text-[11px] text-[#6F766F]">Selecione a hora. Formato de 24 horas.</p>
+                {horarioQuadraInvalido && <p role="alert" className="text-[12px] text-[#B01F24]">O fechamento deve ser depois da abertura.</p>}
               </div>
 
               {/* Footer */}

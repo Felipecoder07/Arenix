@@ -20,6 +20,10 @@ const PORT = process.env.PORT || 3000;
 // SPA Fallback - redireciona qualquer rota de página para o index.html do React
 app.use((req, res, next) => {
   if ((req.method === 'GET' || req.method === 'HEAD') && !req.path.startsWith('/api') && !req.path.startsWith('/uploads')) {
+    if (req.path === '/athlete' || req.path.startsWith('/athlete/')) {
+      const athleteIndex = path.resolve(__dirname, '../../tela cliente/dist/index.html');
+      if (fs.existsSync(athleteIndex)) return res.sendFile(athleteIndex);
+    }
     const indexPath = path.resolve(__dirname, '../../frontend/dist/index.html');
     if (fs.existsSync(indexPath)) {
       return res.sendFile(indexPath);

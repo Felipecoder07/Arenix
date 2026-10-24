@@ -130,15 +130,17 @@ const getQuadrasBySlug = async (req, res) => {
 // 3. Matriz de Disponibilidade de Horários (100% Privado sem expor nomes de terceiros - RN-02)
 const getDisponibilidadeBySlug = async (req, res) => {
   const { slug } = req.params;
-  const dataFiltro = req.query.data || new Date().toISOString().split('T')[0];
   const quadraIdFiltro = req.query.quadra_id ? Number.parseInt(req.query.quadra_id, 10) : null;
   const esporteFiltro = req.query.esporte || null;
 
   try {
-    const arena = await db.getAsync('SELECT id, horario_abertura, horario_fechamento FROM Arenas WHERE slug = ? AND status = 1', [slug]);
+    const arena = await db.getAsync('SELECT id, horario_abertura, horario_fechamento, fuso_horario FROM Arenas WHERE slug = ? AND status = 1', [slug]);
     if (!arena) {
       return res.status(404).json({ error: 'Arena não encontrada.' });
     }
+
+    const zone = arena.fuso_horario || 'America/Sao_Paulo';
+    const dataFiltro = req.query.data || getTodayString(zone);
 
     // Busca quadras ativas da arena
     let queryQuadras = 'SELECT id, nome, tipo, modalidades, preco_base, hora_abertura, hora_fechamento FROM Quadras WHERE tenant_id = ? AND status = \'Ativa\'';
@@ -169,8 +171,8 @@ const getDisponibilidadeBySlug = async (req, res) => {
       [arena.id, dataFiltro]
     );
 
-    const todayStr = getTodayString();
-    const currentTimeStr = getLocalTimeString();
+    const todayStr = getTodayString(zone);
+    const currentTimeStr = getLocalTimeString(zone);
     const isHoje = dataFiltro === todayStr;
 
     const resultadoPorQuadra = quadras.map(q => {
@@ -556,7 +558,7 @@ const cancelarPendentePublico = async (req,res) => {
   try {
     const arena=await db.getAsync('SELECT id FROM Arenas WHERE slug=? AND status=1',[req.params.slug]);
     if(!arena) return res.status(404).json({error:'Arena não encontrada.'});
-    const result=await require('../services/bookingCancellationService').requestCancellation(req.body.reservas_ids || [req.body.reserva_id],{tenantId:arena.id,onlyUnpaid:true,authorize:row=>require('../services/clientAccessService').canAccessReservation(req,row),reason:'Desistência'});
+    const result=await require('../services/bookingCancellationService').requestCancellation(req.body.reservas_ids || [req.body.reserva_id],{tenantId:arena.id,onlyUnpaid:true,authorize:row=>require('../services/clientAccessService').canAccessReservation(req,row),reason:'Desistência do Cliente',reasonId:-1});
     res.status(result.pending?202:200).json({...result,message:result.pending?'Cancelamento solicitado. O horário permanece reservado até confirmar o pagamento.':'Reserva cancelada. Vaga liberada.'});
   } catch(error) {res.status(error.status||500).json({error:require('../utils/security').publicError(error)});}
 };
@@ -817,13 +819,15 @@ const obterPixReservaPendente = async (req, res) => {
 
 const cancelarReservaAtleta = async (req,res) => {
   try {
-    const arena=await db.getAsync('SELECT id,nome,telefone FROM Arenas WHERE slug=? AND status=1',[req.params.slug]);
+    const arena=await db.getAsync('SELECT id,nome,telefone,fuso_horario FROM Arenas WHERE slug=? AND status=1',[req.params.slug]);
     if(!arena) return res.status(404).json({error:'Arena não encontrada.'});
     const owns=row=>require('../services/clientAccessService').ownsReservation(req.user,row);
     const row=await db.getAsync('SELECT r.id,r.tenant_id,r.cliente_id,r.data_reserva,r.hora_inicio,r.hora_fim,r.valor_total,q.nome AS quadra_nome FROM Reservas r JOIN Quadras q ON q.id=r.quadra_id AND q.tenant_id=r.tenant_id WHERE r.id=? AND r.tenant_id=?',[req.params.id,arena.id]);
     if(!row||!await owns(row)) return res.status(404).json({error:'Reserva não encontrada.'});
-    if(row.data_reserva<getTodayString() || (row.data_reserva===getTodayString()&&row.hora_inicio<=getLocalTimeString())) return res.status(400).json({error:'O horário já começou.'});
-    await require('../services/bookingCancellationService').requestCancellation([row.id],{tenantId:arena.id,authorize:owns,reason:'Cancelado pelo atleta'});
+    const zone = arena.fuso_horario || 'America/Sao_Paulo';
+    const today = getTodayString(zone);
+    if(row.data_reserva<today || (row.data_reserva===today&&row.hora_inicio<=getLocalTimeString(zone))) return res.status(400).json({error:'O horário já começou.'});
+    await require('../services/bookingCancellationService').requestCancellation([row.id],{tenantId:arena.id,authorize:owns,reason:'Desistência do Cliente',reasonId:-1});
     await require('../services/gatewayService').estornarPagamentoPix(row.id,arena.id);
     const state=await db.getAsync('SELECT status,status_pagamento FROM Reservas WHERE id=?',[row.id]);
     const pending=state.status==='Cancelamento pendente';

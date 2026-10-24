@@ -149,6 +149,25 @@ it.each(['invalid signature','expired signature','unsigned'])('rejects %s before
   expect(provider).not.toHaveBeenCalled();
   await unpaid();
 });
+it('asks Mercado Pago to retry when the webhook secret is not configured',async()=>{
+  await db.runAsync("UPDATE ConfiguracoesSaaS SET valor='' WHERE chave='mp_webhook_secret'");
+  vi.stubEnv('NODE_ENV','production');
+  const response=await request(app).post(base+'/webhook').send({action:'payment.updated',data:{id:991}});
+  expect(response.status).toBe(503);
+  expect(provider).not.toHaveBeenCalled();
+  await unpaid();
+});
+it('uses the configured environment secret with a legacy empty database row',async()=>{
+  await transaction();
+  await productionCredentials();
+  await db.runAsync("UPDATE ConfiguracoesSaaS SET valor='' WHERE chave='mp_webhook_secret'");
+  vi.stubEnv('MERCADO_PAGO_WEBHOOK_SECRET',fixture.WEBHOOK_SECRET);
+  vi.stubEnv('NODE_ENV','production');
+  provider.mockResolvedValue({ok:true,json:async()=>approvedPayment()});
+  const response=await signedWebhook(app,991);
+  expect(response.status).toBe(200);
+  expect(await db.getAsync('SELECT COUNT(*) AS count FROM GatewayCredits')).toEqual({count:1});
+});
 it('HTTP charge and webhook for one currency unit do not settle another slot',async()=>{
   const session=await login(actors.owner);
   respond(pix);
@@ -292,4 +311,30 @@ it('public OAuth callback accepts a valid state once',async()=>{
   expect(replay.status).toBe(302);
   expect(replay.headers.location).toContain('oauth=error');
   expect(provider).toHaveBeenCalledTimes(2);
+});
+
+it('uses the configured local callback unchanged for authorization and token exchange', async () => {
+  const uri = 'http://localhost:3000/api/pagamentos/gateway/oauth/callback';
+  vi.stubEnv('MERCADO_PAGO_REDIRECT_URI', uri);
+  await db.runAsync("INSERT OR REPLACE INTO ConfiguracoesSaaS(chave,valor) VALUES('mp_client_id','FIXTURE-CLIENT')");
+  const session = await login(actors.admin);
+  const authorization = await auth(request(app).get(base+'/oauth/url'), session);
+  expect(authorization.status).toBe(200);
+  const url = new URL(authorization.body.url);
+  expect(url.searchParams.get('redirect_uri')).toBe(uri);
+  respond({access_token:'FIXTURE-CALLBACK-TOKEN',public_key:'FIXTURE-PUBLIC',user_id:123});
+  respond({id:123});
+  const result = await request(app).get(base+'/oauth/callback').query({ state: url.searchParams.get('state'), code: 'local-callback-code' });
+  expect(result.status).toBe(302);
+  expect(result.headers.location).toBe('http://localhost:5173/admin/configuracoes?tab=pagamentos&oauth=success');
+  expect(JSON.parse(provider.mock.calls[0][1].body).redirect_uri).toBe(uri);
+});
+
+it('reports an invalid callback configuration before sending the user to the provider', async () => {
+  vi.stubEnv('MERCADO_PAGO_REDIRECT_URI', 'https://example.test/wrong-route');
+  const session = await login(actors.admin);
+  const result = await auth(request(app).get(base+'/oauth/url'), session);
+  expect(result.status).toBe(503);
+  expect(result.body.url).toBeUndefined();
+  expect(provider).not.toHaveBeenCalled();
 });

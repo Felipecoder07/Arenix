@@ -169,6 +169,7 @@ export default function App() {
   const pixRecovery = usePixRecovery();
   const [slug] = useState<string>(getSlugFromPath);
   const [arena, setArena] = useState<ArenaInfo | null>(null);
+  const [arenaTimeZone, setArenaTimeZone] = useState('America/Sao_Paulo');
   const [courts, setCourts] = useState<Court[]>([]);
   const [courtId, setCourtId] = useState<string>('');
   const [selectedSport, setSelectedSport] = useState<string>('Todos');
@@ -252,6 +253,9 @@ export default function App() {
           }
           if (res.ok && data.arena) {
             const a = data.arena;
+            const zone = a.fuso_horario || 'America/Sao_Paulo';
+            setArenaTimeZone(zone);
+            setDateISO(getLocalDateISO(new Date(), zone));
             setArena({
               name: a.nome,
               cover: resolveCoverUrl(a.foto_capa),
@@ -864,7 +868,7 @@ export default function App() {
             onSelectSport={handleSelectSport}
           />
         )}
-        <DateCarousel selectedISO={dateISO} onSelect={handleSelectDate} />
+        <DateCarousel selectedISO={dateISO} onSelect={handleSelectDate} timeZone={arenaTimeZone} />
 
         <SlotGrid
           slots={displaySlots}

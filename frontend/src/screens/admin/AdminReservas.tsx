@@ -247,9 +247,12 @@ export const AdminGradeSlot: React.FC<AdminGradeSlotProps> = ({
     return (
       <div
         key={col.id}
-        className="h-[48px] bg-[#F7F4EF] outline outline-1 outline-[#E5DCD0] -outline-offset-1 rounded-[14px] opacity-60"
+        className="h-[48px] bg-[#E3DDD3] outline outline-1 outline-[#D2C9BB] -outline-offset-1 rounded-[14px] flex items-center justify-center px-1 text-[11px] text-[#8F877B] font-bold select-none truncate cursor-not-allowed"
         style={{ gridColumn: idx + 2, gridRow: row }}
-      />
+        title="Horário encerrado"
+      >
+        Encerrado
+      </div>
     );
   }
 
@@ -423,13 +426,33 @@ export function AdminReservas() {
   const [selectedReserva, setSelectedReserva] = useState<Reserva | null>(null);
   const [motivoCancelamento, setMotivoCancelamento] = useState('');
   const [obsCancelamento, setObsCancelamento] = useState('');
-  const [motivosDisponiveis] = useState([
-    'Desistência do cliente',
-    'Chuva/Mau tempo',
-    'Conflito de agenda',
-    'Erro de agendamento',
-    'Outro',
-  ]);
+  const [motivosDisponiveis, setMotivosDisponiveis] = useState<{ id: number; motivo: string }[]>([]);
+  const [loadingMotivos, setLoadingMotivos] = useState(false);
+  const [erroMotivos, setErroMotivos] = useState('');
+  const [motivosReload, setMotivosReload] = useState(0);
+
+  useEffect(() => {
+    if (activeModal !== 'cancelar-reserva') return;
+    let active = true;
+    setLoadingMotivos(true);
+    setMotivosDisponiveis([]);
+    setMotivoCancelamento('');
+    setErroMotivos('');
+    void (async () => {
+      try {
+        const response = await fetch('/api/motivos');
+        if (!response.ok) throw new Error('Não foi possível carregar os motivos de cancelamento.');
+        const motivos = await response.json();
+        if (!Array.isArray(motivos)) throw new Error('Não foi possível carregar os motivos de cancelamento.');
+        if (active) setMotivosDisponiveis(motivos);
+      } catch (error) {
+        if (active) setErroMotivos(errorMessage(error));
+      } finally {
+        if (active) setLoadingMotivos(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [activeModal, motivosReload]);
 
   const [pagValor, setPagValor] = useState('');
   const [pagDesconto, setPagDesconto] = useState('');
@@ -982,7 +1005,7 @@ export function AdminReservas() {
   };
 
   const handleConfirmarCancelamento = async () => {
-    if (!selectedReserva || !motivoCancelamento) {
+    if (!selectedReserva || loadingMotivos || !motivosDisponiveis.some(m => String(m.id) === motivoCancelamento)) {
       showToast('O motivo do cancelamento é obrigatório.', 'error');
       return;
     }
@@ -992,7 +1015,7 @@ export function AdminReservas() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          motivo: motivoCancelamento,
+          motivo: Number(motivoCancelamento),
           observacoes: obsCancelamento,
         }),
       });
@@ -1443,13 +1466,16 @@ export function AdminReservas() {
     }
 
     return (
-      <div className="w-full overflow-x-auto custom-scrollbar">
+      <div className={scope === 'semanal' ? 'w-full overflow-x-hidden' : 'w-full overflow-x-auto custom-scrollbar'}>
         <div
-          className="w-full min-w-[500px]"
+          className={scope === 'semanal' ? 'w-full min-w-0' : 'w-full min-w-[500px]'}
           style={{
             display: 'grid',
-            gridTemplateColumns: `58px repeat(${colunas.length}, minmax(130px, 1fr))`,
-            gap: '8px',
+            gridTemplateColumns:
+              scope === 'semanal'
+                ? `48px repeat(${colunas.length}, minmax(0, 1fr))`
+                : `58px repeat(${colunas.length}, minmax(130px, 1fr))`,
+            gap: scope === 'semanal' ? '4px' : '8px',
           }}
         >
           {/* Canto superior vazio */}
@@ -1813,7 +1839,7 @@ export function AdminReservas() {
       </div>
 
       {/* Resumo Operacional */}
-      <section aria-label="Resumo operacional" aria-busy={loading} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-[14px] w-full select-none">
+      <section aria-label="Resumo operacional" aria-busy={loading} className={`${scope === 'semanal' ? 'hidden' : 'grid'} grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-[14px] w-full select-none`}>
         {/* Card 1: Reservas hoje */}
         <div className="p-[18px_20px] bg-[#FFFFFF] outline outline-1 outline-[#E9E0D4] -outline-offset-1 rounded-[20px] flex flex-col gap-[6px] shadow-xs">
           <div className="text-[12px] text-[#6F766F] font-[Inter,system-ui,sans-serif] font-bold">
@@ -1880,7 +1906,7 @@ export function AdminReservas() {
       </section>
 
       {/* Conteúdo Agenda e Detalhes */}
-      <section className="grid grid-cols-1 xl:grid-cols-[1fr_310px] gap-[18px] w-full items-start">
+      <section className={`grid grid-cols-1 ${scope === 'semanal' ? '' : 'xl:grid-cols-[1fr_310px]'} gap-[18px] w-full items-start`}>
         {/* Agenda Todas as Quadras */}
         <div className="bg-[#FFFFFF] [box-shadow:0px_16px_40px_#07191510] outline outline-1 outline-[#E9E0D4] -outline-offset-1 rounded-[26px] p-[20px] flex flex-col gap-[16px] shadow-sm">
           {/* Cabeçalho Grade */}
@@ -1924,9 +1950,9 @@ export function AdminReservas() {
         </div>
 
         {/* Painel Lateral de Reservas */}
-        <div className="flex flex-col gap-[14px] w-full">
+        {scope !== 'semanal' && <div className="flex flex-col gap-[14px] w-full">
           {/* Próxima Reserva (Dark Pill Card) */}
-          <div role="region" aria-label="Próxima reserva" className="box-border w-full min-h-[164px] shrink-0 [box-shadow:0px_14px_30px_#07191525] flex flex-col gap-[8px] p-[20px] justify-between bg-[#071915] rounded-[24px] text-white">
+          {scope !== 'semanal' && <div role="region" aria-label="Próxima reserva" className="box-border w-full min-h-[164px] shrink-0 [box-shadow:0px_14px_30px_#07191525] flex flex-col gap-[8px] p-[20px] justify-between bg-[#071915] rounded-[24px] text-white">
             <div className="flex flex-col gap-[4px]">
               <div className="text-[13px] text-[#A7B6AE] font-[Inter,system-ui,sans-serif] font-normal">
                 Próxima reserva
@@ -1979,7 +2005,7 @@ export function AdminReservas() {
                 Detalhes
               </button>
             </div>}
-          </div>
+          </div>}
 
           {/* Alertas Operacionais (Atenção) */}
           <div className="box-border w-full min-h-[90px] shrink-0 flex flex-col gap-[6px] p-[18px] justify-start bg-[#FFFDF5] outline outline-1 outline-[#FFB545]/60 -outline-offset-1 rounded-[20px] shadow-xs">
@@ -2035,7 +2061,7 @@ export function AdminReservas() {
               })}
             </div>
           </div>
-        </div>
+        </div>}
       </section>
 
       {/* MODAL 1: NOVA RESERVA (Conforme mockup Pen.dev) */}
@@ -2841,17 +2867,22 @@ export function AdminReservas() {
                 <label htmlFor="motivo-cancelamento">Motivo do cancelamento *</label>
                 <select
                   id="motivo-cancelamento"
+                  disabled={loadingMotivos || !!erroMotivos}
                   value={motivoCancelamento}
                   onChange={(e) => setMotivoCancelamento(e.target.value)}
                   required
                 >
-                  <option value="">Selecione o motivo</option>
+                  <option value="">{loadingMotivos ? 'Carregando motivos...' : 'Selecione o motivo'}</option>
                   {motivosDisponiveis.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
+                    <option key={m.id} value={m.id}>
+                      {m.motivo}
                     </option>
                   ))}
                 </select>
+                {erroMotivos && <div role="alert">
+                  {erroMotivos}{' '}
+                  <button type="button" onClick={() => setMotivosReload(value => value + 1)}>Tentar novamente</button>
+                </div>}
               </div>
               <div className="form-group">
                 <label htmlFor="obs-cancelamento">Observações</label>
@@ -2873,6 +2904,7 @@ export function AdminReservas() {
                 className="btn-primary"
                 style={{ background: 'var(--danger)' }}
                 onClick={handleConfirmarCancelamento}
+                disabled={loadingMotivos || !!erroMotivos || !motivoCancelamento}
               >
                 Confirmar Cancelamento
               </button>

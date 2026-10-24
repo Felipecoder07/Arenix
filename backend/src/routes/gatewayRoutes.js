@@ -105,18 +105,32 @@ router.post('/cobranca', verifyToken, requirePermission('gateway.reservation'), 
 router.get('/status/:reserva_id', verifyToken, requirePermission('gateway.reservation'), async (req, res) => {
   try {
     const { reserva_id } = req.params;
-    let reserva = await db.getAsync('SELECT status, status_pagamento, cliente_id, tenant_id FROM Reservas WHERE id = ?', [reserva_id]);
+    let reserva = await db.getAsync('SELECT id, grupo_id, status, status_pagamento, cliente_id, tenant_id FROM Reservas WHERE id = ?', [reserva_id]);
 
     if (!reserva) {
       return res.status(404).json({ error: 'Reserva não encontrada.' });
     }
 
     await assertReservationAccess(req.user, reserva);
+    const gatewayRef = req.query.gateway_ref;
+    let transaction = null;
+    if (gatewayRef !== undefined) {
+      if (typeof gatewayRef !== 'string' || !gatewayRef || gatewayRef.length > 200) {
+        return res.status(400).json({ error: 'Referencia de pagamento invalida.' });
+      }
+      transaction = await db.getAsync(`SELECT t.gateway_ref,t.status FROM TransacoesGateway t
+        JOIN Reservas r ON r.id=t.reserva_id WHERE t.gateway_ref=? AND r.tenant_id=?
+        AND (r.id=? OR (? IS NOT NULL AND r.grupo_id=?))`,
+      [gatewayRef, reserva.tenant_id, reserva.id, reserva.grupo_id, reserva.grupo_id]);
+      if (!transaction) return res.status(404).json({ error: 'Cobranca nao encontrada para esta reserva.' });
+    }
     await require('../services/paymentIntentService').consultPix(reserva_id, reserva.tenant_id);
+    if (transaction) transaction = await db.getAsync('SELECT status FROM TransacoesGateway WHERE gateway_ref=?', [gatewayRef]);
     reserva = await db.getAsync('SELECT status,status_pagamento FROM Reservas WHERE id=?', [reserva_id]);
-    res.json({
+    res.set('Cache-Control', 'no-store').json({
       status: reserva.status,
-      status_pagamento: reserva.status_pagamento
+      status_pagamento: reserva.status_pagamento,
+      ...(transaction ? { transacao_status: transaction.status } : {})
     });
 
   } catch (error) {
@@ -281,13 +295,11 @@ async function getSaaSGatewayCredentials() {
 
 // OAuth: Gerar URL de Autorização para a Arena conectar a conta Mercado Pago
 router.get('/oauth/url', verifyToken, requireGatewayManager, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
   try {
     const tenantId = req.user.tenant_id;
     const { clientId } = await getSaaSGatewayCredentials();
-    const host = req.headers.host || 'localhost:3000';
-    const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
-    const defaultRedirect = `${protocol}://${host}/api/pagamentos/gateway/oauth/callback`;
-    const redirectUri = process.env.MERCADO_PAGO_REDIRECT_URI || defaultRedirect;
+    const redirectUri = require('../utils/gatewayOAuth').redirectUri(req);
 
     if (!clientId || clientId.trim() === '') {
       return res.status(400).json({ 
@@ -301,12 +313,13 @@ router.get('/oauth/url', verifyToken, requireGatewayManager, async (req, res) =>
     res.json({ url: authUrl, state });
   } catch (error) {
     logger.error('[OAuth URL Error]', error);
-    res.status(500).json({ error: 'Erro ao gerar URL de autorização OAuth.' });
+    res.status(error.status || 500).json({ error: require('../utils/security').publicError(error, 'Erro ao gerar URL de autorização OAuth.') });
   }
 });
 
 // OAuth: Callback que recebe o código e troca pelo Access Token da Arena
 router.get('/oauth/callback', async (req, res) => {
+  res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
   const frontendUrl = configuredFrontend();
   try {
     const { code, state, error } = req.query;
@@ -329,10 +342,7 @@ router.get('/oauth/callback', async (req, res) => {
     }
 
     const { clientId, clientSecret } = await getSaaSGatewayCredentials();
-    const host = req.headers.host || 'localhost:3000';
-    const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
-    const defaultRedirect = `${protocol}://${host}/api/pagamentos/gateway/oauth/callback`;
-    const redirectUri = process.env.MERCADO_PAGO_REDIRECT_URI || defaultRedirect;
+    const redirectUri = require('../utils/gatewayOAuth').redirectUri(req);
 
     if (clientId && clientSecret) {
       const mpRes = await fetch('https://api.mercadopago.com/oauth/token', {
@@ -398,10 +408,7 @@ router.post('/oauth/exchange', verifyToken, requireGatewayManager, async (req, r
     }
 
     const { clientId, clientSecret } = await getSaaSGatewayCredentials();
-    const host = req.headers.host || 'localhost:3000';
-    const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
-    const defaultRedirect = `${protocol}://${host}/api/pagamentos/gateway/oauth/callback`;
-    const redirectUri = process.env.MERCADO_PAGO_REDIRECT_URI || defaultRedirect;
+    const redirectUri = require('../utils/gatewayOAuth').redirectUri(req);
 
     if (!clientId || !clientSecret) {
       return res.status(400).json({ error: 'Credenciais da plataforma não configuradas no backend.' });
