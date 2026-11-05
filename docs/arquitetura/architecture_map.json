@@ -1,0 +1,100 @@
+{
+  "reviewed_at": "2026-11-05",
+  "scope": "Mapa descritivo conferido nos arquivos citados; não comprova implantação ou homologação.",
+  "stack": {
+    "frontend": {
+      "@emotion/react": "^11.14.0",
+      "@emotion/styled": "^11.14.1",
+      "@mui/material": "^9.4.0",
+      "@mui/x-charts": "^9.14.0",
+      "@tabler/icons-react": "^3.49.0",
+      "apexcharts": "^6.3.0",
+      "clsx": "^2.1.1",
+      "framer-motion": "^14.2.0",
+      "lucide-react": "^0.344.0",
+      "react": "^18.3.1",
+      "react-apexcharts": "^2.1.1",
+      "react-dom": "^18.3.1",
+      "react-qr-code": "^2.2.0",
+      "tailwind-merge": "^2.6.1"
+    },
+    "backend": {
+      "bcrypt": "^6.0.0",
+      "cors": "^2.8.6",
+      "dotenv": "^17.4.2",
+      "express": "^5.2.1",
+      "express-rate-limit": "^8.5.2",
+      "google-auth-library": "^11.0.2",
+      "helmet": "^8.3.0",
+      "jsonwebtoken": "^9.0.3",
+      "node-cron": "^4.6.0",
+      "nodemailer": "^10.0.9",
+      "qrcode": "^1.5.4",
+      "sharp": "^0.35.5",
+      "sqlite3": "^6.0.1"
+    }
+  },
+  "modules": [
+    {
+      "name": "Painel gestor e Master",
+      "responsibility": "React e TypeScript em uma aplicação Vite. Autenticação por sessão e chamadas à API na mesma origem.",
+      "files": [
+        "frontend/src/App.tsx",
+        "frontend/src/utils/apiFetch.ts",
+        "frontend/src/utils/session.ts",
+        "frontend/src/layouts/MasterLayout.tsx"
+      ]
+    },
+    {
+      "name": "Portal do atleta",
+      "responsibility": "Aplicação separada para consulta e reserva. Em produção pode ser publicada sob /athlete/.",
+      "files": [
+        "tela cliente/src/App.tsx",
+        "tela cliente/vite.config.ts"
+      ]
+    },
+    {
+      "name": "API e acesso",
+      "responsibility": "Express concentra rotas em app.js. O servidor inicializa banco e rotinas. Sessões são persistidas com hash e transportadas em cookie HttpOnly; mutações autenticadas verificam CSRF.",
+      "files": [
+        "backend/src/app.js",
+        "backend/src/server.js",
+        "backend/src/services/sessionService.js",
+        "backend/src/middlewares/auth.js"
+      ]
+    },
+    {
+      "name": "Reservas",
+      "responsibility": "Valida disponibilidade, preço, horários, bloqueios e contexto da arena.",
+      "files": [
+        "backend/src/services/bookingService.js",
+        "backend/src/utils/bookingPrice.js"
+      ]
+    },
+    {
+      "name": "Pagamentos e assinaturas",
+      "responsibility": "Serviços separados para intenções, registro financeiro, liquidação, estorno e cobrança SaaS. Conciliação retoma estados pendentes; integrações externas exigem homologação.",
+      "files": [
+        "backend/src/services/paymentIntentService.js",
+        "backend/src/services/paymentLedgerService.js",
+        "backend/src/services/gatewayService.js",
+        "backend/src/services/saasSettlementService.js",
+        "backend/src/jobs/reconciliacaoOutbox.js"
+      ]
+    },
+    {
+      "name": "Persistência e credenciais",
+      "responsibility": "SQLite em memória nos testes; em execução normal usa APP_DATA_DIR ou backend/data. UPLOADS_DIR configura uploads. Credenciais usam AES-256-GCM com keyring.",
+      "files": [
+        "backend/src/config/database.js",
+        "backend/src/config/runtimePaths.js",
+        "backend/src/utils/secretEncryption.js"
+      ]
+    }
+  ],
+  "limitations": [
+    "SQLite e cron no processo exigem planejar persistência e topologia antes de escalar horizontalmente.",
+    "Login Master atual usa e-mail e senha; não pressupõe TOTP obrigatório.",
+    "A autenticação atual não usa JWT no localStorage."
+  ]
+}

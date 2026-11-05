@@ -1,4 +1,7 @@
 const fs = require('fs');
+const path = require('node:path');
+const sonarDir = path.resolve(__dirname, '../artifacts/sonar');
+fs.mkdirSync(sonarDir, { recursive: true });
 const dns = require('dns');
 if (dns.setDefaultResultOrder) {
   dns.setDefaultResultOrder('ipv4first');
@@ -71,7 +74,7 @@ async function fetchAll() {
     console.log('Measures error:', e.message);
   }
 
-  fs.writeFileSync('sonar_issues_raw.json', JSON.stringify({
+  fs.writeFileSync(path.join(sonarDir, 'sonar_issues_raw.json'), JSON.stringify({
     total: allIssues.length,
     measures: measures.component?.measures || [],
     issues: allIssues,

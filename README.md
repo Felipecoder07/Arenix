@@ -71,7 +71,7 @@ O backend organiza rotas, middlewares, controllers e serviços de domínio. Duas
 | Interfaces | React, TypeScript, Vite e Tailwind CSS |
 | API e rotinas | Node.js, Express e node-cron |
 | Dados | SQLite e migrações SQL |
-| Autenticação e proteção | JWT, bcrypt, Helmet, limitação de requisições e criptografia de credenciais |
+| Autenticação e proteção | Sessões por cookies, CSRF, bcrypt, Helmet, limitação de requisições e criptografia de credenciais |
 | Integrações | Mercado Pago, Google OAuth e SMTP |
 | Verificação | Vitest, Testing Library, Supertest, Playwright, ESLint e TypeScript |
 | Análise estática | Configuração de SonarCloud via GitHub Actions |
@@ -186,7 +186,7 @@ npm run validate:gateway
 
 A validação integrada executa **10 etapas** e gera logs e um `summary.json` em `artifacts/homologacao/`, com identificação do commit e resultado de cada etapa.
 
-A [revisão registrada em 08/10/2026](docs/REVISAO_FINAL_2026-10-08.md) documenta **579 testes aprovados**: 450 no backend, 98 no painel e 31 no portal. Esse número descreve aquela execução; para verificar o estado atual, execute a validação novamente.
+A [revisão registrada em 08/10/2026](docs/historico/REVISAO_FINAL_2026-10-08.md) documenta **579 testes aprovados**: 450 no backend, 98 no painel e 31 no portal. Esse número descreve aquela execução; para verificar o estado atual, execute a validação novamente.
 
 Os cenários incluem reservas, autorização, isolamento entre arenas, concorrência, pagamentos, estornos e regressões de segurança. A aprovação automatizada é uma evidência técnica; a homologação das integrações e do ambiente de produção é uma etapa separada.
 
@@ -206,21 +206,21 @@ Use uma base de demonstração identificada como teste. Para demonstrar confirma
 
 O repositório contém implementação, testes e registros de verificações locais. Disponibilidade pública, adoção por clientes e homologação de pagamentos reais não são comprovadas por este README.
 
-As próximas etapas de entrega incluem validar integrações no ambiente de destino, conferir persistência e restauração de backups e registrar evidências atualizadas da jornada completa. O acompanhamento técnico está no [guia de homologação](docs/HOMOLOGACAO.md).
+As próximas etapas de entrega incluem validar integrações no ambiente de destino, conferir persistência e restauração de backups e registrar evidências atualizadas da jornada completa. O acompanhamento técnico está no [guia de homologação](docs/qualidade/HOMOLOGACAO.md).
 
 ## Documentação
 
 | Documento | Conteúdo |
 | --- | --- |
-| [Requisitos do produto](docs/CourtManager_PRD.md) | Contexto, funcionalidades e escopo |
-| [Inventário funcional](docs/INVENTARIO_FUNCIONAL_2026-09-22.md) | Levantamento dos fluxos do sistema |
-| [Mapa de arquitetura](docs/architecture_map.html) | Visualização interativa; abra localmente no navegador |
-| [Regras de pagamentos](docs/regras_pagamentos.md) | Comportamentos do domínio financeiro |
-| [Testes de ponta a ponta](docs/functional-e2e.md) | Fluxos e verificação funcional |
-| [Homologação](docs/HOMOLOGACAO.md) | Critérios e evidências para entrega |
-| [Checklist de implantação](docs/DEPLOYMENT_CHECKLIST.md) | Preparação do ambiente |
-| [Google OAuth](docs/configuracao_google_oauth.md) | Configuração do login social |
-| [Mercado Pago OAuth](docs/configuracao_mercado_pago_oauth.md) | Configuração da integração |
+| [Requisitos do produto](docs/produto/CourtManager_PRD.md) | Contexto, funcionalidades e escopo |
+| [Inventário funcional](docs/historico/INVENTARIO_FUNCIONAL_2026-09-22.md) | Levantamento dos fluxos do sistema |
+| [Mapa de arquitetura](docs/arquitetura/architecture_map.html) | Visualização interativa; abra localmente no navegador |
+| [Regras de pagamentos](docs/produto/regras_pagamentos.md) | Comportamentos do domínio financeiro |
+| [Testes de ponta a ponta](docs/qualidade/functional-e2e.md) | Fluxos e verificação funcional |
+| [Homologação](docs/qualidade/HOMOLOGACAO.md) | Critérios e evidências para entrega |
+| [Checklist de implantação](docs/operacao/DEPLOYMENT_CHECKLIST.md) | Preparação do ambiente |
+| [Google OAuth](docs/operacao/configuracao_google_oauth.md) | Configuração do login social |
+| [Mercado Pago OAuth](docs/operacao/configuracao_mercado_pago_oauth.md) | Configuração da integração |
 
 ---
 

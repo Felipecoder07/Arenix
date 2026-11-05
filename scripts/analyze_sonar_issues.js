@@ -1,6 +1,9 @@
 const fs = require('fs');
+const path = require('node:path');
+const sonarDir = path.resolve(__dirname, '../artifacts/sonar');
+fs.mkdirSync(sonarDir, { recursive: true });
 
-const data = JSON.parse(fs.readFileSync('sonar_issues_raw.json', 'utf8'));
+const data = JSON.parse(fs.readFileSync(path.join(sonarDir, 'sonar_issues_raw.json'), 'utf8'));
 const issues = data.issues;
 const measures = data.measures;
 
@@ -79,7 +82,7 @@ console.log(bySeverity);
 console.log('--- Vulnerabilities Count ---', vulnerabilities.length);
 console.log('--- Bugs Count ---', bugs.length);
 
-fs.writeFileSync('sonar_summary.json', JSON.stringify({
+fs.writeFileSync(path.join(sonarDir, 'sonar_summary.json'), JSON.stringify({
   total: issues.length,
   byType,
   bySeverity,

@@ -73,5 +73,5 @@ report.automatedPassed = report.results.every(result => result.passed) && report
 if (!report.sourceUnchanged) console.log('Os arquivos mudaram durante a validação; execute novamente para validar a versão final.');
 saveReport();
 console.log(`Relatório: ${summaryPath}`);
-console.log('A aprovação para produção também exige as evidências de docs/HOMOLOGACAO.md.');
+console.log('A aprovação para produção também exige as evidências de docs/qualidade/HOMOLOGACAO.md.');
 process.exitCode = report.automatedPassed ? 0 : 1;

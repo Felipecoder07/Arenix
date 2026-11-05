@@ -1,11 +1,15 @@
 const fs = require('fs');
+const path = require('node:path');
+const sonarDir = path.resolve(__dirname, '../artifacts/sonar');
+fs.mkdirSync(sonarDir, { recursive: true });
 
-const summary = JSON.parse(fs.readFileSync('sonar_summary.json', 'utf8'));
-const raw = JSON.parse(fs.readFileSync('sonar_issues_raw.json', 'utf8'));
+const summary = JSON.parse(fs.readFileSync(path.join(sonarDir, 'sonar_summary.json'), 'utf8'));
+const raw = JSON.parse(fs.readFileSync(path.join(sonarDir, 'sonar_issues_raw.json'), 'utf8'));
 
 let md = `# 📊 Relatório Completo de Análise SonarCloud - Arenix
 
-**Data da Coleta:** ${new Date().toLocaleString('pt-BR')}
+**Data de geração do relatório:** ${new Date().toLocaleString('pt-BR')}
+**Fonte:** arquivos locais em artifacts/sonar. Gerar este relatório não consulta o SonarCloud nem comprova o estado atual do projeto; a data acima não é a data da coleta.
 **Projeto no SonarCloud:** \`Felipecoder07_avalie-papai\`
 **Total de Problemas Encontrados:** **${summary.total}**
 
@@ -104,5 +108,5 @@ ${summary.topFiles.slice(0, 15).map(f => `| \`${f.file}\` | **${f.count}** | ${f
    - Extrair ternários aninhados em variáveis ou funções auxiliares.
 `;
 
-fs.writeFileSync('RELATORIO_SONARCLOUD.md', md, 'utf8');
+fs.writeFileSync(path.join(sonarDir, 'RELATORIO_SONARCLOUD.md'), md, 'utf8');
 console.log('Successfully generated RELATORIO_SONARCLOUD.md');
