@@ -12,6 +12,7 @@ Reorganizada em 05/11/2026. Os guias abaixo distinguem implementação, critéri
 
 ## Produto e desenvolvimento
 
+- [Minha contribuição e construção com IA](desenvolvimento/construcao-com-ia.md): processo de trabalho e estudo de caso com referências técnicas.
 - [Requisitos originais](produto/CourtManager_PRD.md): referência de escopo, não inventário certificado da versão atual.
 - [Funcionalidades SaaS](produto/saas_features.md): visão de produto a conferir contra a implementação.
 - [Regras de pagamentos](produto/regras_pagamentos.md).

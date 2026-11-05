@@ -4,7 +4,7 @@
 
 O Arenix centraliza a gestão de quadras de beach tennis, vôlei de praia e futevôlei. Conecta a jornada do atleta — consultar disponibilidade e reservar — à rotina do gestor, que acompanha agenda, clientes e recebimentos, e à administração das assinaturas da plataforma.
 
-[Produto](#o-produto) · [Arquitetura](#arquitetura) · [Execução local](#executar-localmente) · [Qualidade](#qualidade-e-evidências) · [Documentação](#documentação)
+[Produto](#o-produto) · [Minha contribuição](#minha-contribuição-e-uso-de-ia) · [Arquitetura](#arquitetura) · [Execução local](#executar-localmente) · [Qualidade](#qualidade-e-evidências) · [Documentação](#documentação)
 
 ![Agenda de quadras em ambiente de desenvolvimento](artifacts/calendar/desktop.png)
 
@@ -44,6 +44,18 @@ O Arenix reúne esse fluxo e acrescenta a operação de um SaaS: cada arena poss
 | Verificar comportamentos críticos | Testes de API, componentes, navegador e regressões de segurança | [Testes do backend](backend/tests) e [validação integrada](scripts/validate.cjs) |
 
 Esses pontos permitem explorar situações concretas: uma reserva concorrente, um pagamento pendente, uma notificação repetida ou uma operação solicitada por um usuário sem permissão.
+
+## Minha contribuição e uso de IA
+
+No Arenix, usei IA como apoio para transformar requisitos de gestão esportiva em uma aplicação com reservas, pagamentos e administração de múltiplas arenas. Minha contribuição envolveu definir comportamentos do produto, orientar a implementação, avaliar as entregas e conduzir revisões dos fluxos.
+
+- **Construção:** organizar problemas em etapas de interface, API, persistência e regras de negócio, usando IA como apoio ao desenvolvimento e à investigação de falhas.
+- **Decisões:** conferir as soluções propostas contra o comportamento esperado do produto, especialmente em reservas, cobranças e permissões.
+- **Validação:** apoiar a revisão em testes automatizados, conferências de interface e registros técnicos, distinguindo implementação local de homologação externa.
+
+Um exemplo é o fluxo de pagamentos: uma reserva criada não significa pagamento confirmado, e uma resposta incerta do provedor exige conciliação. Esse caso conecta uma necessidade do gestor a decisões de software e cenários verificáveis no repositório.
+
+[Leia o estudo de caso: construção com IA, pagamentos e evidências](docs/desenvolvimento/construcao-com-ia.md).
 
 ## Arquitetura
 
